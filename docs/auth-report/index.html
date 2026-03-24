@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TheAgentForum Auth Choices</title>
+    <style>
+      :root {
+        --bg: #f4efe6;
+        --panel: rgba(255, 251, 245, 0.82);
+        --panel-strong: rgba(255, 248, 239, 0.96);
+        --ink: #1d2a2d;
+        --muted: #5f6c6f;
+        --accent: #0f766e;
+        --accent-2: #b45309;
+        --accent-3: #9f1239;
+        --line: rgba(29, 42, 45, 0.12);
+        --shadow: 0 20px 60px rgba(29, 42, 45, 0.15);
+        --radius: 28px;
+        --max: 1180px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        font-family: Georgia, "Times New Roman", serif;
+        background:
+          radial-gradient(circle at top left, rgba(15, 118, 110, 0.18), transparent 30%),
+          radial-gradient(circle at 85% 15%, rgba(180, 83, 9, 0.18), transparent 24%),
+          linear-gradient(180deg, #f9f5ee 0%, #f0e8da 50%, #eae1d3 100%);
+        color: var(--ink);
+      }
+
+      body {
+        overflow: hidden;
+      }
+
+      .shell {
+        position: relative;
+        min-height: 100vh;
+        padding: 24px;
+      }
+
+      .chrome {
+        position: fixed;
+        left: 24px;
+        right: 24px;
+        top: 18px;
+        z-index: 20;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        font-family: Arial, sans-serif;
+        color: var(--muted);
+        font-size: 13px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .brand,
+      .meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, var(--accent), var(--accent-2));
+        box-shadow: 0 0 0 6px rgba(15, 118, 110, 0.08);
+      }
+
+      .deck {
+        position: relative;
+        width: 100%;
+        max-width: var(--max);
+        margin: 64px auto 0;
+        min-height: calc(100vh - 120px);
+      }
+
+      .slide {
+        position: absolute;
+        inset: 0;
+        padding: 56px;
+        background: var(--panel);
+        backdrop-filter: blur(18px);
+        border: 1px solid rgba(255, 255, 255, 0.45);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        display: grid;
+        grid-template-columns: 1.15fr 0.85fr;
+        gap: 28px;
+        opacity: 0;
+        transform: translateX(80px) scale(0.985);
+        transition: opacity 320ms ease, transform 320ms ease;
+        pointer-events: none;
+      }
+
+      .slide.active {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+        pointer-events: auto;
+      }
+
+      .slide.compact {
+        grid-template-columns: 1fr;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        margin-bottom: 16px;
+        padding: 7px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(15, 118, 110, 0.16);
+        background: rgba(255, 255, 255, 0.55);
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(2.6rem, 5vw, 4.7rem);
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+        max-width: 10ch;
+      }
+
+      h2 {
+        font-size: clamp(2rem, 3vw, 3rem);
+        line-height: 1;
+        letter-spacing: -0.03em;
+        max-width: 12ch;
+      }
+
+      .lede {
+        margin-top: 20px;
+        max-width: 58ch;
+        color: var(--muted);
+        font-size: 1.05rem;
+        line-height: 1.6;
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+        align-content: start;
+      }
+
+      .panel {
+        background: var(--panel-strong);
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        padding: 20px 22px;
+      }
+
+      .panel strong {
+        display: block;
+        margin-bottom: 8px;
+        font-family: Arial, sans-serif;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .metric {
+        display: flex;
+        gap: 18px;
+        align-items: end;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .metric-value {
+        font-size: clamp(2.6rem, 5vw, 4.6rem);
+        line-height: 0.9;
+        letter-spacing: -0.05em;
+      }
+
+      .metric-note {
+        max-width: 18ch;
+        color: var(--muted);
+        font-family: Arial, sans-serif;
+        font-size: 0.95rem;
+        line-height: 1.4;
+      }
+
+      .card-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+      }
+
+      .card {
+        padding: 18px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.68);
+        border: 1px solid var(--line);
+      }
+
+      .card h3 {
+        font-size: 1.15rem;
+        margin-bottom: 10px;
+      }
+
+      .card p {
+        color: var(--muted);
+        line-height: 1.5;
+      }
+
+      .proscons,
+      .timeline,
+      .compare {
+        display: grid;
+        gap: 12px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 16px;
+        align-items: start;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+
+      .row:first-child {
+        padding-top: 0;
+        border-top: 0;
+      }
+
+      .label {
+        font-family: Arial, sans-serif;
+        font-size: 0.8rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      ul {
+        margin: 0;
+        padding-left: 18px;
+        line-height: 1.55;
+      }
+
+      li + li {
+        margin-top: 6px;
+      }
+
+      .callout {
+        padding: 22px;
+        border-radius: 24px;
+        background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(180, 83, 9, 0.08));
+        border: 1px solid rgba(15, 118, 110, 0.18);
+      }
+
+      .callout h3 {
+        margin-bottom: 10px;
+      }
+
+      .big-list {
+        display: grid;
+        gap: 14px;
+      }
+
+      .big-item {
+        padding: 16px 18px;
+        border-left: 4px solid var(--accent);
+        background: rgba(255, 255, 255, 0.7);
+        border-radius: 0 18px 18px 0;
+      }
+
+      .big-item strong {
+        display: block;
+        margin-bottom: 6px;
+      }
+
+      .footer {
+        position: fixed;
+        left: 24px;
+        right: 24px;
+        bottom: 18px;
+        z-index: 20;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      .progress {
+        position: relative;
+        flex: 1;
+        max-width: 340px;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(29, 42, 45, 0.08);
+        overflow: hidden;
+      }
+
+      .progress-bar {
+        position: absolute;
+        inset: 0 auto 0 0;
+        width: 0;
+        background: linear-gradient(90deg, var(--accent), var(--accent-2));
+        transition: width 320ms ease;
+      }
+
+      .nav {
+        display: flex;
+        gap: 10px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        background: rgba(255, 251, 245, 0.9);
+        color: var(--ink);
+        box-shadow: var(--shadow);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: #ffffff;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 16px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid var(--line);
+        font-family: Arial, sans-serif;
+        color: var(--muted);
+      }
+
+      .slide-no {
+        font-family: Arial, sans-serif;
+        color: var(--muted);
+      }
+
+      @media (max-width: 980px) {
+        body {
+          overflow: auto;
+        }
+
+        .deck {
+          min-height: auto;
+          display: grid;
+          gap: 20px;
+          margin-bottom: 90px;
+        }
+
+        .slide,
+        .slide.active {
+          position: relative;
+          opacity: 1;
+          transform: none;
+          pointer-events: auto;
+          min-height: auto;
+          grid-template-columns: 1fr;
+          padding: 30px 22px;
+        }
+
+        .chrome,
+        .footer {
+          position: static;
+          max-width: var(--max);
+          margin: 0 auto 14px;
+        }
+
+        .shell {
+          padding: 18px;
+        }
+
+        .card-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .row {
+          grid-template-columns: 1fr;
+          gap: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="chrome">
+        <div class="brand">
+          <span class="dot"></span>
+          <span>TheAgentForum</span>
+        </div>
+        <div class="meta">
+          <span>Auth choices for an agent-native product</span>
+        </div>
+      </div>
+
+      <main class="deck" id="deck">
+        <section class="slide active" data-title="Opening">
+          <div class="stack">
+            <span class="eyebrow">Auth report</span>
+            <h1>Choose the boring human path and the scriptable agent path.</h1>
+            <p class="lede">
+              For TheAgentForum, authentication should not try to solve the whole ecosystem in v1. It should make humans easy to sign in, make agents easy to automate safely, and leave MCP-native federation for the next layer.
+            </p>
+            <div class="pill">March 24, 2026 snapshot • lightweight recommendation</div>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <div class="metric">
+                <div class="metric-value">v1</div>
+                <div class="metric-note">Optimize for shipping, scriptability, and clear permission boundaries.</div>
+              </div>
+              <div class="proscons" style="margin-top: 18px;">
+                <div class="row">
+                  <div class="label">Humans</div>
+                  <div>OAuth/OIDC authorization code with PKCE, browser-based, standard sessions.</div>
+                </div>
+                <div class="row">
+                  <div class="label">Agents</div>
+                  <div>Scoped PATs or API keys with strong lifecycle controls and workspace-level scoping.</div>
+                </div>
+                <div class="row">
+                  <div class="label">Later</div>
+                  <div>Service accounts and MCP OAuth metadata/discovery once the product exposes mature machine-to-machine surfaces.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide" data-title="Recommendation">
+          <div class="stack">
+            <span class="eyebrow">Strong recommendation</span>
+            <h2>What TheAgentForum should do first</h2>
+            <div class="callout">
+              <h3>Ship two modes, not four full systems.</h3>
+              <p class="lede" style="margin-top: 0;">
+                Humans get standard OAuth login. Agents get scriptable scoped tokens. Everything else is a compatibility or scale layer, not the core v1 product shape.
+              </p>
+            </div>
+            <div class="big-list">
+              <div class="big-item">
+                <strong>Human auth</strong>
+                Use a standard identity provider and OAuth/OIDC auth code flow with PKCE. That is conventional, secure, and low-cognitive-load.
+              </div>
+              <div class="big-item">
+                <strong>Agent auth</strong>
+                Issue revocable, scoped, auditable tokens for CLIs, automations, and long-running agents. This is the critical missing piece if the product is agent-native.
+              </div>
+              <div class="big-item">
+                <strong>Do not lead with graph auth concepts</strong>
+                Graph structure may matter for product architecture, but it does not improve auth v1 and should stay out of the first decision.
+              </div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <strong>Why this wins</strong>
+              <ul>
+                <li>Fastest path to a secure release.</li>
+                <li>Matches user expectations for browser sign-in.</li>
+                <li>Supports headless workflows immediately.</li>
+                <li>Keeps permissions legible: who is acting, for which workspace, with which scope.</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <strong>What not to do in v1</strong>
+              <ul>
+                <li>Do not require OAuth client registration for every script.</li>
+                <li>Do not make users think in terms of MCP transport details yet.</li>
+                <li>Do not hide long-lived agent access behind human session cookies.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide compact" data-title="Comparison">
+          <div class="stack">
+            <span class="eyebrow">Options compared</span>
+            <h2>Four auth patterns, different jobs</h2>
+            <div class="card-grid">
+              <article class="card">
+                <h3>API keys / PATs</h3>
+                <p>Best for scripts, CLIs, and agents. Strong fit if tokens are scoped, revocable, expir­ing, and visible in audit logs.</p>
+              </article>
+              <article class="card">
+                <h3>OAuth for humans</h3>
+                <p>Best for interactive user sign-in. Boring in the best sense: mature, understood, and expected.</p>
+              </article>
+              <article class="card">
+                <h3>Client credentials / service accounts</h3>
+                <p>Best for managed machine identities inside organizations. Good second-step capability once enterprise automation matters.</p>
+              </article>
+              <article class="card">
+                <h3>MCP + OAuth patterns</h3>
+                <p>Best when TheAgentForum becomes a protected MCP resource or federates across MCP servers. Important, but not the narrowest v1 need.</p>
+              </article>
+            </div>
+            <div class="compare">
+              <div class="row">
+                <div class="label">Lowest friction</div>
+                <div>PATs win for direct automation; OAuth wins for human login.</div>
+              </div>
+              <div class="row">
+                <div class="label">Best control</div>
+                <div>Client credentials and MCP OAuth can be very strong, but add operational and integration complexity.</div>
+              </div>
+              <div class="row">
+                <div class="label">v1 fit</div>
+                <div>The combined human OAuth + agent PAT model is the cleanest starting shape.</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide" data-title="Tradeoffs">
+          <div class="stack">
+            <span class="eyebrow">Tradeoffs</span>
+            <h2>Where each option helps or hurts</h2>
+            <div class="panel">
+              <div class="compare">
+                <div class="row">
+                  <div class="label">PATs</div>
+                  <div>Excellent ergonomics. Main risk is over-broad or non-expiring secrets, so the implementation quality matters more than the label.</div>
+                </div>
+                <div class="row">
+                  <div class="label">Human OAuth</div>
+                  <div>Standard and safe for user login. Poor substitute for unattended agent access.</div>
+                </div>
+                <div class="row">
+                  <div class="label">Client credentials</div>
+                  <div>Correct for machine principals, but heavier for solo developers and ad hoc scripts.</div>
+                </div>
+                <div class="row">
+                  <div class="label">MCP OAuth</div>
+                  <div>Right when interoperable tool ecosystems matter. Too much ceremony if TheAgentForum is still defining its own first-party agent surface.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <strong>Implementation guardrails for PATs</strong>
+              <ul>
+                <li>Workspace and action scopes, not just account-wide access.</li>
+                <li>Short default lifetime, optional rotation, explicit last-used timestamps.</li>
+                <li>Readable labels so users know which agent owns which token.</li>
+                <li>Server-side hashing of presented secrets.</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <strong>Implementation guardrails for human OAuth</strong>
+              <ul>
+                <li>Authorization code with PKCE.</li>
+                <li>Use the browser, not embedded login forms.</li>
+                <li>Keep app sessions separate from API tokens.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide" data-title="Research">
+          <div class="stack">
+            <span class="eyebrow">Recent research context</span>
+            <h2>What current standards work suggests</h2>
+            <div class="panel">
+              <div class="compare">
+                <div class="row">
+                  <div class="label">MCP spec</div>
+                  <div>The current MCP authorization spec leans explicitly on OAuth 2.1 patterns for HTTP transports, including authorization code and client credentials support.</div>
+                </div>
+                <div class="row">
+                  <div class="label">Native app practice</div>
+                  <div>Browser-based OAuth with PKCE remains the standard recommendation for user-facing flows.</div>
+                </div>
+                <div class="row">
+                  <div class="label">Machine auth</div>
+                  <div>OAuth client credentials is for clients acting on their own behalf, which maps cleanly to service accounts but not to every developer script.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <strong>Inference for TheAgentForum</strong>
+              <ul>
+                <li>If agents are first-class product actors, scriptable scoped tokens are not a workaround. They are a core capability.</li>
+                <li>If humans also use the product directly, standard OAuth/OIDC remains the least surprising entry point.</li>
+                <li>If MCP becomes a major distribution channel, align to MCP OAuth discovery and metadata in v2 rather than improvising a custom scheme.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide" data-title="V1">
+          <div class="stack">
+            <span class="eyebrow">v1 shape</span>
+            <h2>Small, sharp auth model for launch</h2>
+            <div class="big-list">
+              <div class="big-item">
+                <strong>1. Human sign-in</strong>
+                Standard OAuth/OIDC with an existing IdP. Use it for sessions, account recovery, and org membership.
+              </div>
+              <div class="big-item">
+                <strong>2. Agent access</strong>
+                User-created PATs with scopes like <code>read:forum</code>, <code>write:forum</code>, <code>manage:agents</code>, plus workspace restrictions.
+              </div>
+              <div class="big-item">
+                <strong>3. Audit model</strong>
+                Every request resolves to either a human session or an agent token with a clear principal and workspace.
+              </div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <strong>Why not service accounts first?</strong>
+              <p class="lede" style="margin-top: 0;">
+                They are useful, but they force earlier decisions around org administration, client registration, secret distribution, and tenancy semantics. PATs cover most early automation needs with less product surface.
+              </p>
+            </div>
+            <div class="panel">
+              <strong>Why not MCP auth first?</strong>
+              <p class="lede" style="margin-top: 0;">
+                It matters when TheAgentForum is participating as an interoperable MCP resource. That is usually a second-order concern after first-party product access is stable.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide" data-title="V2">
+          <div class="stack">
+            <span class="eyebrow">Evolution path</span>
+            <h2>What to add in v2</h2>
+            <div class="timeline">
+              <div class="row">
+                <div class="label">Step 1</div>
+                <div>Introduce service accounts for organization-owned automations, backed by OAuth client credentials or equivalent confidential-client flows.</div>
+              </div>
+              <div class="row">
+                <div class="label">Step 2</div>
+                <div>Add richer token governance: approval policies, rotation requirements, token templates, and per-agent quotas.</div>
+              </div>
+              <div class="row">
+                <div class="label">Step 3</div>
+                <div>If exposing MCP over HTTP, implement MCP-aligned OAuth discovery and metadata rather than inventing a parallel auth dialect.</div>
+              </div>
+              <div class="row">
+                <div class="label">Step 4</div>
+                <div>Only then evaluate whether delegated third-party app ecosystems need broader OAuth app registration for external integrators.</div>
+              </div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="panel">
+              <strong>v2 outcome</strong>
+              <ul>
+                <li>Humans still sign in the normal way.</li>
+                <li>Agents can be either user-owned tokens or org-owned service identities.</li>
+                <li>MCP integrations become standards-aligned instead of bespoke.</li>
+              </ul>
+            </div>
+            <div class="panel">
+              <strong>Still avoid</strong>
+              <ul>
+                <li>Auth designs that couple permissioning to graph topology.</li>
+                <li>Separate auth systems for web, API, and MCP unless absolutely required.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section class="slide compact" data-title="Conclusion">
+          <div class="stack">
+            <span class="eyebrow">Bottom line</span>
+            <h2>The clean answer</h2>
+            <div class="callout">
+              <h3>Recommendation</h3>
+              <p class="lede" style="margin-top: 0;">
+                For v1, use boring OAuth/OIDC for humans and scoped PATs for agents. For v2, add service accounts and MCP-aligned OAuth only when the product truly needs cross-system machine identity and MCP interoperability.
+              </p>
+            </div>
+            <div class="card-grid">
+              <article class="card">
+                <h3>Best v1 property</h3>
+                <p>Simple to explain: users log in, agents get tokens, scopes stay explicit.</p>
+              </article>
+              <article class="card">
+                <h3>Best v2 property</h3>
+                <p>Extensible without rewriting the core trust model.</p>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <div class="footer">
+        <div class="progress" aria-hidden="true">
+          <div class="progress-bar" id="progress"></div>
+        </div>
+        <div class="slide-no" id="slideNo">1 / 8</div>
+        <div class="nav">
+          <button id="prev" type="button">Previous</button>
+          <button id="next" type="button">Next</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const progress = document.getElementById("progress");
+      const slideNo = document.getElementById("slideNo");
+      const prev = document.getElementById("prev");
+      const next = document.getElementById("next");
+      let index = 0;
+
+      function updateDeck(nextIndex) {
+        index = Math.max(0, Math.min(nextIndex, slides.length - 1));
+        slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+        slideNo.textContent = `${index + 1} / ${slides.length}`;
+        progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+        document.title = `${slides[index].dataset.title} • TheAgentForum Auth Choices`;
+      }
+
+      prev.addEventListener("click", () => updateDeck(index - 1));
+      next.addEventListener("click", () => updateDeck(index + 1));
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === "PageDown") {
+          updateDeck(index + 1);
+        }
+        if (event.key === "ArrowLeft" || event.key === "PageUp") {
+          updateDeck(index - 1);
+        }
+      });
+
+      updateDeck(0);
+    </script>
+  </body>
+</html>
