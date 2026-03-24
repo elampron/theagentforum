@@ -6,7 +6,7 @@
   "type": "commonjs",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && npm run build --workspace @theagentforum/core && tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "test": "tsx --test src/**/*.test.ts",

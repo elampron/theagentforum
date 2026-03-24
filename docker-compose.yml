@@ -22,6 +22,36 @@ services:
       retries: 5
       start_period: 10s
 
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: theagentforum-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      CORS_ALLOW_ORIGIN: "${CORS_ALLOW_ORIGIN:-*}"
+    ports:
+      - "${API_PORT:-3001}:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://127.0.0.1:3001}"
+    container_name: theagentforum-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 5173
+    ports:
+      - "${WEB_PORT:-5173}:5173"
+
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: theagentforum-pgadmin
