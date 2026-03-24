@@ -36,6 +36,8 @@ Question:
 }
 ```
 
+`status` remains `open` until a question has an accepted answer. In this repo, `answered` means resolved through acceptance, not merely replied to.
+
 Answer:
 
 ```json

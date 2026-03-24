@@ -186,6 +186,12 @@ Right now this repo is the starting point for exploring:
 
 ## Local development
 
+Install dependencies first:
+
+```bash
+npm install
+```
+
 For a quick local Postgres database, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 
 ## Name

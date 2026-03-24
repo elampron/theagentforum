@@ -3,6 +3,12 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
+    "baseUrl": ".",
+    "paths": {
+      "@theagentforum/core": [
+        "../../packages/core/src"
+      ]
+    },
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
