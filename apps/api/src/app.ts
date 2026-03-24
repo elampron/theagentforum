@@ -6,21 +6,38 @@ import type {
 } from "@theagentforum/core";
 import type { QuestionStore } from "./question-store";
 
-export function createApp(store: QuestionStore) {
+interface CreateAppOptions {
+  corsAllowOrigin?: string;
+}
+
+export function createApp(store: QuestionStore, options: CreateAppOptions = {}) {
+  const corsAllowOrigin = options.corsAllowOrigin ?? "*";
+  const corsHeaders = {
+    "access-control-allow-origin": corsAllowOrigin,
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type",
+  };
+
   return async function app(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
     try {
-      await routeRequest(store, req, res);
+      await routeRequest(store, req, res, corsHeaders);
     } catch (error) {
       if (isHttpError(error)) {
-        sendError(res, error.statusCode, error.code, error.message);
+        sendError(res, corsHeaders, error.statusCode, error.code, error.message);
         return;
       }
 
       console.error(error);
-      sendError(res, 500, "internal_error", "An unexpected error occurred.");
+      sendError(
+        res,
+        corsHeaders,
+        500,
+        "internal_error",
+        "An unexpected error occurred.",
+      );
     }
   };
 }
@@ -29,13 +46,19 @@ async function routeRequest(
   store: QuestionStore,
   req: IncomingMessage,
   res: ServerResponse,
+  corsHeaders: Record<string, string>,
 ): Promise<void> {
   const method = req.method ?? "GET";
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const path = url.pathname;
 
+  if (method === "OPTIONS") {
+    sendNoContent(res, corsHeaders);
+    return;
+  }
+
   if (method === "GET" && path === "/health") {
-    sendJson(res, 200, {
+    sendJson(res, corsHeaders, 200, {
       ok: true,
       data: {
         service: "api",
@@ -46,12 +69,12 @@ async function routeRequest(
   }
 
   if (path === "/health") {
-    sendError(res, 405, "method_not_allowed", "Method not allowed.");
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
 
   if (method === "GET" && path === "/questions") {
-    sendJson(res, 200, {
+    sendJson(res, corsHeaders, 200, {
       ok: true,
       data: store.listQuestions(),
     });
@@ -63,7 +86,7 @@ async function routeRequest(
     const input = parseCreateQuestionInput(payload);
     const question = store.createQuestion(input);
 
-    sendJson(res, 201, {
+    sendJson(res, corsHeaders, 201, {
       ok: true,
       data: question,
     });
@@ -71,7 +94,7 @@ async function routeRequest(
   }
 
   if (path === "/questions") {
-    sendError(res, 405, "method_not_allowed", "Method not allowed.");
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
 
@@ -81,11 +104,11 @@ async function routeRequest(
     const thread = store.getQuestionThread(questionMatch[1]);
 
     if (!thread) {
-      sendError(res, 404, "question_not_found", "Question not found.");
+      sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
       return;
     }
 
-    sendJson(res, 200, {
+    sendJson(res, corsHeaders, 200, {
       ok: true,
       data: thread,
     });
@@ -100,11 +123,11 @@ async function routeRequest(
     const thread = store.createAnswer(answersMatch[1], input);
 
     if (!thread) {
-      sendError(res, 404, "question_not_found", "Question not found.");
+      sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
       return;
     }
 
-    sendJson(res, 201, {
+    sendJson(res, corsHeaders, 201, {
       ok: true,
       data: thread,
     });
@@ -122,12 +145,13 @@ async function routeRequest(
       const questionExists = store.getQuestionThread(questionId);
 
       if (!questionExists) {
-        sendError(res, 404, "question_not_found", "Question not found.");
+        sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
         return;
       }
 
       sendError(
         res,
+        corsHeaders,
         404,
         "answer_not_found",
         "Answer not found for the specified question.",
@@ -135,7 +159,7 @@ async function routeRequest(
       return;
     }
 
-    sendJson(res, 200, {
+    sendJson(res, corsHeaders, 200, {
       ok: true,
       data: thread,
     });
@@ -143,30 +167,43 @@ async function routeRequest(
   }
 
   if (path.startsWith("/questions/")) {
-    sendError(res, 405, "method_not_allowed", "Method not allowed.");
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
 
-  sendError(res, 404, "not_found", "Route not found.");
+  sendError(res, corsHeaders, 404, "not_found", "Route not found.");
 }
 
 function sendJson(
   res: ServerResponse,
+  corsHeaders: Record<string, string>,
   statusCode: number,
   payload: unknown,
 ): void {
-  res.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+  res.writeHead(statusCode, {
+    ...corsHeaders,
+    "content-type": "application/json; charset=utf-8",
+  });
   res.end(JSON.stringify(payload));
+}
+
+function sendNoContent(
+  res: ServerResponse,
+  corsHeaders: Record<string, string>,
+): void {
+  res.writeHead(204, corsHeaders);
+  res.end();
 }
 
 function sendError(
   res: ServerResponse,
+  corsHeaders: Record<string, string>,
   statusCode: number,
   code: string,
   message: string,
   details?: unknown,
 ): void {
-  sendJson(res, statusCode, {
+  sendJson(res, corsHeaders, statusCode, {
     ok: false,
     error: {
       code,

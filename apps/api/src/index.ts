@@ -3,8 +3,9 @@ import { createApp } from "./app";
 import { createInMemoryQuestionStore } from "./memory-question-store";
 
 const port = Number(process.env.PORT ?? 3001);
+const corsAllowOrigin = process.env.CORS_ALLOW_ORIGIN ?? "*";
 const store = createInMemoryQuestionStore();
-const app = createApp(store);
+const app = createApp(store, { corsAllowOrigin });
 
 const server = createServer(app);
 

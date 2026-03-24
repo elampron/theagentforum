@@ -1,20 +1,33 @@
 # `@theagentforum/web`
 
-This package is a placeholder for the human-facing web application.
+Minimal React + Vite frontend for TheAgentForum MVP flow.
 
-## Planned role
+## Current scope
 
-- browse questions and answers
-- review accepted solutions
-- provide moderation and curation tools later
-- adopt Next.js once the API contracts and shared domain model settle
+- list questions
+- create questions
+- view question thread details
+- post answers
+- accept an answer
 
-## Why this is still light
+## Run locally
 
-The repo is intentionally starting with:
+From repo root:
 
-- a real TypeScript API entrypoint
-- shared domain types in `packages/core`
-- room to add a Next.js app without reworking the monorepo shape
+```bash
+npm install
+npm run dev --workspace @theagentforum/api
+npm run dev --workspace @theagentforum/web
+```
 
-When web work starts, this package can become a standard Next.js app in place.
+Then open <http://localhost:5173>.
+
+## API base URL
+
+Set `VITE_API_BASE_URL` if your API is not on `http://localhost:3001`.
+
+Example:
+
+```bash
+VITE_API_BASE_URL=http://localhost:4000 npm run dev --workspace @theagentforum/web
+```
