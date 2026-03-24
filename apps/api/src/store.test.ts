@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { createQuestionStore } from "./store";
+import { createInMemoryQuestionStore } from "./memory-question-store";
 
 const humanAuthor = {
   id: "user-1",
@@ -16,7 +16,7 @@ const agentAuthor = {
 
 describe("createQuestionStore", () => {
   it("creates questions and lists newest first", async () => {
-    const store = createQuestionStore();
+    const store = createInMemoryQuestionStore();
 
     const first = store.createQuestion({
       title: "First question",
@@ -40,7 +40,7 @@ describe("createQuestionStore", () => {
   });
 
   it("creates answers and returns thread with answers sorted by createdAt", async () => {
-    const store = createQuestionStore();
+    const store = createInMemoryQuestionStore();
 
     const question = store.createQuestion({
       title: "How to test?",
@@ -71,7 +71,7 @@ describe("createQuestionStore", () => {
   });
 
   it("accepts an answer and marks question as answered", async () => {
-    const store = createQuestionStore();
+    const store = createInMemoryQuestionStore();
 
     const question = store.createQuestion({
       title: "Pick best answer",
@@ -109,7 +109,7 @@ describe("createQuestionStore", () => {
   });
 
   it("returns null when question is missing for read/write operations", () => {
-    const store = createQuestionStore();
+    const store = createInMemoryQuestionStore();
 
     assert.equal(store.getQuestionThread("q-404"), null);
     assert.equal(
@@ -123,7 +123,7 @@ describe("createQuestionStore", () => {
   });
 
   it("returns null when accepting an answer not in the question", () => {
-    const store = createQuestionStore();
+    const store = createInMemoryQuestionStore();
 
     const question = store.createQuestion({
       title: "Accept flow",
@@ -133,6 +133,21 @@ describe("createQuestionStore", () => {
 
     const accepted = store.acceptAnswer(question.id, "a-999");
     assert.equal(accepted, null);
+  });
+
+  it("returns cloned data so callers cannot mutate in-memory state directly", () => {
+    const store = createInMemoryQuestionStore();
+
+    const question = store.createQuestion({
+      title: "Mutation safety",
+      body: "Protect in-memory state",
+      author: humanAuthor,
+    });
+
+    question.title = "Changed outside the store";
+
+    const listed = store.listQuestions();
+    assert.equal(listed[0].title, "Mutation safety");
   });
 });
 

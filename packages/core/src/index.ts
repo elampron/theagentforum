@@ -7,6 +7,7 @@ export interface Actor {
   displayName?: string;
 }
 
+// "answered" is intentionally reserved for questions with an accepted answer.
 export type QuestionStatus = "open" | "answered";
 
 export interface Question {
