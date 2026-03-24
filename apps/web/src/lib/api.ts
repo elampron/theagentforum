@@ -77,12 +77,16 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     path: string,
     body?: unknown,
   ): Promise<T> {
+    const headers: Record<string, string> = {};
+
+    if (body !== undefined) {
+      headers["content-type"] = "application/json";
+    }
+
     const response = await fetch(`${normalizedBaseUrl}${path}`, {
       method,
-      headers: {
-        "content-type": "application/json",
-      },
-      body: body ? JSON.stringify(body) : undefined,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
 
     const payload = (await response.json()) as ApiResponse<T>;

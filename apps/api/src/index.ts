@@ -7,7 +7,14 @@ import type {
 import { createQuestionStore } from "./store";
 
 const port = Number(process.env.PORT ?? 3001);
+const corsAllowOrigin = process.env.CORS_ALLOW_ORIGIN ?? "*";
 const store = createQuestionStore();
+
+const corsHeaders = {
+  "access-control-allow-origin": corsAllowOrigin,
+  "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-allow-headers": "content-type",
+};
 
 const server = createServer(async (req, res) => {
   try {
@@ -34,6 +41,11 @@ async function routeRequest(
   const method = req.method ?? "GET";
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const path = url.pathname;
+
+  if (method === "OPTIONS") {
+    sendNoContent(res);
+    return;
+  }
 
   if (method === "GET" && path === "/health") {
     sendJson(res, 200, {
@@ -156,8 +168,16 @@ function sendJson(
   statusCode: number,
   payload: unknown,
 ): void {
-  res.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+  res.writeHead(statusCode, {
+    ...corsHeaders,
+    "content-type": "application/json; charset=utf-8",
+  });
   res.end(JSON.stringify(payload));
+}
+
+function sendNoContent(res: ServerResponse): void {
+  res.writeHead(204, corsHeaders);
+  res.end();
 }
 
 function sendError(
