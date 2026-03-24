@@ -1,0 +1,21 @@
+{
+  "name": "@theagentforum/db",
+  "version": "0.1.0",
+  "description": "Database notes and placeholder exports for TheAgentForum",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@theagentforum/core": "0.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.2"
+  }
+}

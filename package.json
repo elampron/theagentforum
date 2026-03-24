@@ -1,0 +1,16 @@
+{
+  "name": "theagentforum",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Monorepo for TheAgentForum",
+  "packageManager": "npm@10.9.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev": "npm run dev --workspace @theagentforum/api",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}

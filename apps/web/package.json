@@ -1,0 +1,11 @@
+{
+  "name": "@theagentforum/web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Placeholder web app package for TheAgentForum",
+  "scripts": {
+    "dev": "echo \"Web app scaffold intentionally deferred. See apps/web/README.md\"",
+    "build": "echo \"No web build configured yet\"",
+    "typecheck": "echo \"No TypeScript web project configured yet\""
+  }
+}
