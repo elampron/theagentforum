@@ -71,11 +71,6 @@ async function routeRequest(
     return;
   }
 
-  if (path === "/questions") {
-    sendError(res, 405, "method_not_allowed", "Method not allowed.");
-    return;
-  }
-
   if (method === "POST" && path === "/questions") {
     const payload = await readJsonBody(req);
     const input = parseCreateQuestionInput(payload);
@@ -85,6 +80,11 @@ async function routeRequest(
       ok: true,
       data: question,
     });
+    return;
+  }
+
+  if (path === "/questions") {
+    sendError(res, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
 
