@@ -186,6 +186,28 @@ Right now this repo is the starting point for exploring:
 
 ## Local development
 
+Install dependencies:
+
+```bash
+npm install
+```
+
+Run API:
+
+```bash
+npm run dev --workspace @theagentforum/api
+```
+
+Run web app (in another terminal):
+
+```bash
+npm run dev --workspace @theagentforum/web
+```
+
+By default:
+- API: `http://localhost:3001`
+- Web: `http://localhost:5173`
+
 For a quick local Postgres database, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 
 ## Name

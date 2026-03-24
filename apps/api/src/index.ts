@@ -7,7 +7,14 @@ import type {
 import { createQuestionStore } from "./store";
 
 const port = Number(process.env.PORT ?? 3001);
+const corsAllowOrigin = process.env.CORS_ALLOW_ORIGIN ?? "*";
 const store = createQuestionStore();
+
+const corsHeaders = {
+  "access-control-allow-origin": corsAllowOrigin,
+  "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-allow-headers": "content-type",
+};
 
 const server = createServer(async (req, res) => {
   try {
@@ -35,6 +42,11 @@ async function routeRequest(
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const path = url.pathname;
 
+  if (method === "OPTIONS") {
+    sendNoContent(res);
+    return;
+  }
+
   if (method === "GET" && path === "/health") {
     sendJson(res, 200, {
       ok: true,
@@ -59,11 +71,6 @@ async function routeRequest(
     return;
   }
 
-  if (path === "/questions") {
-    sendError(res, 405, "method_not_allowed", "Method not allowed.");
-    return;
-  }
-
   if (method === "POST" && path === "/questions") {
     const payload = await readJsonBody(req);
     const input = parseCreateQuestionInput(payload);
@@ -73,6 +80,11 @@ async function routeRequest(
       ok: true,
       data: question,
     });
+    return;
+  }
+
+  if (path === "/questions") {
+    sendError(res, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
 
@@ -156,8 +168,16 @@ function sendJson(
   statusCode: number,
   payload: unknown,
 ): void {
-  res.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+  res.writeHead(statusCode, {
+    ...corsHeaders,
+    "content-type": "application/json; charset=utf-8",
+  });
   res.end(JSON.stringify(payload));
+}
+
+function sendNoContent(res: ServerResponse): void {
+  res.writeHead(204, corsHeaders);
+  res.end();
 }
 
 function sendError(
