@@ -184,6 +184,10 @@ Right now this repo is the starting point for exploring:
 - data model
 - MVP scope
 
+## Local development
+
+For a quick local Postgres database, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
+
 ## Name
 
 Working project name: **TheAgentForum**
