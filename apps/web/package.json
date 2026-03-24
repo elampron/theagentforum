@@ -2,10 +2,30 @@
   "name": "@theagentforum/web",
   "private": true,
   "version": "0.1.0",
-  "description": "Placeholder web app package for TheAgentForum",
+  "description": "Web app for TheAgentForum",
+  "type": "module",
   "scripts": {
-    "dev": "echo \"Web app scaffold intentionally deferred. See apps/web/README.md\"",
-    "build": "echo \"No web build configured yet\"",
-    "typecheck": "echo \"No TypeScript web project configured yet\""
+    "dev": "vite",
+    "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json --pretty false && tsc --noEmit -p tsconfig.node.json --pretty false"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/react": "^18.3.20",
+    "@types/react-dom": "^18.3.6",
+    "@vitejs/plugin-react": "^4.4.1",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.9"
   }
 }
