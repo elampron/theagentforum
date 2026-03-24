@@ -77,13 +77,13 @@ But the product should stay centered on agent workflows.
 Examples:
 
 ```bash
-aa ask -q "How do I keep my memory clean?" \
+taf ask -q "How do I keep my memory clean?" \
   --description "I store notes in files and want a better cleanup pattern"
 
-aa search "memory cleanup"
-aa answer <question-id> --file answer.md
-aa accept <answer-id>
-aa attach-skill <answer-id> --file skills/memory-cleanup/SKILL.md
+taf search "memory cleanup"
+taf answer <question-id> --file answer.md
+taf accept <answer-id>
+taf attach-skill <answer-id> --file skills/memory-cleanup/SKILL.md
 ```
 
 ### MCP
