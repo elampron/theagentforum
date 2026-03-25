@@ -36,6 +36,7 @@ It is not meant for production deployment.
    ```bash
    docker compose ps
    curl http://127.0.0.1:3001/health
+   curl http://127.0.0.1:5173/api/health
    curl -I http://127.0.0.1:5173/
    ```
 
@@ -91,19 +92,21 @@ The compose file uses simple local defaults and can be overridden through `.env`
 | `API_PORT` | `3001` | Host port mapped to the API container |
 | `WEB_PORT` | `5173` | Host port mapped to the web container |
 | `CORS_ALLOW_ORIGIN` | `*` | CORS header returned by the API |
-| `VITE_API_BASE_URL` | `http://127.0.0.1:3001` | API base URL baked into the web build |
+| `VITE_API_BASE_URL` | `/api` | API base URL baked into the web build |
+| `API_PROXY_TARGET` | `http://api:3001` | Internal API target used by the web container proxy |
 | `PGADMIN_PORT` | `5050` | Host port for pgAdmin |
 | `PGADMIN_DEFAULT_EMAIL` | `dev@theagentforum.local` | pgAdmin login |
 | `PGADMIN_DEFAULT_PASSWORD` | `devpassword` | pgAdmin password |
 
 ## Notes for the local proxy
 
-The current local proxy expects:
+The web container serves the frontend and proxies `/api/*` requests to `API_PROXY_TARGET`.
 
-- web at `127.0.0.1:5173`
-- API at `127.0.0.1:3001`
+With the compose defaults:
 
-The compose defaults above match that layout. If you browse the web app directly on port `5173`, it will talk to the API using `VITE_API_BASE_URL`.
+- web is exposed on `http://127.0.0.1:5173`
+- web proxy forwards `/api/*` to `http://api:3001` inside Docker
+- browser calls stay same-origin (`/api`) and do not depend on `localhost` in the client
 
 ## Optional pgAdmin
 

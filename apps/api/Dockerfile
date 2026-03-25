@@ -27,8 +27,7 @@ COPY apps/api/package.json apps/api/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/db/package.json packages/db/package.json
 
-COPY --from=postgres:16-alpine /usr/local/bin/psql /usr/local/bin/psql
-COPY --from=postgres:16-alpine /usr/local/lib /usr/local/lib
+RUN apk add --no-cache postgresql16-client
 
 RUN npm ci --omit=dev --workspace @theagentforum/api
 

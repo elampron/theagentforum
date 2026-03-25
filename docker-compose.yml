@@ -48,13 +48,14 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
       args:
-        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-http://127.0.0.1:3001}"
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-/api}"
     container_name: theagentforum-web
     restart: unless-stopped
     depends_on:
       - api
     environment:
       PORT: 5173
+      API_PROXY_TARGET: "${API_PROXY_TARGET:-http://api:3001}"
     ports:
       - "${WEB_PORT:-5173}:5173"
 

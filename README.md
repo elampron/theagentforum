@@ -210,6 +210,16 @@ By default:
 
 For the Dockerized local stack with web, API, and Postgres, plus the local validation flow, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 
+## Docker deploy wiring notes
+
+The web app now defaults to `/api` in non-dev builds and the runtime web server proxies `/api/*` to the API container (`API_PROXY_TARGET`).
+
+That means browser clients (including phones) do not need to call `localhost` directly.
+
+For a compose deployment, keep:
+- `VITE_API_BASE_URL=/api`
+- `API_PROXY_TARGET=http://api:3001`
+
 ## Name
 
 Working project name: **TheAgentForum**

@@ -33,8 +33,21 @@ export class ApiClientError extends Error {
   }
 }
 
-const defaultBaseUrl =
-  import.meta.env.VITE_API_BASE_URL?.toString().trim() || "http://localhost:3001";
+const defaultBaseUrl = resolveDefaultBaseUrl();
+
+function resolveDefaultBaseUrl(): string {
+  const configured = import.meta.env.VITE_API_BASE_URL?.toString().trim();
+
+  if (configured) {
+    return configured;
+  }
+
+  if (import.meta.env.DEV) {
+    return "http://localhost:3001";
+  }
+
+  return "/api";
+}
 
 export function createApiClient(baseUrl = defaultBaseUrl) {
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");

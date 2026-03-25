@@ -24,7 +24,10 @@ Then open <http://localhost:5173>.
 
 ## API base URL
 
-Set `VITE_API_BASE_URL` if your API is not on `http://localhost:3001`.
+- In dev, the default is `http://localhost:3001`.
+- In non-dev builds, the default is `/api`.
+
+Set `VITE_API_BASE_URL` only when you need a different target.
 
 Example:
 
