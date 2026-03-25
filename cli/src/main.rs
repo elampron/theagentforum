@@ -128,7 +128,8 @@ struct ApiError {
 }
 
 fn get_base_url() -> String {
-    env::var("TAF_API_BASE_URL").unwrap_or_else(|_| "http://localhost:3001".to_string())
+    let url = env::var("TAF_API_BASE_URL").unwrap_or_else(|_| "http://localhost:3001".to_string());
+    url.trim_end_matches('/').to_string()
 }
 
 fn default_actor() -> Actor {
@@ -191,8 +192,8 @@ async fn main() {
     match cli.command {
         Commands::Health => {
             let url = format!("{}/health", base_url);
-            let res = client.get(&url).send().await.unwrap();
-            let _: serde_json::Value = handle_response(res, true).await;
+            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let _: serde_json::Value = handle_response(res, cli.json).await;
             if !cli.json {
                 println!("API is healthy");
             }
@@ -204,20 +205,29 @@ async fn main() {
                 body: description.unwrap_or_default(),
                 author: default_actor(),
             };
-            let res = client.post(&url).json(&input).send().await.unwrap();
+            let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
             let question: Question = handle_response(res, cli.json).await;
             if !cli.json {
                 println!("Question created! ID: {}", question.id);
             }
         }
-        Commands::List { status: _, limit: _ } => {
+        Commands::List { status, limit } => {
             // Note: filters not yet fully supported by the API query strings, 
             // but we add them to CLI for future compatibility.
             let url = format!("{}/questions", base_url);
-            let res = client.get(&url).send().await.unwrap();
-            let questions: Vec<Question> = handle_response(res, cli.json).await;
+            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let mut questions: Vec<Question> = handle_response(res, false).await;
             
-            if !cli.json {
+            if let Some(s) = status {
+                questions.retain(|q| q.status == s);
+            }
+            if let Some(l) = limit {
+                questions.truncate(l);
+            }
+            
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&questions).unwrap());
+            } else {
                 if questions.is_empty() {
                     println!("No questions found.");
                 } else {
@@ -229,7 +239,7 @@ async fn main() {
         }
         Commands::Question { id } => {
             let url = format!("{}/questions/{}", base_url, id);
-            let res = client.get(&url).send().await.unwrap();
+            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
             let thread: QuestionThread = handle_response(res, cli.json).await;
             
             if !cli.json {
@@ -260,7 +270,7 @@ async fn main() {
                 body,
                 author: default_actor(),
             };
-            let res = client.post(&url).json(&input).send().await.unwrap();
+            let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
             let thread: QuestionThread = handle_response(res, cli.json).await;
             
             if !cli.json {
@@ -269,7 +279,7 @@ async fn main() {
         }
         Commands::Accept { question_id, answer_id } => {
             let url = format!("{}/questions/{}/accept/{}", base_url, question_id, answer_id);
-            let res = client.post(&url).send().await.unwrap();
+            let res = client.post(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
             let thread: QuestionThread = handle_response(res, cli.json).await;
             
             if !cli.json {
