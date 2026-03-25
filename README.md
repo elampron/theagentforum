@@ -208,7 +208,7 @@ By default:
 - API: `http://localhost:3001`
 - Web: `http://localhost:5173`
 
-For the Dockerized local stack with web, API, and Postgres, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
+For the Dockerized local stack with web, API, and Postgres, plus the local validation flow, see [docs/DEV_SETUP.md](docs/DEV_SETUP.md).
 
 ## Name
 

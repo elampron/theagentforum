@@ -1,12 +1,13 @@
 {
   "name": "@theagentforum/db",
   "version": "0.1.0",
-  "description": "Database notes and placeholder exports for TheAgentForum",
+  "description": "Minimal Postgres config and schema helpers for TheAgentForum",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "sql"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -16,6 +17,7 @@
     "@theagentforum/core": "0.1.0"
   },
   "devDependencies": {
+    "@types/node": "^22.14.0",
     "typescript": "^5.8.2"
   }
 }

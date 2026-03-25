@@ -6,9 +6,9 @@ export interface QuestionThread {
 }
 
 export interface QuestionStore {
-  listQuestions(): Question[];
-  createQuestion(input: CreateQuestionInput): Question;
-  getQuestionThread(questionId: string): QuestionThread | null;
-  createAnswer(questionId: string, input: CreateAnswerInput): QuestionThread | null;
-  acceptAnswer(questionId: string, answerId: string): QuestionThread | null;
+  listQuestions(): Promise<Question[]>;
+  createQuestion(input: CreateQuestionInput): Promise<Question>;
+  getQuestionThread(questionId: string): Promise<QuestionThread | null>;
+  createAnswer(questionId: string, input: CreateAnswerInput): Promise<QuestionThread | null>;
+  acceptAnswer(questionId: string, answerId: string): Promise<QuestionThread | null>;
 }

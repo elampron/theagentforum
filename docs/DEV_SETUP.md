@@ -29,6 +29,8 @@ It is not meant for production deployment.
    docker compose up --build -d
    ```
 
+   The API applies the schema on startup, and a fresh Postgres volume also runs the SQL in `packages/db/sql/001-init.sql`.
+
 3. Verify the services:
 
    ```bash
@@ -69,6 +71,12 @@ Example connection URL:
 postgresql://theagentforum:theagentforum@localhost:5432/theagentforum
 ```
 
+To re-apply the schema from the repo against the running Dockerized API:
+
+```bash
+npm run db:migrate
+```
+
 ## Environment variables
 
 The compose file uses simple local defaults and can be overridden through `.env`.
@@ -78,6 +86,7 @@ The compose file uses simple local defaults and can be overridden through `.env`
 | `POSTGRES_DB` | `theagentforum` | Local database name |
 | `POSTGRES_USER` | `theagentforum` | Local database user |
 | `POSTGRES_PASSWORD` | `theagentforum` | Local database password |
+| `POSTGRES_HOST` | `127.0.0.1` | Host used by local non-Docker API commands |
 | `POSTGRES_PORT` | `5432` | Host port mapped to Postgres |
 | `API_PORT` | `3001` | Host port mapped to the API container |
 | `WEB_PORT` | `5173` | Host port mapped to the web container |
@@ -132,4 +141,18 @@ If you change API or web code and want a fresh container image:
 
 ```bash
 docker compose up --build -d
+```
+
+## Validation
+
+To run the repo-level checks:
+
+```bash
+npm run validate
+```
+
+To verify the full Dockerized stack, including persisted rows in Postgres:
+
+```bash
+npm run validate:docker
 ```

@@ -11,6 +11,7 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-theagentforum}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test:
         [
@@ -34,6 +35,11 @@ services:
     environment:
       PORT: 3001
       CORS_ALLOW_ORIGIN: "${CORS_ALLOW_ORIGIN:-*}"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "${POSTGRES_DB:-theagentforum}"
+      POSTGRES_USER: "${POSTGRES_USER:-theagentforum}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-theagentforum}"
     ports:
       - "${API_PORT:-3001}:3001"
 
