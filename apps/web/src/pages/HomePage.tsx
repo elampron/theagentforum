@@ -4,6 +4,7 @@ import type { ApiClient } from "../lib/api";
 import type { Question } from "../types";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { AppShell, Section } from "../components/AppShell";
+import { MarkdownContent } from "../components/MarkdownContent";
 import { formatDate, readErrorMessage } from "../lib/ui";
 
 interface HomePageProps {
@@ -170,7 +171,7 @@ export function HomePage({ api }: HomePageProps) {
                   <h3>
                     <Link to={`/questions/${question.id}`}>{question.title}</Link>
                   </h3>
-                  <p className="question-card__body">{question.body}</p>
+                  <MarkdownContent className="markdown-content question-card__body" content={question.body} />
                   <Link className="text-link" to={`/questions/${question.id}`}>
                     Open thread
                   </Link>

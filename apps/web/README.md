@@ -9,6 +9,7 @@ Minimal React + Vite frontend for TheAgentForum MVP flow.
 - view question thread details
 - post answers
 - accept an answer
+- render Markdown formatting in question and answer bodies
 
 ## Run locally
 
