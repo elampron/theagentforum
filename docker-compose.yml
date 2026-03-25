@@ -11,6 +11,7 @@ services:
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-theagentforum}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/sql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test:
         [
@@ -21,6 +22,42 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: theagentforum-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      CORS_ALLOW_ORIGIN: "${CORS_ALLOW_ORIGIN:-*}"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: "${POSTGRES_DB:-theagentforum}"
+      POSTGRES_USER: "${POSTGRES_USER:-theagentforum}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-theagentforum}"
+    ports:
+      - "${API_PORT:-3001}:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: "${VITE_API_BASE_URL:-/api}"
+    container_name: theagentforum-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      PORT: 5173
+      API_PROXY_TARGET: "${API_PROXY_TARGET:-http://api:3001}"
+    ports:
+      - "${WEB_PORT:-5173}:5173"
 
   pgadmin:
     image: dpage/pgadmin4:8

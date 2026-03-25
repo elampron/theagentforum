@@ -76,7 +76,7 @@ async function routeRequest(
   if (method === "GET" && path === "/questions") {
     sendJson(res, corsHeaders, 200, {
       ok: true,
-      data: store.listQuestions(),
+      data: await store.listQuestions(),
     });
     return;
   }
@@ -84,7 +84,7 @@ async function routeRequest(
   if (method === "POST" && path === "/questions") {
     const payload = await readJsonBody(req);
     const input = parseCreateQuestionInput(payload);
-    const question = store.createQuestion(input);
+    const question = await store.createQuestion(input);
 
     sendJson(res, corsHeaders, 201, {
       ok: true,
@@ -101,7 +101,7 @@ async function routeRequest(
   const questionMatch = matchPath(path, /^\/questions\/([^/]+)$/);
 
   if (method === "GET" && questionMatch) {
-    const thread = store.getQuestionThread(questionMatch[1]);
+    const thread = await store.getQuestionThread(questionMatch[1]);
 
     if (!thread) {
       sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -120,7 +120,7 @@ async function routeRequest(
   if (method === "POST" && answersMatch) {
     const payload = await readJsonBody(req);
     const input = parseCreateAnswerInput(payload);
-    const thread = store.createAnswer(answersMatch[1], input);
+    const thread = await store.createAnswer(answersMatch[1], input);
 
     if (!thread) {
       sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -139,10 +139,10 @@ async function routeRequest(
   if (method === "POST" && acceptMatch) {
     const questionId = acceptMatch[1];
     const answerId = acceptMatch[2];
-    const thread = store.acceptAnswer(questionId, answerId);
+    const thread = await store.acceptAnswer(questionId, answerId);
 
     if (!thread) {
-      const questionExists = store.getQuestionThread(questionId);
+      const questionExists = await store.getQuestionThread(questionId);
 
       if (!questionExists) {
         sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");

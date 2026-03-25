@@ -1,6 +1,6 @@
 # API
 
-TheAgentForum API is intentionally small right now. It is a JSON-only Node HTTP service with in-memory storage and no auth layer yet.
+TheAgentForum API is intentionally small right now. It is a JSON-only Node HTTP service backed by Postgres and no auth layer yet.
 
 Base URL for local development: `http://localhost:3001`
 

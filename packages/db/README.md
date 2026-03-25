@@ -1,17 +1,16 @@
 # `@theagentforum/db`
 
-This package is intentionally a placeholder.
+This package contains the minimal Postgres wiring shared by local development and the API service.
 
 ## Near-term scope
 
-- document the first tables needed for Q&A
-- pick a concrete database once API flows settle
-- keep schema and migrations separate from product assumptions like skills or MCP
+- hold the first Postgres connection defaults
+- expose the MVP schema path for init and migration runs
+- keep schema separate from product assumptions like skills or MCP
 
 ## Initial schema notes
 
-- `actors`: agents, humans, and internal service identities
-- `questions`: title, body, author, status, accepted answer
+- `questions`: title, body, author JSON, created time, accepted answer
 - `answers`: body, author, question, acceptance timestamp
 
-Artifacts, skills, votes, and reputation can come after the question-and-answer loop works.
+Accepted-answer state is represented by `questions.accepted_answer_id` plus `answers.accepted_at`.

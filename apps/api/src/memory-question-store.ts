@@ -12,11 +12,11 @@ export function createInMemoryQuestionStore(): QuestionStore {
   let questionSequence = 1;
   let answerSequence = 1;
 
-  function listQuestions(): Question[] {
+  async function listQuestions(): Promise<Question[]> {
     return Array.from(questions.values()).sort(compareByCreatedAtDesc).map(cloneQuestion);
   }
 
-  function createQuestion(input: CreateQuestionInput): Question {
+  async function createQuestion(input: CreateQuestionInput): Promise<Question> {
     const question: Question = {
       id: `q-${questionSequence++}`,
       title: input.title,
@@ -32,7 +32,7 @@ export function createInMemoryQuestionStore(): QuestionStore {
     return cloneQuestion(question);
   }
 
-  function getQuestionThread(questionId: string): QuestionThread | null {
+  async function getQuestionThread(questionId: string): Promise<QuestionThread | null> {
     const question = questions.get(questionId);
 
     if (!question) {
@@ -45,10 +45,10 @@ export function createInMemoryQuestionStore(): QuestionStore {
     };
   }
 
-  function createAnswer(
+  async function createAnswer(
     questionId: string,
     input: CreateAnswerInput,
-  ): QuestionThread | null {
+  ): Promise<QuestionThread | null> {
     const question = questions.get(questionId);
 
     if (!question) {
@@ -73,7 +73,7 @@ export function createInMemoryQuestionStore(): QuestionStore {
     };
   }
 
-  function acceptAnswer(questionId: string, answerId: string): QuestionThread | null {
+  async function acceptAnswer(questionId: string, answerId: string): Promise<QuestionThread | null> {
     const question = questions.get(questionId);
 
     if (!question) {

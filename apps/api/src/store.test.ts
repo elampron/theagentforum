@@ -18,7 +18,7 @@ describe("createQuestionStore", () => {
   it("creates questions and lists newest first", async () => {
     const store = createInMemoryQuestionStore();
 
-    const first = store.createQuestion({
+    const first = await store.createQuestion({
       title: "First question",
       body: "Body 1",
       author: humanAuthor,
@@ -26,13 +26,13 @@ describe("createQuestionStore", () => {
 
     await sleep(2);
 
-    const second = store.createQuestion({
+    const second = await store.createQuestion({
       title: "Second question",
       body: "Body 2",
       author: humanAuthor,
     });
 
-    const listed = store.listQuestions();
+    const listed = await store.listQuestions();
 
     assert.equal(listed.length, 2);
     assert.equal(listed[0].id, second.id);
@@ -42,13 +42,13 @@ describe("createQuestionStore", () => {
   it("creates answers and returns thread with answers sorted by createdAt", async () => {
     const store = createInMemoryQuestionStore();
 
-    const question = store.createQuestion({
+    const question = await store.createQuestion({
       title: "How to test?",
       body: "Need examples",
       author: humanAuthor,
     });
 
-    const threadAfterFirstAnswer = store.createAnswer(question.id, {
+    const threadAfterFirstAnswer = await store.createAnswer(question.id, {
       body: "Answer A",
       author: agentAuthor,
     });
@@ -59,7 +59,7 @@ describe("createQuestionStore", () => {
 
     await sleep(2);
 
-    const threadAfterSecondAnswer = store.createAnswer(question.id, {
+    const threadAfterSecondAnswer = await store.createAnswer(question.id, {
       body: "Answer B",
       author: agentAuthor,
     });
@@ -73,13 +73,13 @@ describe("createQuestionStore", () => {
   it("accepts an answer and marks question as answered", async () => {
     const store = createInMemoryQuestionStore();
 
-    const question = store.createQuestion({
+    const question = await store.createQuestion({
       title: "Pick best answer",
       body: "Which one is right?",
       author: humanAuthor,
     });
 
-    const firstThread = store.createAnswer(question.id, {
+    const firstThread = await store.createAnswer(question.id, {
       body: "First candidate",
       author: agentAuthor,
     });
@@ -87,7 +87,7 @@ describe("createQuestionStore", () => {
 
     await sleep(2);
 
-    const secondThread = store.createAnswer(question.id, {
+    const secondThread = await store.createAnswer(question.id, {
       body: "Second candidate",
       author: humanAuthor,
     });
@@ -95,7 +95,7 @@ describe("createQuestionStore", () => {
 
     const answerToAccept = secondThread.answers[1];
 
-    const acceptedThread = store.acceptAnswer(question.id, answerToAccept.id);
+    const acceptedThread = await store.acceptAnswer(question.id, answerToAccept.id);
     assert.ok(acceptedThread);
 
     assert.equal(acceptedThread.question.status, "answered");
@@ -108,37 +108,37 @@ describe("createQuestionStore", () => {
     assert.equal(otherAnswer.acceptedAt, undefined);
   });
 
-  it("returns null when question is missing for read/write operations", () => {
+  it("returns null when question is missing for read/write operations", async () => {
     const store = createInMemoryQuestionStore();
 
-    assert.equal(store.getQuestionThread("q-404"), null);
+    assert.equal(await store.getQuestionThread("q-404"), null);
     assert.equal(
-      store.createAnswer("q-404", {
+      await store.createAnswer("q-404", {
         body: "No question",
         author: humanAuthor,
       }),
       null,
     );
-    assert.equal(store.acceptAnswer("q-404", "a-1"), null);
+    assert.equal(await store.acceptAnswer("q-404", "a-1"), null);
   });
 
-  it("returns null when accepting an answer not in the question", () => {
+  it("returns null when accepting an answer not in the question", async () => {
     const store = createInMemoryQuestionStore();
 
-    const question = store.createQuestion({
+    const question = await store.createQuestion({
       title: "Accept flow",
       body: "Find missing answer",
       author: humanAuthor,
     });
 
-    const accepted = store.acceptAnswer(question.id, "a-999");
+    const accepted = await store.acceptAnswer(question.id, "a-999");
     assert.equal(accepted, null);
   });
 
-  it("returns cloned data so callers cannot mutate in-memory state directly", () => {
+  it("returns cloned data so callers cannot mutate in-memory state directly", async () => {
     const store = createInMemoryQuestionStore();
 
-    const question = store.createQuestion({
+    const question = await store.createQuestion({
       title: "Mutation safety",
       body: "Protect in-memory state",
       author: humanAuthor,
@@ -146,7 +146,7 @@ describe("createQuestionStore", () => {
 
     question.title = "Changed outside the store";
 
-    const listed = store.listQuestions();
+    const listed = await store.listQuestions();
     assert.equal(listed[0].title, "Mutation safety");
   });
 });

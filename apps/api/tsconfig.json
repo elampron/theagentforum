@@ -3,13 +3,9 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "Node",
-    "baseUrl": ".",
-    "paths": {
-      "@theagentforum/core": [
-        "../../packages/core/src"
-      ]
-    },
     "outDir": "dist",
+    "rootDir": "src",
+    "preserveSymlinks": true,
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -17,5 +13,8 @@
   },
   "include": [
     "src/**/*.ts"
+  ],
+  "exclude": [
+    "src/**/*.test.ts"
   ]
 }

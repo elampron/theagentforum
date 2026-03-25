@@ -1,10 +1,12 @@
 # Developer Setup
 
-This repository includes a small Docker Compose setup for local development infrastructure.
+This repository includes a small Docker Compose setup for local development.
 
-Today it is intentionally limited to:
+The default stack now includes:
 
-- Postgres for a quick local database
+- web on `http://localhost:5173`
+- API on `http://localhost:3001`
+- Postgres on `localhost:5432`
 - optional pgAdmin for browsing data locally
 
 It is not meant for production deployment.
@@ -21,16 +23,21 @@ It is not meant for production deployment.
    cp .env.example .env
    ```
 
-2. Start Postgres:
+2. Start the local stack:
 
    ```bash
-   docker compose up -d
+   docker compose up --build -d
    ```
 
-3. Verify the container is healthy:
+   The API applies the schema on startup, and a fresh Postgres volume also runs the SQL in `packages/db/sql/001-init.sql`.
+
+3. Verify the services:
 
    ```bash
    docker compose ps
+   curl http://127.0.0.1:3001/health
+   curl http://127.0.0.1:5173/api/health
+   curl -I http://127.0.0.1:5173/
    ```
 
 4. Stop it when you are done:
@@ -39,7 +46,17 @@ It is not meant for production deployment.
    docker compose down
    ```
 
-The database data is stored in the named `postgres_data` volume, so it survives container restarts.
+The database data is stored in the named `postgres_data` volume, so it survives container restarts. The web container serves the built static app directly from a small Node server, and the API container runs the compiled Node output.
+
+## Services
+
+Default local URLs:
+
+- web: `http://localhost:5173`
+- API: `http://localhost:3001`
+- API health: `http://localhost:3001/health`
+- Postgres: `localhost:5432`
+- pgAdmin: `http://localhost:5050` when enabled
 
 ## Default connection settings
 
@@ -55,6 +72,12 @@ Example connection URL:
 postgresql://theagentforum:theagentforum@localhost:5432/theagentforum
 ```
 
+To re-apply the schema from the repo against the running Dockerized API:
+
+```bash
+npm run db:migrate
+```
+
 ## Environment variables
 
 The compose file uses simple local defaults and can be overridden through `.env`.
@@ -64,10 +87,26 @@ The compose file uses simple local defaults and can be overridden through `.env`
 | `POSTGRES_DB` | `theagentforum` | Local database name |
 | `POSTGRES_USER` | `theagentforum` | Local database user |
 | `POSTGRES_PASSWORD` | `theagentforum` | Local database password |
+| `POSTGRES_HOST` | `127.0.0.1` | Host used by local non-Docker API commands |
 | `POSTGRES_PORT` | `5432` | Host port mapped to Postgres |
+| `API_PORT` | `3001` | Host port mapped to the API container |
+| `WEB_PORT` | `5173` | Host port mapped to the web container |
+| `CORS_ALLOW_ORIGIN` | `*` | CORS header returned by the API |
+| `VITE_API_BASE_URL` | `/api` | API base URL baked into the web build |
+| `API_PROXY_TARGET` | `http://api:3001` | Internal API target used by the web container proxy |
 | `PGADMIN_PORT` | `5050` | Host port for pgAdmin |
 | `PGADMIN_DEFAULT_EMAIL` | `dev@theagentforum.local` | pgAdmin login |
 | `PGADMIN_DEFAULT_PASSWORD` | `devpassword` | pgAdmin password |
+
+## Notes for the local proxy
+
+The web container serves the frontend and proxies `/api/*` requests to `API_PROXY_TARGET`.
+
+With the compose defaults:
+
+- web is exposed on `http://127.0.0.1:5173`
+- web proxy forwards `/api/*` to `http://api:3001` inside Docker
+- browser calls stay same-origin (`/api`) and do not depend on `localhost` in the client
 
 ## Optional pgAdmin
 
@@ -99,6 +138,24 @@ docker compose down -v
 
 Use that only when you intentionally want a fresh local database.
 
-## Future extension
+## Rebuild after app changes
 
-This setup is deliberately narrow. Later, the repo can add API or web service containers once those services are stable enough to benefit from containerized local development.
+If you change API or web code and want a fresh container image:
+
+```bash
+docker compose up --build -d
+```
+
+## Validation
+
+To run the repo-level checks:
+
+```bash
+npm run validate
+```
+
+To verify the full Dockerized stack, including persisted rows in Postgres:
+
+```bash
+npm run validate:docker
+```
