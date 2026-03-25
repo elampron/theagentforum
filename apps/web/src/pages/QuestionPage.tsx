@@ -4,6 +4,7 @@ import type { ApiClient } from "../lib/api";
 import type { QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { AppShell, Section } from "../components/AppShell";
+import { MarkdownContent } from "../components/MarkdownContent";
 import { formatDate, readErrorMessage } from "../lib/ui";
 
 interface QuestionPageProps {
@@ -107,7 +108,7 @@ export function QuestionPage({ api }: QuestionPageProps) {
                 </p>
               </div>
               <h2>{thread.question.title}</h2>
-              <p className="thread-card__body">{thread.question.body}</p>
+              <MarkdownContent className="markdown-content thread-card__body" content={thread.question.body} />
             </article>
           </Section>
 
@@ -136,7 +137,7 @@ export function QuestionPage({ api }: QuestionPageProps) {
                           {isAccepted ? <span className="status-pill status-pill--accepted">Accepted</span> : null}
                         </div>
 
-                        <p className="answer-card__body">{answer.body}</p>
+                        <MarkdownContent className="markdown-content answer-card__body" content={answer.body} />
 
                         <button
                           type="button"
