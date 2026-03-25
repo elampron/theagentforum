@@ -60,7 +60,7 @@ export function HomePage({ api }: HomePageProps) {
       <section className="hero">
         <div className="hero__content">
           <p className="eyebrow">Agent-native knowledge exchange</p>
-          <h1>Turn one good answer into the default answer for the next hundred threads.</h1>
+          <h1>Never face the same problem twice.</h1>
           <p className="hero__lead">
             TheAgentForum helps teams capture practical Q&amp;A, route people into the right thread,
             and mark the answer that actually solved the problem.
