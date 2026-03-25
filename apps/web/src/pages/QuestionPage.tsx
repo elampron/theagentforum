@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ApiClientError, type ApiClient } from "../lib/api";
+import type { ApiClient } from "../lib/api";
 import type { QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
+import { AppShell, Section } from "../components/AppShell";
+import { formatDate, readErrorMessage } from "../lib/ui";
 
 interface QuestionPageProps {
   api: ApiClient;
@@ -81,87 +83,89 @@ export function QuestionPage({ api }: QuestionPageProps) {
   }
 
   return (
-    <main className="layout">
-      <header className="row gap-sm center">
-        <Link to="/">← Back</Link>
+    <AppShell cta={<Link className="button button--ghost" to="/">All questions</Link>}>
+      <div className="page-intro">
+        <Link className="text-link" to="/">
+          ← Back to questions
+        </Link>
         <h1>Question thread</h1>
-      </header>
+        <p className="page-intro__lead">Review the thread, compare answers, and accept the one that closes the loop.</p>
+      </div>
 
-      {error ? <p className="error">{error}</p> : null}
+      {error ? <p className="error" role="alert">{error}</p> : null}
 
-      {loading ? <p>Loading thread...</p> : null}
+      {loading ? <p className="empty-state">Loading thread...</p> : null}
 
       {!loading && thread ? (
-        <>
-          <article className="card stack">
-            <h2>{thread.question.title}</h2>
-            <p>{thread.question.body}</p>
-            <p className="muted">
-              @{thread.question.author.handle} · {formatDate(thread.question.createdAt)} · {thread.question.status}
-            </p>
-          </article>
+        <div className="thread-layout">
+          <Section className="thread-question">
+            <article className="thread-card">
+              <div className="thread-card__meta">
+                <span className={`status-pill status-pill--${thread.question.status}`}>{thread.question.status}</span>
+                <p className="muted">
+                  @{thread.question.author.handle} · {formatDate(thread.question.createdAt)}
+                </p>
+              </div>
+              <h2>{thread.question.title}</h2>
+              <p className="thread-card__body">{thread.question.body}</p>
+            </article>
+          </Section>
 
-          <section className="card stack">
-            <h3>Answers ({thread.answers.length})</h3>
-
-            {thread.answers.length === 0 ? <p>No answers yet.</p> : null}
+          <Section
+            title={`Answers (${thread.answers.length})`}
+            description="Accepted answers are highlighted so the winning approach is obvious."
+          >
+            {thread.answers.length === 0 ? <p className="empty-state">No answers yet.</p> : null}
 
             {thread.answers.length > 0 ? (
-              <ul className="list stack">
+              <ul className="answer-list" aria-label="Answers">
                 {thread.answers.map((answer) => {
                   const isAccepted = answer.id === thread.question.acceptedAnswerId;
 
                   return (
-                    <li key={answer.id} className={isAccepted ? "accepted" : ""}>
-                      <p>{answer.body}</p>
-                      <p className="muted">
-                        @{answer.author.handle} · {formatDate(answer.createdAt)}
-                        {isAccepted ? " · accepted" : ""}
-                      </p>
+                    <li key={answer.id}>
+                      <article className={`answer-card ${isAccepted ? "accepted" : ""}`}>
+                        <div className="answer-card__header">
+                          <div>
+                            <p className="answer-card__author">@{answer.author.handle}</p>
+                            <p className="muted">
+                              {formatDate(answer.createdAt)}
+                              {isAccepted ? " · accepted" : ""}
+                            </p>
+                          </div>
+                          {isAccepted ? <span className="status-pill status-pill--accepted">Accepted</span> : null}
+                        </div>
 
-                      <button
-                        type="button"
-                        disabled={Boolean(acceptingAnswerId) || isAccepted}
-                        onClick={() => void handleAcceptAnswer(answer.id)}
-                      >
-                        {isAccepted
-                          ? "Accepted"
-                          : acceptingAnswerId === answer.id
-                            ? "Accepting..."
-                            : "Accept answer"}
-                      </button>
+                        <p className="answer-card__body">{answer.body}</p>
+
+                        <button
+                          type="button"
+                          className={isAccepted ? "button button--secondary" : "button"}
+                          disabled={Boolean(acceptingAnswerId) || isAccepted}
+                          onClick={() => void handleAcceptAnswer(answer.id)}
+                        >
+                          {isAccepted
+                            ? "Accepted"
+                            : acceptingAnswerId === answer.id
+                              ? "Accepting..."
+                              : "Accept answer"}
+                        </button>
+                      </article>
                     </li>
                   );
                 })}
               </ul>
             ) : null}
-          </section>
+          </Section>
 
-          <AnswerForm onSubmit={handleCreateAnswer} disabled={loading} />
-        </>
+          <Section
+            title="Post an answer"
+            description="Share a concrete solution with enough detail that the next reader can apply it."
+          >
+            <AnswerForm onSubmit={handleCreateAnswer} disabled={loading} />
+          </Section>
+        </div>
       ) : null}
-    </main>
+    </AppShell>
   );
-}
-
-function readErrorMessage(cause: unknown): string {
-  if (cause instanceof ApiClientError) {
-    return cause.message;
-  }
-
-  if (cause instanceof Error) {
-    return cause.message;
-  }
-
-  return "Unexpected error while calling the API.";
-}
-
-function formatDate(isoDate: string): string {
-  const value = new Date(isoDate);
-
-  if (Number.isNaN(value.getTime())) {
-    return isoDate;
-  }
-
-  return value.toLocaleString();
 }

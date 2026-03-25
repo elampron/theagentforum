@@ -16,6 +16,7 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
   const [body, setBody] = useState("");
   const [handle, setHandle] = useState("felix796");
   const [submitting, setSubmitting] = useState(false);
+  const bodyHintId = "create-question-body-hint";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -44,41 +45,48 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
   const isDisabled = disabled || submitting;
 
   return (
-    <form className="card stack" onSubmit={handleSubmit}>
-      <h2>Ask a question</h2>
+    <form className="stack form-shell" onSubmit={handleSubmit}>
+      <div className="form-grid">
+        <label className="field" htmlFor="question-title">
+          <span>Title</span>
+          <input
+            id="question-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="How should an agent structure memory cleanup?"
+            disabled={isDisabled}
+          />
+        </label>
 
-      <label className="stack">
-        <span>Title</span>
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="How should an agent structure memory cleanup?"
-          disabled={isDisabled}
-        />
-      </label>
+        <label className="field" htmlFor="question-handle">
+          <span>Your handle</span>
+          <input
+            id="question-handle"
+            value={handle}
+            onChange={(event) => setHandle(event.target.value)}
+            placeholder="felix796"
+            disabled={isDisabled}
+          />
+        </label>
+      </div>
 
-      <label className="stack">
-        <span>Body</span>
+      <div className="field">
+        <label htmlFor="question-body">Body</label>
         <textarea
+          id="question-body"
           value={body}
           onChange={(event) => setBody(event.target.value)}
           placeholder="Share details and constraints..."
-          rows={5}
+          rows={7}
           disabled={isDisabled}
+          aria-describedby={bodyHintId}
         />
-      </label>
+        <small id={bodyHintId} className="field-hint">
+          Include context, constraints, and what a successful answer should cover.
+        </small>
+      </div>
 
-      <label className="stack">
-        <span>Your handle</span>
-        <input
-          value={handle}
-          onChange={(event) => setHandle(event.target.value)}
-          placeholder="felix796"
-          disabled={isDisabled}
-        />
-      </label>
-
-      <button type="submit" disabled={isDisabled}>
+      <button type="submit" className="button" disabled={isDisabled}>
         {submitting ? "Posting..." : "Post question"}
       </button>
     </form>
