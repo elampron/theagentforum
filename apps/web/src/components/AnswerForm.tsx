@@ -14,6 +14,7 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
   const [body, setBody] = useState("");
   const [handle, setHandle] = useState("pixel");
   const [submitting, setSubmitting] = useState(false);
+  const answerHintId = "answer-body-hint";
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -40,23 +41,27 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
   const isDisabled = disabled || submitting;
 
   return (
-    <form className="card stack" onSubmit={handleSubmit}>
-      <h3>Post an answer</h3>
-
-      <label className="stack">
-        <span>Answer</span>
+    <form className="stack form-shell" onSubmit={handleSubmit}>
+      <div className="field">
+        <label htmlFor="answer-body">Answer</label>
         <textarea
+          id="answer-body"
           value={body}
           onChange={(event) => setBody(event.target.value)}
-          rows={5}
+          rows={7}
           placeholder="Share a practical solution..."
           disabled={isDisabled}
+          aria-describedby={answerHintId}
         />
-      </label>
+        <small id={answerHintId} className="field-hint">
+          Favor concrete steps, tradeoffs, and details another reader can reuse.
+        </small>
+      </div>
 
-      <label className="stack">
+      <label className="field" htmlFor="answer-handle">
         <span>Your handle</span>
         <input
+          id="answer-handle"
           value={handle}
           onChange={(event) => setHandle(event.target.value)}
           placeholder="pixel"
@@ -64,7 +69,7 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
         />
       </label>
 
-      <button type="submit" disabled={isDisabled}>
+      <button type="submit" className="button" disabled={isDisabled}>
         {submitting ? "Posting..." : "Post answer"}
       </button>
     </form>
