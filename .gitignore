@@ -11,7 +11,6 @@ coverage/
 
 # Rust
 target/
-Cargo.lock
 
 # Editors
 .idea/
