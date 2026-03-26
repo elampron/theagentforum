@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { createServer } from "node:http";
-import { afterEach, describe, it } from "node:test";
+import { Readable } from "node:stream";
+import { describe, it } from "node:test";
 import { createApp } from "./app";
+import { createInMemoryAuthStore } from "./memory-auth-store";
 import { createInMemoryQuestionStore } from "./memory-question-store";
 
 const humanAuthor = {
@@ -16,20 +17,11 @@ const agentAuthor = {
   handle: "pixel",
 };
 
-const servers = new Set<ReturnType<typeof createServer>>();
-
-afterEach(async () => {
-  await Promise.all(
-    Array.from(servers, (server) => closeServer(server)),
-  );
-  servers.clear();
-});
-
 describe("HTTP API", () => {
   it("serves the full question -> answer -> accept flow", async () => {
-    const baseUrl = await startTestServer();
+    const app = createTestApp();
 
-    const createQuestionResponse = await requestJson(baseUrl, "/questions", {
+    const createQuestionResponse = await requestJson(app, "/questions", {
       method: "POST",
       body: {
         title: "What should the first API support?",
@@ -42,37 +34,29 @@ describe("HTTP API", () => {
     const question = createQuestionResponse.body.data;
     assert.equal(question.status, "open");
 
-    const firstAnswerResponse = await requestJson(
-      baseUrl,
-      `/questions/${question.id}/answers`,
-      {
-        method: "POST",
-        body: {
-          body: "Ship the smallest possible workflow first.",
-          author: agentAuthor,
-        },
+    const firstAnswerResponse = await requestJson(app, `/questions/${question.id}/answers`, {
+      method: "POST",
+      body: {
+        body: "Ship the smallest possible workflow first.",
+        author: agentAuthor,
       },
-    );
+    });
     assert.equal(firstAnswerResponse.status, 201);
 
     await sleep(2);
 
-    const secondAnswerResponse = await requestJson(
-      baseUrl,
-      `/questions/${question.id}/answers`,
-      {
-        method: "POST",
-        body: {
-          body: "Add acceptance before reputation.",
-          author: humanAuthor,
-        },
+    const secondAnswerResponse = await requestJson(app, `/questions/${question.id}/answers`, {
+      method: "POST",
+      body: {
+        body: "Add acceptance before reputation.",
+        author: humanAuthor,
       },
-    );
+    });
     assert.equal(secondAnswerResponse.status, 201);
 
     const answerToAccept = secondAnswerResponse.body.data.answers[1];
     const acceptResponse = await requestJson(
-      baseUrl,
+      app,
       `/questions/${question.id}/accept/${answerToAccept.id}`,
       {
         method: "POST",
@@ -88,15 +72,15 @@ describe("HTTP API", () => {
     assert.equal(acceptResponse.body.data.answers[0].id, answerToAccept.id);
     assert.ok(acceptResponse.body.data.answers[0].acceptedAt);
 
-    const threadResponse = await requestJson(baseUrl, `/questions/${question.id}`);
+    const threadResponse = await requestJson(app, `/questions/${question.id}`);
     assert.equal(threadResponse.status, 200);
     assert.equal(threadResponse.body.data.answers[0].id, answerToAccept.id);
   });
 
   it("returns validation errors for invalid question payloads", async () => {
-    const baseUrl = await startTestServer();
+    const app = createTestApp();
 
-    const response = await requestJson(baseUrl, "/questions", {
+    const response = await requestJson(app, "/questions", {
       method: "POST",
       body: {
         title: "",
@@ -112,9 +96,9 @@ describe("HTTP API", () => {
   });
 
   it("returns answer_not_found when accepting an answer outside the question", async () => {
-    const baseUrl = await startTestServer();
+    const app = createTestApp();
 
-    const createQuestionResponse = await requestJson(baseUrl, "/questions", {
+    const createQuestionResponse = await requestJson(app, "/questions", {
       method: "POST",
       body: {
         title: "Where should acceptance live?",
@@ -124,70 +108,153 @@ describe("HTTP API", () => {
     });
 
     const questionId = createQuestionResponse.body.data.id;
-    const response = await requestJson(
-      baseUrl,
-      `/questions/${questionId}/accept/a-404`,
-      {
-        method: "POST",
-      },
-    );
+    const response = await requestJson(app, `/questions/${questionId}/accept/a-404`, {
+      method: "POST",
+    });
 
     assert.equal(response.status, 404);
     assert.equal(response.body.ok, false);
     assert.equal(response.body.error.code, "answer_not_found");
   });
+
+  it("serves the passkey-first registration -> verify -> pair flow", async () => {
+    const app = createTestApp();
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "felix796",
+        displayName: "Felix",
+      },
+    });
+
+    assert.equal(started.status, 201);
+    assert.equal(started.body.data.status, "awaiting_verification");
+    assert.equal(started.body.data.pairing.status, "waiting_for_verification");
+    assert.match(started.body.data.challenge, /^[A-Za-z0-9_-]+$/);
+
+    const registrationId = started.body.data.id;
+    const pairingCode = started.body.data.pairing.code;
+
+    const pendingRedeem = await requestJson(app, "/auth/pairings/redeem", {
+      method: "POST",
+      body: {
+        pairingCode,
+        deviceLabel: "pixel-bot",
+      },
+    });
+
+    assert.equal(pendingRedeem.status, 409);
+    assert.equal(pendingRedeem.body.error.code, "pairing_not_ready");
+
+    const verified = await requestJson(app, `/auth/registrations/${registrationId}/verify`, {
+      method: "POST",
+      body: {
+        passkeyLabel: "Felix MacBook Passkey",
+      },
+    });
+
+    assert.equal(verified.status, 200);
+    assert.equal(verified.body.data.status, "verified");
+    assert.equal(verified.body.data.verificationMethod, "webauthn_todo");
+    assert.equal(verified.body.data.pairing.status, "ready_to_pair");
+
+    const fetched = await requestJson(app, `/auth/registrations/${registrationId}`);
+    assert.equal(fetched.status, 200);
+    assert.equal(fetched.body.data.passkeyLabel, "Felix MacBook Passkey");
+
+    const redeemed = await requestJson(app, "/auth/pairings/redeem", {
+      method: "POST",
+      body: {
+        pairingCode,
+        deviceLabel: "pixel-bot",
+      },
+    });
+
+    assert.equal(redeemed.status, 200);
+    assert.equal(redeemed.body.data.pairing.status, "paired");
+    assert.equal(redeemed.body.data.pairing.deviceLabel, "pixel-bot");
+  });
+
+  it("returns validation errors for invalid auth payloads", async () => {
+    const app = createTestApp();
+
+    const response = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "   ",
+      },
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.error.code, "validation_error");
+    assert.match(response.body.error.message, /handle must be a non-empty string/i);
+  });
 });
 
-async function startTestServer(): Promise<string> {
-  const server = createServer(createApp(createInMemoryQuestionStore()));
-  servers.add(server);
-
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", () => resolve());
-  });
-
-  const address = server.address();
-
-  if (!address || typeof address === "string") {
-    throw new Error("Expected an address with a numeric port.");
-  }
-
-  return `http://127.0.0.1:${address.port}`;
-}
-
-async function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
-  await new Promise<void>((resolve, reject) => {
-    server.close((error) => {
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    });
-  });
+function createTestApp() {
+  return createApp(createInMemoryQuestionStore(), createInMemoryAuthStore());
 }
 
 async function requestJson(
-  baseUrl: string,
+  app: ReturnType<typeof createTestApp>,
   path: string,
   init?: {
     method?: string;
     body?: unknown;
   },
 ): Promise<{ status: number; body: any }> {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: init?.method ?? "GET",
-    headers: init?.body ? { "content-type": "application/json" } : undefined,
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-  });
+  const request = Readable.from(
+    init?.body ? [JSON.stringify(init.body)] : [],
+  ) as IncomingRequestLike;
+  request.method = init?.method ?? "GET";
+  request.url = path;
+  request.headers = {
+    host: "localhost",
+    ...(init?.body ? { "content-type": "application/json" } : {}),
+  };
+
+  const response = createMockResponse();
+  await app(request, response);
 
   return {
-    status: response.status,
-    body: await response.json(),
+    status: response.statusCode,
+    body: JSON.parse(response.body),
+  };
+}
+
+function createMockResponse(): MockResponse {
+  return {
+    statusCode: 200,
+    headers: {},
+    body: "",
+    writeHead(statusCode: number, headers?: Record<string, string>) {
+      this.statusCode = statusCode;
+      this.headers = headers ?? {};
+      return this;
+    },
+    end(chunk?: string | Buffer) {
+      this.body = chunk ? chunk.toString() : "";
+      return this;
+    },
   };
 }
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+interface IncomingRequestLike extends Readable {
+  method?: string;
+  url?: string;
+  headers: Record<string, string>;
+}
+
+interface MockResponse {
+  statusCode: number;
+  headers: Record<string, string>;
+  body: string;
+  writeHead(statusCode: number, headers?: Record<string, string>): MockResponse;
+  end(chunk?: string | Buffer): MockResponse;
 }

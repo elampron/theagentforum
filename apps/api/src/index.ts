@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createApp } from "./app";
+import { createPostgresAuthStore } from "./postgres-auth-store";
 import { createPostgresQuestionStore } from "./postgres-question-store";
 import { runSqlFile } from "./postgres";
 
@@ -9,8 +10,9 @@ const corsAllowOrigin = process.env.CORS_ALLOW_ORIGIN ?? "*";
 async function main(): Promise<void> {
   await runSqlFile();
 
-  const store = createPostgresQuestionStore();
-  const app = createApp(store, { corsAllowOrigin });
+  const questionStore = createPostgresQuestionStore();
+  const authStore = createPostgresAuthStore();
+  const app = createApp(questionStore, authStore, { corsAllowOrigin });
   const server = createServer(app);
 
   server.listen(port, () => {

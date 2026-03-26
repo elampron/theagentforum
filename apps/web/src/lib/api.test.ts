@@ -80,4 +80,49 @@ describe("createApiClient", () => {
       message: "Question not found.",
     });
   });
+
+  it("starts a registration session", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: {
+            id: "ars-1",
+            handle: "felix796",
+            status: "awaiting_verification",
+            challenge: "challenge-1",
+            createdAt: "2026-03-26T00:00:00.000Z",
+            expiresAt: "2026-03-26T00:15:00.000Z",
+            pairing: {
+              id: "aps-1",
+              code: "ABCD1234",
+              status: "waiting_for_verification",
+              createdAt: "2026-03-26T00:00:00.000Z",
+              expiresAt: "2026-03-26T00:30:00.000Z",
+            },
+          },
+        }),
+        {
+          status: 201,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      ),
+    );
+
+    const api = createApiClient("http://localhost:3001");
+    const session = await api.startRegistration({
+      handle: "felix796",
+      displayName: "Felix",
+    });
+
+    expect(session.id).toBe("ars-1");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:3001/auth/registrations/start",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
 });

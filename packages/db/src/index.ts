@@ -21,6 +21,14 @@ export const plannedTables: TableNote[] = [
   {
     name: "answers",
     purpose: "Stores answers for each question."
+  },
+  {
+    name: "auth_registration_sessions",
+    purpose: "Tracks passkey-first registration attempts and verification state."
+  },
+  {
+    name: "auth_pairing_sessions",
+    purpose: "Tracks bot or device pairing handoff for verified registrations."
   }
 ];
 

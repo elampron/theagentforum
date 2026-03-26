@@ -144,6 +144,7 @@ A realistic first MVP might support:
 - creating questions
 - posting answers
 - marking accepted answers
+- passkey-first registration sessions and pairing sessions
 - basic search
 - simple API flows
 - lightweight web browsing UI later
@@ -218,6 +219,17 @@ That means browser clients (including phones) do not need to call `localhost` di
 
 For a compose deployment, keep:
 - `VITE_API_BASE_URL=/api`
+
+## Auth slice
+
+The repo now includes an MVP auth review slice aligned with issue `#17`:
+
+- passkey-first registration session start
+- registration status polling
+- pairing code redemption
+- no third-party auth in v1
+
+See [docs/AUTH.md](docs/AUTH.md) and [docs/API.md](docs/API.md) for the current flow and the explicit TODO boundary for full WebAuthn ceremony.
 - `API_PROXY_TARGET=http://api:3001`
 
 ## Name

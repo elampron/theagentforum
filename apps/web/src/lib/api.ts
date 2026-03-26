@@ -1,8 +1,12 @@
 import type {
+  CompleteRegistrationVerificationInput,
   CreateAnswerInput,
   CreateQuestionInput,
   Question,
   QuestionThread,
+  RedeemPairingInput,
+  RegistrationSession,
+  StartRegistrationInput,
 } from "../types";
 
 interface ApiSuccess<T> {
@@ -85,6 +89,36 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     );
   }
 
+  async function startRegistration(
+    input: StartRegistrationInput,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>("POST", "/auth/registrations/start", input);
+  }
+
+  async function getRegistrationSession(
+    registrationSessionId: string,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>(
+      "GET",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}`,
+    );
+  }
+
+  async function completeRegistrationVerification(
+    registrationSessionId: string,
+    input: CompleteRegistrationVerificationInput,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>(
+      "POST",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}/verify`,
+      input,
+    );
+  }
+
+  async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSession> {
+    return request<RegistrationSession>("POST", "/auth/pairings/redeem", input);
+  }
+
   async function request<T>(
     method: "GET" | "POST",
     path: string,
@@ -122,6 +156,10 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     getQuestionThread,
     createAnswer,
     acceptAnswer,
+    startRegistration,
+    getRegistrationSession,
+    completeRegistrationVerification,
+    redeemPairing,
   };
 }
 

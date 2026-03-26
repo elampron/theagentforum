@@ -38,7 +38,12 @@ html {
 
 body {
   margin: 0;
+<<<<<<< HEAD
   min-width: 320px;
+=======
+  padding: 24px;
+  min-height: 100vh;
+>>>>>>> 6c06a5e (Add passkey-first auth MVP slice)
 }
 
 a {
@@ -615,6 +620,42 @@ ul {
   padding: 1rem 0;
 }
 
+code {
+  font-family: "IBM Plex Mono", "SFMono-Regular", monospace;
+}
+
+.layout {
+  width: min(calc(100% - 2rem), 960px);
+  margin: 0 auto;
+  padding: 2rem 0 4rem;
+}
+
+.stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+}
+
+.row.between {
+  justify-content: space-between;
+}
+
+.row.center {
+  align-items: center;
+}
+
+.card {
+  border: 1px solid var(--border-soft);
+  border-radius: 1.25rem;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-md);
+  padding: 1.25rem;
+}
+
 .muted {
   color: var(--text-muted);
   font-size: 0.94rem;
@@ -695,5 +736,38 @@ ul {
   .hero__panel {
     padding: 0.8rem;
     border-radius: 1.35rem;
+  }
+}
+
+.definition-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.definition-list div {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.definition-list dt {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.definition-list dd {
+  margin: 6px 0 0;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 16px;
+  }
+
+  .row.between {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }

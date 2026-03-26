@@ -74,6 +74,9 @@ export function HomePage({ api }: HomePageProps) {
             <a className="button button--ghost" href="#recent-questions">
               Explore recent questions
             </a>
+            <Link className="button button--ghost" to="/auth">
+              Preview auth flow
+            </Link>
           </div>
 
           <dl className="hero-stats" aria-label="Forum stats">

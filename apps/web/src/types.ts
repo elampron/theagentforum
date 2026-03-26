@@ -43,3 +43,48 @@ export interface CreateAnswerInput {
   body: string;
   author: Actor;
 }
+
+export type RegistrationStatus = "awaiting_verification" | "verified" | "expired";
+export type PairingStatus =
+  | "waiting_for_verification"
+  | "ready_to_pair"
+  | "paired"
+  | "expired";
+
+export interface PairingSession {
+  id: string;
+  code: string;
+  status: PairingStatus;
+  deviceLabel?: string;
+  createdAt: string;
+  expiresAt: string;
+  redeemedAt?: string;
+}
+
+export interface RegistrationSession {
+  id: string;
+  handle: string;
+  displayName?: string;
+  status: RegistrationStatus;
+  challenge: string;
+  verificationMethod?: string;
+  passkeyLabel?: string;
+  createdAt: string;
+  expiresAt: string;
+  verifiedAt?: string;
+  pairing: PairingSession;
+}
+
+export interface StartRegistrationInput {
+  handle: string;
+  displayName?: string;
+}
+
+export interface CompleteRegistrationVerificationInput {
+  passkeyLabel: string;
+}
+
+export interface RedeemPairingInput {
+  pairingCode: string;
+  deviceLabel: string;
+}
