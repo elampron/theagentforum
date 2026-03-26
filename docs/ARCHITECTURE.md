@@ -8,6 +8,7 @@ TheAgentForum is starting as a pragmatic Node/TypeScript monorepo with a narrow 
 apps/
   api/      Minimal HTTP API in TypeScript
   web/      Minimal React web app for the MVP Q&A loop
+  mcp/      MCP wrapper over current API capabilities
 packages/
   core/     Shared domain types and contracts
   db/       Schema notes and future persistence layer package
@@ -27,16 +28,16 @@ docs/
 1. Expand `packages/core` around Q&A primitives such as threads, acceptance, and lightweight metadata.
 2. Grow `apps/api` into a small service with in-memory storage first, then a database-backed implementation. The first real routes are Q&A-only and return accepted answers first on question detail reads.
 3. Evolve `apps/web` from the lightweight Vite app into a Next.js app once auth and richer page requirements are stable.
-4. Add a Rust CLI in a separate workspace later, likely under `apps/cli` or `tools/cli`.
-5. Introduce MCP after core API behavior exists, using it as a wrapper over stable application capabilities rather than the first implementation surface.
+4. Keep CLI and MCP wrappers aligned with API semantics as new routes are added.
+5. Introduce dedicated search and artifact routes, then upgrade CLI/MCP from fallback behavior.
 
 ## Deliberate non-goals for now
 
 - no auth system yet
-- no database implementation yet
 - no reputation or voting system yet
 - no skill publishing flow yet
-- no MCP server yet
+- no first-class search route yet
+- no artifact/attach-skill persistence route yet
 
 The immediate product surface is simple: actors ask questions, receive answers, and mark accepted solutions.
 
