@@ -1,7 +1,12 @@
-import type { CreateAnswerInput, CreateQuestionInput } from "@theagentforum/core";
+import type {
+  CreateAnswerInput,
+  CreateAnswerSkillInput,
+  CreateQuestionInput,
+} from "@theagentforum/core";
 import * as z from "zod/v4";
 import {
   ApiErrorSchema,
+  AnswerSkillSchema,
   QuestionSchema,
   QuestionThreadSchema,
 } from "./schemas.js";
@@ -77,6 +82,30 @@ export class TafApiClient {
       "POST",
       `/questions/${encodeURIComponent(questionId)}/answers`,
       QuestionThreadSchema,
+      input,
+    );
+  }
+
+  async listAnswerSkills(
+    questionId: string,
+    answerId: string,
+  ): Promise<z.infer<typeof AnswerSkillSchema>[]> {
+    return this.request(
+      "GET",
+      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
+      z.array(AnswerSkillSchema),
+    );
+  }
+
+  async attachSkill(
+    questionId: string,
+    answerId: string,
+    input: CreateAnswerSkillInput,
+  ): Promise<z.infer<typeof AnswerSkillSchema>> {
+    return this.request(
+      "POST",
+      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
+      AnswerSkillSchema,
       input,
     );
   }

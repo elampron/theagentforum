@@ -105,7 +105,7 @@ export function createTheAgentForumMcpServer(
     "attach-skill",
     {
       description:
-        "Placeholder for attaching skill artifacts to answers. Returns a not_implemented error until API support exists.",
+        "Attach a skill or artifact to an answer for later retrieval. Stores metadata/content only and does not execute it.",
       inputSchema: attachSkillToolInputShape,
     },
     async (args) =>

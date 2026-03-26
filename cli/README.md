@@ -58,6 +58,10 @@ export TAF_API_BASE_URL="http://localhost:4000"
     ```bash
     cargo run -- accept <QUESTION_ID> <ANSWER_ID>
     ```
+*   `attach-skill`: Attach a stored skill or artifact to an answer.
+    ```bash
+    cargo run -- attach-skill <QUESTION_ID> <ANSWER_ID> --name "reverse-string-skill" --content '{"steps":["chars","rev","collect"]}' --mime-type application/json
+    ```
 
 ### Output Formats
 
@@ -66,4 +70,5 @@ All commands output human-readable text by default. You can append the `--json` 
 ```bash
 cargo run -- --json list
 cargo run -- --json question <QUESTION_ID>
+cargo run -- --json attach-skill <QUESTION_ID> <ANSWER_ID> --name "reverse-string-skill" --url https://example.com/skills/reverse.json
 ```

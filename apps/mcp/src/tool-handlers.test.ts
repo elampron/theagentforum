@@ -40,6 +40,9 @@ describe("createToolHandlers", () => {
         accept: async () => {
           throw new Error("not used");
         },
+        attachSkill: async () => {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -92,6 +95,9 @@ describe("createToolHandlers", () => {
         accept: async () => {
           throw new Error("not used");
         },
+        attachSkill: async () => {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -131,6 +137,9 @@ describe("createToolHandlers", () => {
         accept: async () => {
           throw new Error("not used");
         },
+        attachSkill: async () => {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -165,6 +174,9 @@ describe("createToolHandlers", () => {
         accept: async () => {
           throw new Error("not used");
         },
+        attachSkill: async () => {
+          throw new Error("not used");
+        },
       },
     });
 
@@ -180,7 +192,18 @@ describe("createToolHandlers", () => {
     }
   });
 
-  it("returns a clear placeholder error for attach-skill", async () => {
+  it("attaches a skill through the API client", async () => {
+    let observedInput:
+      | {
+          questionId: string;
+          answerId: string;
+          name: string;
+          content?: string;
+          url?: string;
+          mimeType?: string;
+        }
+      | undefined;
+
     const handlers = createToolHandlers({
       defaultAuthor,
       apiClient: {
@@ -197,21 +220,47 @@ describe("createToolHandlers", () => {
         accept: async () => {
           throw new Error("not used");
         },
+        attachSkill: async (questionId, answerId, input) => {
+          observedInput = {
+            questionId,
+            answerId,
+            ...input,
+          };
+
+          return {
+            id: "sk-1",
+            questionId,
+            answerId,
+            name: input.name,
+            content: input.content,
+            url: input.url,
+            mimeType: input.mimeType,
+            createdAt: "2026-03-26T00:00:00.000Z",
+          };
+        },
       },
     });
 
     const result = await handlers.attachSkill({
       questionId: "q-1",
       answerId: "a-1",
-      skillName: "memory-cleanup",
-      skillContent: "# Skill",
+      name: "memory-cleanup",
+      content: "# Skill",
+      mimeType: "text/markdown",
     });
 
-    assert.equal(result.ok, false);
+    assert.equal(result.ok, true);
+    assert.deepEqual(observedInput, {
+      questionId: "q-1",
+      answerId: "a-1",
+      name: "memory-cleanup",
+      content: "# Skill",
+      mimeType: "text/markdown",
+    });
 
-    if (!result.ok) {
-      assert.equal(result.error.category, "not_implemented");
-      assert.equal(result.error.code, "not_implemented");
+    if (result.ok) {
+      assert.equal(result.meta.route, "POST /questions/:questionId/answers/:answerId/skills");
+      assert.equal(result.data.id, "sk-1");
     }
   });
 });

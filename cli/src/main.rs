@@ -57,6 +57,24 @@ enum Commands {
         question_id: String,
         answer_id: String,
     },
+
+    /// Attach a skill or artifact to an answer
+    AttachSkill {
+        question_id: String,
+        answer_id: String,
+
+        #[arg(long)]
+        name: String,
+
+        #[arg(long)]
+        content: Option<String>,
+
+        #[arg(long)]
+        url: Option<String>,
+
+        #[arg(long = "mime-type")]
+        mime_type: Option<String>,
+    },
 }
 
 // ---- Models ----
@@ -102,6 +120,22 @@ struct QuestionThread {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct AnswerSkill {
+    id: String,
+    #[serde(rename = "questionId")]
+    question_id: String,
+    #[serde(rename = "answerId")]
+    answer_id: String,
+    name: String,
+    content: Option<String>,
+    url: Option<String>,
+    #[serde(rename = "mimeType", skip_serializing_if = "Option::is_none")]
+    mime_type: Option<String>,
+    #[serde(rename = "createdAt")]
+    created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct CreateQuestionInput {
     title: String,
     body: String,
@@ -112,6 +146,15 @@ struct CreateQuestionInput {
 struct CreateAnswerInput {
     body: String,
     author: Actor,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CreateAnswerSkillInput {
+    name: String,
+    content: Option<String>,
+    url: Option<String>,
+    #[serde(rename = "mimeType", skip_serializing_if = "Option::is_none")]
+    mime_type: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -284,6 +327,42 @@ async fn main() {
             
             if !cli.json {
                 println!("Answer {} accepted for question {}!", answer_id, thread.question.id);
+            }
+        }
+        Commands::AttachSkill {
+            question_id,
+            answer_id,
+            name,
+            content,
+            url,
+            mime_type,
+        } => {
+            let endpoint = format!(
+                "{}/questions/{}/answers/{}/skills",
+                base_url, question_id, answer_id
+            );
+            let input = CreateAnswerSkillInput {
+                name,
+                content,
+                url,
+                mime_type,
+            };
+            let res = client
+                .post(&endpoint)
+                .json(&input)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
+            let skill: AnswerSkill = handle_response(res, cli.json).await;
+
+            if !cli.json {
+                println!(
+                    "Skill {} attached to answer {} on question {}!",
+                    skill.id, skill.answer_id, skill.question_id
+                );
             }
         }
     }

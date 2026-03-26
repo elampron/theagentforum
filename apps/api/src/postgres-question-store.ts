@@ -1,6 +1,8 @@
 import type {
+  AnswerSkill,
   Question,
   CreateAnswerInput,
+  CreateAnswerSkillInput,
   CreateQuestionInput,
 } from "@theagentforum/core";
 import type { QuestionStore, QuestionThread } from "./question-store";
@@ -13,6 +15,8 @@ export function createPostgresQuestionStore(): QuestionStore {
     getQuestionThread,
     createAnswer,
     acceptAnswer,
+    listAnswerSkills,
+    createAnswerSkill,
   };
 }
 
@@ -173,6 +177,107 @@ async function acceptAnswer(questionId: string, answerId: string): Promise<Quest
   }
 
   return getQuestionThread(questionId);
+}
+
+async function listAnswerSkills(
+  questionId: string,
+  answerId: string,
+): Promise<AnswerSkill[] | null> {
+  const output = await runSql(
+    `
+      select json_build_object(
+        'answerExists',
+        exists (
+          select 1
+          from answers
+          where id = :'answer_id'
+            and question_id = :'question_id'
+        ),
+        'skills',
+        coalesce((
+          select json_agg(skill order by created_at)
+          from (
+            select
+              json_strip_nulls(json_build_object(
+                'id', s.id,
+                'questionId', s.question_id,
+                'answerId', s.answer_id,
+                'name', s.name,
+                'content', s.content,
+                'url', s.url,
+                'mimeType', s.mime_type,
+                'createdAt', to_char(s.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+              )) as skill,
+              s.created_at
+            from answer_skills s
+            where s.question_id = :'question_id'
+              and s.answer_id = :'answer_id'
+          ) listed_skills
+        ), '[]'::json)
+      ) :: text;
+    `,
+    {
+      question_id: questionId,
+      answer_id: answerId,
+    },
+  );
+
+  const payload = JSON.parse(output) as {
+    answerExists: boolean;
+    skills: AnswerSkill[];
+  };
+
+  if (!payload.answerExists) {
+    return null;
+  }
+
+  return payload.skills;
+}
+
+async function createAnswerSkill(
+  questionId: string,
+  answerId: string,
+  input: CreateAnswerSkillInput,
+): Promise<AnswerSkill | null> {
+  const output = await runSql(
+    `
+      insert into answer_skills (question_id, answer_id, name, content, url, mime_type)
+      select
+        a.question_id,
+        a.id,
+        :'name',
+        nullif(:'content', ''),
+        nullif(:'url', ''),
+        nullif(:'mime_type', '')
+      from answers a
+      where a.question_id = :'question_id'
+        and a.id = :'answer_id'
+      returning json_strip_nulls(json_build_object(
+        'id', id,
+        'questionId', question_id,
+        'answerId', answer_id,
+        'name', name,
+        'content', content,
+        'url', url,
+        'mimeType', mime_type,
+        'createdAt', to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      )) :: text;
+    `,
+    {
+      question_id: questionId,
+      answer_id: answerId,
+      name: input.name,
+      content: input.content ?? "",
+      url: input.url ?? "",
+      mime_type: input.mimeType ?? "",
+    },
+  );
+
+  if (!output) {
+    return null;
+  }
+
+  return JSON.parse(output) as AnswerSkill;
 }
 
 async function queryJson<T>(sql: string, variables?: Record<string, string>): Promise<T> {

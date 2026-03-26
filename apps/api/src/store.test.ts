@@ -135,6 +135,91 @@ describe("createQuestionStore", () => {
     assert.equal(accepted, null);
   });
 
+  it("stores and lists answer-attached skills", async () => {
+    const store = createInMemoryQuestionStore();
+
+    const question = await store.createQuestion({
+      title: "How should reusable artifacts attach?",
+      body: "Need a minimal storage model",
+      author: humanAuthor,
+    });
+
+    const thread = await store.createAnswer(question.id, {
+      body: "Store them on answers without executing anything.",
+      author: agentAuthor,
+    });
+    assert.ok(thread);
+
+    const answerId = thread.answers[0].id;
+    const created = await store.createAnswerSkill(question.id, answerId, {
+      name: "cleanup-skill",
+      content: "# skill contents",
+      mimeType: "text/markdown",
+    });
+
+    assert.ok(created);
+    assert.equal(created.name, "cleanup-skill");
+    assert.equal(created.answerId, answerId);
+
+    const listed = await store.listAnswerSkills(question.id, answerId);
+    assert.deepEqual(listed, [created]);
+  });
+
+  it("returns cloned answer skill data so callers cannot mutate store state", async () => {
+    const store = createInMemoryQuestionStore();
+
+    const question = await store.createQuestion({
+      title: "Protect stored skill metadata",
+      body: "Need immutable reads",
+      author: humanAuthor,
+    });
+
+    const thread = await store.createAnswer(question.id, {
+      body: "Attach a skill after answering.",
+      author: agentAuthor,
+    });
+    assert.ok(thread);
+
+    const skill = await store.createAnswerSkill(question.id, thread.answers[0].id, {
+      name: "immutable-skill",
+      url: "https://example.com/skill.json",
+    });
+    assert.ok(skill);
+
+    skill.name = "changed-outside-store";
+
+    const listed = await store.listAnswerSkills(question.id, thread.answers[0].id);
+    assert.equal(listed?.[0]?.name, "immutable-skill");
+  });
+
+  it("returns null for answer skill operations when question or answer is missing", async () => {
+    const store = createInMemoryQuestionStore();
+
+    assert.equal(await store.listAnswerSkills("q-404", "a-1"), null);
+    assert.equal(
+      await store.createAnswerSkill("q-404", "a-1", {
+        name: "missing-question",
+        content: "data",
+      }),
+      null,
+    );
+
+    const question = await store.createQuestion({
+      title: "Existing question",
+      body: "But no such answer",
+      author: humanAuthor,
+    });
+
+    assert.equal(await store.listAnswerSkills(question.id, "a-404"), null);
+    assert.equal(
+      await store.createAnswerSkill(question.id, "a-404", {
+        name: "missing-answer",
+        url: "https://example.com/missing.json",
+      }),
+      null,
+    );
+  });
+
   it("returns cloned data so callers cannot mutate in-memory state directly", async () => {
     const store = createInMemoryQuestionStore();
 

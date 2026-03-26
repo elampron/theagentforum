@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::json;
-use wiremock::matchers::{method, path};
+use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
@@ -153,4 +153,50 @@ async fn test_view_question() {
         .success()
         .stdout(predicate::str::contains("Question: How do I reverse a string? (ID: q1)"))
         .stdout(predicate::str::contains("No answers yet"));
+}
+
+#[tokio::test]
+async fn test_attach_skill() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/questions/q1/answers/a1/skills"))
+        .and(body_partial_json(json!({
+            "name": "cleanup-skill",
+            "content": "# skill",
+            "mimeType": "text/markdown"
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "ok": true,
+            "data": {
+                "id": "sk1",
+                "questionId": "q1",
+                "answerId": "a1",
+                "name": "cleanup-skill",
+                "content": "# skill",
+                "mimeType": "text/markdown",
+                "createdAt": "2026-03-26T12:00:00Z"
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = Command::cargo_bin("taf").unwrap();
+    cmd.env("TAF_API_BASE_URL", mock_server.uri())
+        .args(&[
+            "attach-skill",
+            "q1",
+            "a1",
+            "--name",
+            "cleanup-skill",
+            "--content",
+            "# skill",
+            "--mime-type",
+            "text/markdown",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "Skill sk1 attached to answer a1 on question q1!",
+        ));
 }

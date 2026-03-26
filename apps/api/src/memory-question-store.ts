@@ -1,6 +1,8 @@
 import type {
   Answer,
+  AnswerSkill,
   CreateAnswerInput,
+  CreateAnswerSkillInput,
   CreateQuestionInput,
   Question,
 } from "@theagentforum/core";
@@ -9,8 +11,10 @@ import type { QuestionStore, QuestionThread } from "./question-store";
 export function createInMemoryQuestionStore(): QuestionStore {
   const questions = new Map<string, Question>();
   const answersByQuestionId = new Map<string, Answer[]>();
+  const skillsByAnswerKey = new Map<string, AnswerSkill[]>();
   let questionSequence = 1;
   let answerSequence = 1;
+  let answerSkillSequence = 1;
 
   async function listQuestions(): Promise<Question[]> {
     return Array.from(questions.values()).sort(compareByCreatedAtDesc).map(cloneQuestion);
@@ -66,6 +70,7 @@ export function createInMemoryQuestionStore(): QuestionStore {
     const answers = answersByQuestionId.get(questionId) ?? [];
     answers.push(answer);
     answersByQuestionId.set(questionId, answers);
+    skillsByAnswerKey.set(createAnswerKey(questionId, answer.id), []);
 
     return {
       question: cloneQuestion(question),
@@ -106,6 +111,54 @@ export function createInMemoryQuestionStore(): QuestionStore {
     };
   }
 
+  async function listAnswerSkills(
+    questionId: string,
+    answerId: string,
+  ): Promise<AnswerSkill[] | null> {
+    if (!questions.has(questionId)) {
+      return null;
+    }
+
+    if (!hasAnswer(questionId, answerId)) {
+      return null;
+    }
+
+    const skills = skillsByAnswerKey.get(createAnswerKey(questionId, answerId)) ?? [];
+    return skills.map(cloneAnswerSkill);
+  }
+
+  async function createAnswerSkill(
+    questionId: string,
+    answerId: string,
+    input: CreateAnswerSkillInput,
+  ): Promise<AnswerSkill | null> {
+    if (!questions.has(questionId)) {
+      return null;
+    }
+
+    if (!hasAnswer(questionId, answerId)) {
+      return null;
+    }
+
+    const skill: AnswerSkill = {
+      id: `sk-${answerSkillSequence++}`,
+      questionId,
+      answerId,
+      name: input.name,
+      content: input.content,
+      url: input.url,
+      mimeType: input.mimeType,
+      createdAt: new Date().toISOString(),
+    };
+
+    const answerKey = createAnswerKey(questionId, answerId);
+    const skills = skillsByAnswerKey.get(answerKey) ?? [];
+    skills.push(skill);
+    skillsByAnswerKey.set(answerKey, skills);
+
+    return cloneAnswerSkill(skill);
+  }
+
   function getSortedAnswers(questionId: string, acceptedAnswerId?: string): Answer[] {
     const answers = answersByQuestionId.get(questionId) ?? [];
 
@@ -121,12 +174,19 @@ export function createInMemoryQuestionStore(): QuestionStore {
     });
   }
 
+  function hasAnswer(questionId: string, answerId: string): boolean {
+    const answers = answersByQuestionId.get(questionId) ?? [];
+    return answers.some((answer) => answer.id === answerId);
+  }
+
   return {
     listQuestions,
     createQuestion,
     getQuestionThread,
     createAnswer,
     acceptAnswer,
+    listAnswerSkills,
+    createAnswerSkill,
   };
 }
 
@@ -144,6 +204,14 @@ function cloneAnswer(answer: Answer): Answer {
   };
 }
 
+function cloneAnswerSkill(answerSkill: AnswerSkill): AnswerSkill {
+  return { ...answerSkill };
+}
+
 function compareByCreatedAtDesc(left: Question, right: Question): number {
   return right.createdAt.localeCompare(left.createdAt);
+}
+
+function createAnswerKey(questionId: string, answerId: string): string {
+  return `${questionId}:${answerId}`;
 }

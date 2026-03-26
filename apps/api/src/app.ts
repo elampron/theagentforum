@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   Actor,
   CreateAnswerInput,
+  CreateAnswerSkillInput,
   CreateQuestionInput,
 } from "@theagentforum/core";
 import type { QuestionStore } from "./question-store";
@@ -136,6 +137,73 @@ async function routeRequest(
 
   const acceptMatch = matchPath(path, /^\/questions\/([^/]+)\/accept\/([^/]+)$/);
 
+  const answerSkillsMatch = matchPath(
+    path,
+    /^\/questions\/([^/]+)\/answers\/([^/]+)\/skills$/,
+  );
+
+  if (method === "GET" && answerSkillsMatch) {
+    const questionId = answerSkillsMatch[1];
+    const answerId = answerSkillsMatch[2];
+    const skills = await store.listAnswerSkills(questionId, answerId);
+
+    if (!skills) {
+      const questionExists = await store.getQuestionThread(questionId);
+
+      if (!questionExists) {
+        sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
+        return;
+      }
+
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "answer_not_found",
+        "Answer not found for the specified question.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: skills,
+    });
+    return;
+  }
+
+  if (method === "POST" && answerSkillsMatch) {
+    const questionId = answerSkillsMatch[1];
+    const answerId = answerSkillsMatch[2];
+    const payload = await readJsonBody(req);
+    const input = parseCreateAnswerSkillInput(payload);
+    const skill = await store.createAnswerSkill(questionId, answerId, input);
+
+    if (!skill) {
+      const questionExists = await store.getQuestionThread(questionId);
+
+      if (!questionExists) {
+        sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
+        return;
+      }
+
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "answer_not_found",
+        "Answer not found for the specified question.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 201, {
+      ok: true,
+      data: skill,
+    });
+    return;
+  }
+
   if (method === "POST" && acceptMatch) {
     const questionId = acceptMatch[1];
     const answerId = acceptMatch[2];
@@ -252,6 +320,27 @@ function parseCreateAnswerInput(payload: unknown): CreateAnswerInput {
   };
 }
 
+function parseCreateAnswerSkillInput(payload: unknown): CreateAnswerSkillInput {
+  const input = asRecord(payload, "Request body must be an object.");
+  const content = readOptionalNonEmptyString(input.content, "content");
+  const url = readOptionalUrlString(input.url, "url");
+
+  if (!content && !url) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      "At least one of content or url is required.",
+    );
+  }
+
+  return {
+    name: readRequiredString(input.name, "name"),
+    content,
+    url,
+    mimeType: readOptionalNonEmptyString(input.mimeType, "mimeType"),
+  };
+}
+
 function parseActor(value: unknown): Actor {
   const actor = asRecord(value, "author must be an object.");
   const displayName = actor.displayName;
@@ -292,6 +381,39 @@ function readRequiredString(value: unknown, fieldName: string): string {
   }
 
   return value.trim();
+}
+
+function readOptionalNonEmptyString(
+  value: unknown,
+  fieldName: string,
+): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || value.trim() === "") {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be a non-empty string.`,
+    );
+  }
+
+  return value;
+}
+
+function readOptionalUrlString(value: unknown, fieldName: string): string | undefined {
+  const parsed = readOptionalNonEmptyString(value, fieldName);
+
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    return new URL(parsed).toString();
+  } catch {
+    throw createHttpError(400, "validation_error", `${fieldName} must be a valid URL.`);
+  }
 }
 
 function asRecord(value: unknown, message: string): Record<string, unknown> {
