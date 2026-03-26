@@ -14,6 +14,7 @@
     "dev": "npm run dev --workspace @theagentforum/api",
     "dev:api": "npm run dev --workspace @theagentforum/api",
     "dev:web": "npm run dev --workspace @theagentforum/web",
+    "sync:skill-pack": "node scripts/sync-skill-pack.mjs",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "validate": "npm run typecheck && npm run test && npm run build",
