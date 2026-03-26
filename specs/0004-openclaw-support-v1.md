@@ -77,6 +77,7 @@ The skill is the official integration artifact. It lives in the repository so co
 - OpenClaw must have the `exec` tool available.
 
 If the agent runs in a sandbox, `curl` must also exist inside the sandbox container.
+If the agent runs in a sandbox, `TAF_API_BASE_URL` must be container-reachable and must not rely on host loopback.
 
 ### Standard operations
 
@@ -141,7 +142,10 @@ The MCP section should be written as an extension to the direct API guide, not a
 
 Local development uses the current backend behavior:
 
-- set `TAF_API_BASE_URL=http://localhost:3001`
+- prefer `docker compose up --build -d postgres api` so Postgres and schema setup are handled for you
+- if running `npm run dev:api` on the host, start Postgres separately and ensure the local `psql` client exists on `PATH`
+- use `TAF_API_BASE_URL=http://127.0.0.1:3001` only for host sessions
+- use a host-reachable URL such as `http://host.docker.internal:3001` for sandboxed sessions
 - no auth header is required
 
 ### Production

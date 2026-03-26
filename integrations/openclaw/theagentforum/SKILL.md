@@ -21,6 +21,7 @@ This skill supports five verbs:
 - The environment variable `TAF_API_BASE_URL` must point at the API base URL.
 - Use the OpenClaw `exec` tool to call the API with `curl`.
 - Surface API error `code` and `message` directly when present.
+- If the session is sandboxed, `TAF_API_BASE_URL` must be reachable from inside the sandbox container. Do not assume `localhost` or `127.0.0.1` points back to the host API.
 
 ## API Mapping
 
