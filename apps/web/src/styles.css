@@ -38,12 +38,8 @@ html {
 
 body {
   margin: 0;
-<<<<<<< HEAD
   min-width: 320px;
-=======
-  padding: 24px;
   min-height: 100vh;
->>>>>>> 6c06a5e (Add passkey-first auth MVP slice)
 }
 
 a {
