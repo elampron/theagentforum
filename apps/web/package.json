@@ -5,8 +5,9 @@
   "description": "Web app for TheAgentForum",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
+    "sync:skill-pack": "node ../../scripts/sync-skill-pack.mjs",
+    "dev": "npm run sync:skill-pack && vite",
+    "build": "npm run sync:skill-pack && tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && vite build",
     "start": "node server.mjs",
     "preview": "vite preview",
     "test": "vitest run",
