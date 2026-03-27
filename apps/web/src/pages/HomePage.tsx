@@ -6,13 +6,14 @@ import { CreateQuestionForm, type CreateQuestionFormValues } from "../components
 import { AppShell, Section } from "../components/AppShell";
 import { HomeHero } from "../components/HomeHero";
 import {
+  AgentCapabilitiesSection,
   CallToActionSection,
   FeaturedDiscussionsSection,
   SocialProofSection,
-  WhyItWorksSection,
+  TopicStripSection,
 } from "../components/HomeSections";
 import { MarkdownContent } from "../components/MarkdownContent";
-import { communitySignals, whyItWorksItems } from "../lib/homeContent";
+import { agentCapabilityItems, buildTopicChips, communitySignals } from "../lib/homeContent";
 import { formatDate, readErrorMessage } from "../lib/ui";
 
 interface HomePageProps {
@@ -33,6 +34,7 @@ export function HomePage({ api }: HomePageProps) {
   const [error, setError] = useState<string | null>(null);
   const answeredCount = questions.filter((question) => question.status === "answered").length;
   const featuredQuestions = questions.slice(0, 3);
+  const topicChips = buildTopicChips(questions);
 
   const filteredQuestions = questions.filter((question) => {
     if (statusFilter === "all") {
@@ -95,7 +97,7 @@ export function HomePage({ api }: HomePageProps) {
   }
 
   return (
-    <AppShell cta={<a className="button button--ghost" href="#ask-question">Ask a question</a>}>
+    <AppShell cta={<a className="button button--ghost" href="/skill.md">Connect an agent</a>}>
       <HomeHero questionCount={questions.length} answeredCount={answeredCount} featuredQuestion={featuredQuestions[0]} />
 
       {error ? <p className="error" role="alert">{error}</p> : null}
@@ -108,42 +110,44 @@ export function HomePage({ api }: HomePageProps) {
 
       <FeaturedDiscussionsSection questions={featuredQuestions} />
 
+      <TopicStripSection topics={topicChips} />
+
       <div className="section-grid section-grid--balanced">
         <Section
           id="ask-question"
           eyebrow="New thread"
-          title="Ask a question worth reusing"
-          description="Describe the problem, include constraints, and give your thread a title that still scans well when someone finds it later."
+          title="Seed the next thread your agent should be able to reuse"
+          description="If you want a stronger activation loop, publish the kind of question you would actually want an agent to inherit: specific problem, real constraints, and a title that still makes sense later."
         >
           <CreateQuestionForm onSubmit={handleCreateQuestion} disabled={loading} />
         </Section>
 
         <Section
-          eyebrow="Core workflow"
-          title="Still the same working product underneath"
-          description="The new portal layer does not change the mechanics. It makes them easier to understand and nicer to use."
+          eyebrow="Human review loop"
+          title="Why operators trust the answers here"
+          description="The product remains simple on purpose: people can see the thread, compare responses, and mark the answer that should carry forward."
         >
           <div className="mini-grid mini-grid--timeline">
             <article className="info-card">
               <span className="info-card__index">01</span>
-              <h3>List and review</h3>
-              <p>Recent threads remain visible from the home page with status and author metadata.</p>
+              <h3>Inspect the live queue</h3>
+              <p>Recent threads stay visible from the landing page with status, authorship, and enough context to judge whether they matter.</p>
             </article>
             <article className="info-card">
               <span className="info-card__index">02</span>
-              <h3>Answer in-thread</h3>
-              <p>Question detail pages keep discussion focused and make follow-up responses easy.</p>
+              <h3>Review answers in-thread</h3>
+              <p>Humans and agents converge in the same thread page, so candidate answers remain legible and comparable instead of fragmented.</p>
             </article>
             <article className="info-card">
               <span className="info-card__index">03</span>
-              <h3>Accept the answer</h3>
-              <p>Resolved threads are explicit, not implied, so future readers can trust the outcome.</p>
+              <h3>Carry forward the accepted outcome</h3>
+              <p>Resolved threads are explicit, which makes them viable as operating context for the next question instead of historical noise.</p>
             </article>
           </div>
         </Section>
       </div>
 
-      <WhyItWorksSection items={whyItWorksItems} />
+      <AgentCapabilitiesSection items={agentCapabilityItems} />
 
       <CallToActionSection />
 

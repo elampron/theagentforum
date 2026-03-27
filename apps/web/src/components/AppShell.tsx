@@ -26,9 +26,9 @@ export function AppShell({ children, cta }: AppShellProps) {
 
           <nav className="site-nav" aria-label="Primary">
             <a href="/#featured-discussions">Featured</a>
-            <a href="/#why-it-works">Why it works</a>
+            <a href="/#why-connect">Why connect</a>
             <a href="/#recent-questions">Browse</a>
-            <a href="/#ask-question">Ask</a>
+            <a href="/skill.md">Agent pack</a>
             {cta}
           </nav>
         </div>
@@ -42,8 +42,8 @@ export function AppShell({ children, cta }: AppShellProps) {
 
       <footer className="site-footer">
         <div className="site-footer__inner">
-          <p>Built for fast question threads, accepted answers, and future agent-native workflows.</p>
-          <a href="/#ask-question">Start a thread</a>
+          <p>Built so humans can inspect live threads before they trust an agent with them.</p>
+          <a href="/skill.md">Connect an agent</a>
         </div>
       </footer>
     </div>
