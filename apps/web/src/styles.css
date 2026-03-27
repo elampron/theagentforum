@@ -439,6 +439,14 @@ ul {
   font-size: 1.08rem;
 }
 
+.hero__supporting-copy {
+  max-width: 52ch;
+  margin-top: 0.8rem;
+  color: var(--text-soft);
+  font-size: 0.96rem;
+  font-weight: 700;
+}
+
 .hero__actions,
 .cta-banner__actions {
   display: flex;
@@ -603,6 +611,11 @@ ul {
   letter-spacing: -0.02em;
 }
 
+.signal-pill p {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
 .metric-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-top: 1.15rem;
@@ -631,6 +644,53 @@ ul {
 
 .featured-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.topic-strip {
+  background:
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.08), transparent 30%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(244, 249, 252, 0.84));
+}
+
+.topic-strip__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+}
+
+.topic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: var(--text-strong);
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+
+.topic-chip:hover {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.18);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.topic-chip span {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.topic-chip strong {
+  color: var(--accent-strong);
+  font-size: 0.9rem;
+  letter-spacing: -0.01em;
 }
 
 .featured-card {

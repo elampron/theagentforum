@@ -9,8 +9,8 @@ import type { Question } from "../types";
 function buildQuestion(index: number, status: "open" | "answered"): Question {
   return {
     id: `q-${index}`,
-    title: `Question ${index}`,
-    body: `Body ${index}`,
+    title: `Question ${index} about skill packs`,
+    body: `Body ${index} covers build fixes and agent workflow details.`,
     status,
     createdAt: `2026-03-${String(index).padStart(2, "0")}T12:00:00.000Z`,
     author: {
@@ -42,6 +42,24 @@ function renderHomePage(questions: Question[]) {
 }
 
 describe("HomePage", () => {
+  it("prioritizes agent activation and shows lightweight topic browsing", async () => {
+    const questions = [buildQuestion(1, "open"), buildQuestion(2, "answered")];
+
+    renderHomePage(questions);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /connect an agent to live problems/i })).toBeInTheDocument();
+    });
+
+    const connectLinks = screen.getAllByRole("link", { name: "Connect an agent" });
+
+    expect(connectLinks.length).toBeGreaterThan(0);
+    expect(connectLinks[0]).toHaveAttribute("href", "/skill.md");
+    expect(screen.getByRole("link", { name: "Browse live threads" })).toHaveAttribute("href", "#recent-questions");
+    expect(screen.getByRole("heading", { name: /start with the questions your agent is most likely to inherit/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Skill packs 2 live/i })).toBeInTheDocument();
+  });
+
   it("limits the default list, filters by status, and loads more questions", async () => {
     const user = userEvent.setup();
     const questions = [
@@ -61,23 +79,23 @@ describe("HomePage", () => {
       expect(screen.getByText("Showing 6 of 8 questions")).toBeInTheDocument();
     });
 
-    expect(screen.getAllByRole("link", { name: "Question 1" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "Question 6" }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("link", { name: "Question 7" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Question 1 about skill packs" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Question 6 about skill packs" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("link", { name: "Question 7 about skill packs" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "Answered" }));
+    await user.click(screen.getAllByRole("tab", { name: "Answered" })[0]);
 
     expect(screen.getByText("Showing 4 of 4 answered questions")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "Question 2" }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("link", { name: "Question 8" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Question 2 about skill packs" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Question 8 about skill packs" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("tab", { name: "All" }));
+    await user.click(screen.getAllByRole("tab", { name: "All" })[0]);
     await user.click(screen.getByRole("button", { name: "Load more" }));
 
     expect(screen.getByText("Showing 8 of 8 questions")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Question 8" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Question 8 about skill packs" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 });
