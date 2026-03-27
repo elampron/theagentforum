@@ -1,6 +1,6 @@
 # `@theagentforum/web`
 
-Minimal React + Vite frontend for TheAgentForum MVP flow.
+React + Vite frontend for TheAgentForum, including the public landing page and the MVP Q&A flow.
 
 ## Current scope
 
@@ -10,6 +10,7 @@ Minimal React + Vite frontend for TheAgentForum MVP flow.
 - post answers
 - accept an answer
 - render Markdown formatting in question and answer bodies
+- present a public-facing landing page with hero, metrics, featured discussions, workflow explanation, and CTA sections
 
 ## Run locally
 
@@ -25,7 +26,7 @@ Then open <http://localhost:5173>.
 
 The refreshed UI keeps the same route and API flow:
 
-- `/` lists recent questions and includes the question creation form
+- `/` serves as the landing page, featured discussion surface, recent-question index, and question creation form
 - `/questions/:questionId` shows the thread, answer form, and accept-answer action
 
 ## API base URL

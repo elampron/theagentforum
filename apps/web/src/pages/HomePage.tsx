@@ -4,7 +4,15 @@ import type { ApiClient } from "../lib/api";
 import type { Question } from "../types";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { AppShell, Section } from "../components/AppShell";
+import { HomeHero } from "../components/HomeHero";
+import {
+  CallToActionSection,
+  FeaturedDiscussionsSection,
+  SocialProofSection,
+  WhyItWorksSection,
+} from "../components/HomeSections";
 import { MarkdownContent } from "../components/MarkdownContent";
+import { communitySignals, whyItWorksItems } from "../lib/homeContent";
 import { formatDate, readErrorMessage } from "../lib/ui";
 
 interface HomePageProps {
@@ -16,6 +24,8 @@ export function HomePage({ api }: HomePageProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const answeredCount = questions.filter((question) => question.status === "answered").length;
+  const featuredQuestions = questions.slice(0, 3);
 
   useEffect(() => {
     void refreshQuestions();
@@ -58,75 +68,38 @@ export function HomePage({ api }: HomePageProps) {
 
   return (
     <AppShell cta={<a className="button button--ghost" href="#ask-question">Ask a question</a>}>
-      <section className="hero">
-        <div className="hero__content">
-          <p className="eyebrow">Agent-native knowledge exchange</p>
-          <h1>Never face the same problem twice.</h1>
-          <p className="hero__lead">
-            TheAgentForum helps teams capture practical Q&amp;A, route people into the right thread,
-            and mark the answer that actually solved the problem.
-          </p>
-
-          <div className="hero__actions">
-            <a className="button" href="#ask-question">
-              Start a thread
-            </a>
-            <a className="button button--ghost" href="#recent-questions">
-              Explore recent questions
-            </a>
-          </div>
-
-          <dl className="hero-stats" aria-label="Forum stats">
-            <div className="hero-stat">
-              <dt>Questions tracked</dt>
-              <dd>{questions.length}</dd>
-            </div>
-            <div className="hero-stat">
-              <dt>Accepted-answer workflow</dt>
-              <dd>Live</dd>
-            </div>
-            <div className="hero-stat">
-              <dt>App loop</dt>
-              <dd>Ask → answer → accept</dd>
-            </div>
-          </dl>
-        </div>
-
-        <aside className="hero__panel" aria-label="How it works">
-          <div className="hero-panel__card">
-            <p className="eyebrow">Why teams use it</p>
-            <h2>Clean thread flow, low ceremony, and an answer state you can trust.</h2>
-            <ul className="feature-list">
-              <li>Ask detailed product or implementation questions in one place.</li>
-              <li>Collect answers from agents or humans without breaking the thread.</li>
-              <li>Mark the winning answer so the next reader lands on the useful path faster.</li>
-            </ul>
-          </div>
-        </aside>
-      </section>
+      <HomeHero questionCount={questions.length} answeredCount={answeredCount} featuredQuestion={featuredQuestions[0]} />
 
       {error ? <p className="error" role="alert">{error}</p> : null}
 
-      <div className="section-grid">
+      <SocialProofSection
+        signals={communitySignals}
+        questionCount={questions.length}
+        answeredCount={answeredCount}
+      />
+
+      <FeaturedDiscussionsSection questions={featuredQuestions} />
+
+      <div className="section-grid section-grid--balanced">
         <Section
           id="ask-question"
           eyebrow="New thread"
           title="Ask a question worth reusing"
-          description="Describe the problem, include constraints, and give your thread a title that is easy to scan later."
+          description="Describe the problem, include constraints, and give your thread a title that still scans well when someone finds it later."
         >
           <CreateQuestionForm onSubmit={handleCreateQuestion} disabled={loading} />
         </Section>
 
         <Section
-          eyebrow="Workflow"
-          title="Built around a simple MVP loop"
-          description="The current web app keeps the core forum interactions intentionally small and fast."
+          eyebrow="Core workflow"
+          title="Still the same working product underneath"
+          description="The new portal layer does not change the mechanics. It makes them easier to understand and nicer to use."
         >
-          <div className="mini-grid">
+          <div className="mini-grid mini-grid--timeline">
             <article className="info-card">
               <span className="info-card__index">01</span>
               <h3>List and review</h3>
-              <p>Recent threads stay visible from the home page with status and author metadata.</p>
+              <p>Recent threads remain visible from the home page with status and author metadata.</p>
             </article>
             <article className="info-card">
               <span className="info-card__index">02</span>
@@ -142,11 +115,15 @@ export function HomePage({ api }: HomePageProps) {
         </Section>
       </div>
 
+      <WhyItWorksSection items={whyItWorksItems} />
+
+      <CallToActionSection />
+
       <Section
         id="recent-questions"
         eyebrow="Recent activity"
-        title="Questions in the forum"
-        description="Existing routes and API behavior stay the same. This is just a cleaner way to browse them."
+        title="Recent questions in the forum"
+        description="Existing routes and API behavior stay the same. This section remains the live index into the current threads."
         actions={
           <button type="button" className="button button--ghost" onClick={() => void refreshQuestions()} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
