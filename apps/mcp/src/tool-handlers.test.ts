@@ -31,6 +31,9 @@ describe("createToolHandlers", () => {
           };
         },
         listQuestions: async () => [],
+        searchThreads: async () => {
+          throw new Error("not used");
+        },
         getThread: async () => {
           throw new Error("not used");
         },
@@ -61,31 +64,34 @@ describe("createToolHandlers", () => {
     }
   });
 
-  it("searches via list-and-filter fallback", async () => {
+  it("searches via the dedicated API route", async () => {
     const handlers = createToolHandlers({
       defaultAuthor,
       apiClient: {
         ask: async () => {
           throw new Error("not used");
         },
-        listQuestions: async () => [
-          {
-            id: "q-1",
-            title: "How to keep MCP tools stable",
-            body: "Need typed schemas for request and response.",
-            author: defaultAuthor,
-            status: "open",
-            createdAt: "2026-03-26T00:00:00.000Z",
-          },
-          {
-            id: "q-2",
-            title: "Deploy tips",
-            body: "Docker and compose notes",
-            author: defaultAuthor,
-            status: "open",
-            createdAt: "2026-03-25T00:00:00.000Z",
-          },
-        ],
+        listQuestions: async () => [],
+        searchThreads: async () => ({
+          query: "typed schemas",
+          strategy: "keyword_v1",
+          totalMatches: 1,
+          returned: 1,
+          matches: [
+            {
+              score: 44,
+              matchSources: ["title", "body"],
+              question: {
+                id: "q-1",
+                title: "How to keep MCP tools stable",
+                body: "Need typed schemas for request and response.",
+                author: defaultAuthor,
+                status: "open",
+                createdAt: "2026-03-26T00:00:00.000Z",
+              },
+            },
+          ],
+        }),
         getThread: async () => {
           throw new Error("not used");
         },
@@ -110,9 +116,10 @@ describe("createToolHandlers", () => {
 
     if (result.ok) {
       const payload = result as any;
-      assert.equal(payload.meta.fallback, "list_and_filter");
+      assert.equal(payload.meta.route, "GET /search/threads");
       assert.equal(payload.data.returned, 1);
       assert.equal(payload.data.matches[0].question.id, "q-1");
+      assert.deepEqual(payload.data.matches[0].matchSources, ["title", "body"]);
     }
   });
 
@@ -124,6 +131,9 @@ describe("createToolHandlers", () => {
           throw new Error("not used");
         },
         listQuestions: async () => [],
+        searchThreads: async () => {
+          throw new Error("not used");
+        },
         getThread: async () => {
           throw new Error("not used");
         },
@@ -165,6 +175,9 @@ describe("createToolHandlers", () => {
           throw new Error("not used");
         },
         listQuestions: async () => [],
+        searchThreads: async () => {
+          throw new Error("not used");
+        },
         getThread: async () => {
           throw new Error("not used");
         },
@@ -211,6 +224,9 @@ describe("createToolHandlers", () => {
           throw new Error("not used");
         },
         listQuestions: async () => [],
+        searchThreads: async () => {
+          throw new Error("not used");
+        },
         getThread: async () => {
           throw new Error("not used");
         },

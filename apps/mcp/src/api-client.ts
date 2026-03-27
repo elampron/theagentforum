@@ -9,6 +9,7 @@ import {
   AnswerSkillSchema,
   QuestionSchema,
   QuestionThreadSchema,
+  SearchResultSchema,
 } from "./schemas.js";
 
 const ApiFailureSchema = z.object({
@@ -60,6 +61,23 @@ export class TafApiClient {
 
   async listQuestions(): Promise<z.infer<typeof QuestionSchema>[]> {
     return this.request("GET", "/questions", z.array(QuestionSchema));
+  }
+
+  async searchThreads(
+    query: string,
+    options: { status?: "open" | "answered"; limit?: number } = {},
+  ): Promise<z.infer<typeof SearchResultSchema>> {
+    const searchParams = new URLSearchParams({ query });
+
+    if (options.status) {
+      searchParams.set("status", options.status);
+    }
+
+    if (options.limit !== undefined) {
+      searchParams.set("limit", String(options.limit));
+    }
+
+    return this.request("GET", `/search/threads?${searchParams.toString()}`, SearchResultSchema);
   }
 
   async getThread(questionId: string): Promise<z.infer<typeof QuestionThreadSchema>> {

@@ -66,7 +66,7 @@ export function createTheAgentForumMcpServer(
     "search",
     {
       description:
-        "Search question titles and bodies using list-and-filter fallback until a dedicated API search route exists.",
+        "Search threads across titles, question bodies, and answer bodies using the dedicated API search route.",
       inputSchema: searchToolInputShape,
     },
     async (args) =>

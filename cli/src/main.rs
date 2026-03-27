@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use reqwest::Client;
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::process::exit;
@@ -19,7 +19,7 @@ struct Cli {
 enum Commands {
     /// Check API health
     Health,
-    
+
     /// Create a new question
     Ask {
         /// The title of the question
@@ -30,7 +30,7 @@ enum Commands {
         #[arg(long)]
         description: Option<String>,
     },
-    
+
     /// List questions
     List {
         #[arg(long)]
@@ -38,20 +38,29 @@ enum Commands {
         #[arg(long)]
         limit: Option<usize>,
     },
-    
-    /// Show a full thread
-    Question {
-        id: String,
+
+    /// Search threads
+    Search {
+        query: String,
+
+        #[arg(long)]
+        status: Option<String>,
+
+        #[arg(long)]
+        limit: Option<usize>,
     },
-    
+
+    /// Show a full thread
+    Question { id: String },
+
     /// Add an answer to a question
     Answer {
         id: String,
-        
+
         #[arg(long)]
         body: String,
     },
-    
+
     /// Accept a specific answer
     Accept {
         question_id: String,
@@ -133,6 +142,24 @@ struct AnswerSkill {
     mime_type: Option<String>,
     #[serde(rename = "createdAt")]
     created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ThreadSearchMatch {
+    score: f64,
+    #[serde(rename = "matchSources")]
+    match_sources: Vec<String>,
+    question: Question,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ThreadSearchResult {
+    query: String,
+    strategy: String,
+    #[serde(rename = "totalMatches")]
+    total_matches: usize,
+    returned: usize,
+    matches: Vec<ThreadSearchMatch>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -235,7 +262,10 @@ async fn main() {
     match cli.command {
         Commands::Health => {
             let url = format!("{}/health", base_url);
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let _: serde_json::Value = handle_response(res, cli.json).await;
             if !cli.json {
                 println!("API is healthy");
@@ -248,26 +278,37 @@ async fn main() {
                 body: description.unwrap_or_default(),
                 author: default_actor(),
             };
-            let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client
+                .post(&url)
+                .json(&input)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
             let question: Question = handle_response(res, cli.json).await;
             if !cli.json {
                 println!("Question created! ID: {}", question.id);
             }
         }
         Commands::List { status, limit } => {
-            // Note: filters not yet fully supported by the API query strings, 
+            // Note: filters not yet fully supported by the API query strings,
             // but we add them to CLI for future compatibility.
             let url = format!("{}/questions", base_url);
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let mut questions: Vec<Question> = handle_response(res, false).await;
-            
+
             if let Some(s) = status {
                 questions.retain(|q| q.status == s);
             }
             if let Some(l) = limit {
                 questions.truncate(l);
             }
-            
+
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&questions).unwrap());
             } else {
@@ -275,33 +316,91 @@ async fn main() {
                     println!("No questions found.");
                 } else {
                     for q in questions {
-                        println!("- [{}] {} (by {}) - {}", q.status, q.title, q.author.handle, q.id);
+                        println!(
+                            "- [{}] {} (by {}) - {}",
+                            q.status, q.title, q.author.handle, q.id
+                        );
+                    }
+                }
+            }
+        }
+        Commands::Search {
+            query,
+            status,
+            limit,
+        } => {
+            let mut url = Url::parse(&format!("{}/search/threads", base_url)).unwrap_or_else(|e| {
+                eprintln!("Invalid API base URL: {}", e);
+                exit(1);
+            });
+
+            {
+                let mut pairs = url.query_pairs_mut();
+                pairs.append_pair("query", &query);
+                if let Some(ref status_value) = status {
+                    pairs.append_pair("status", status_value);
+                }
+                if let Some(limit_value) = limit {
+                    pairs.append_pair("limit", &limit_value.to_string());
+                }
+            }
+
+            let res = client.get(url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
+            let result: ThreadSearchResult = handle_response(res, cli.json).await;
+
+            if !cli.json {
+                if result.matches.is_empty() {
+                    println!("No thread matches found for '{}'.", result.query);
+                } else {
+                    println!("{} matches for '{}':", result.total_matches, result.query);
+                    for item in result.matches {
+                        println!(
+                            "- [{}] {} ({}) - matched in {} - {}",
+                            item.question.status,
+                            item.question.title,
+                            item.question.id,
+                            item.match_sources.join(", "),
+                            item.question.author.handle
+                        );
                     }
                 }
             }
         }
         Commands::Question { id } => {
             let url = format!("{}/questions/{}", base_url, id);
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let thread: QuestionThread = handle_response(res, cli.json).await;
-            
+
             if !cli.json {
-                println!("Question: {} (ID: {})", thread.question.title, thread.question.id);
+                println!(
+                    "Question: {} (ID: {})",
+                    thread.question.title, thread.question.id
+                );
                 println!("Author: {}", thread.question.author.handle);
                 println!("Status: {}", thread.question.status);
                 println!("\n{}\n", thread.question.body);
-                
+
                 if thread.answers.is_empty() {
                     println!("No answers yet.");
                 } else {
                     println!("--- Answers ---");
                     for ans in thread.answers {
-                        let accepted = if thread.question.accepted_answer_id.as_deref() == Some(&ans.id) {
-                            "[ACCEPTED] "
-                        } else {
-                            ""
-                        };
-                        println!("{}{} (by {}) - ID: {}", accepted, ans.body, ans.author.handle, ans.id);
+                        let accepted =
+                            if thread.question.accepted_answer_id.as_deref() == Some(&ans.id) {
+                                "[ACCEPTED] "
+                            } else {
+                                ""
+                            };
+                        println!(
+                            "{}{} (by {}) - ID: {}",
+                            accepted, ans.body, ans.author.handle, ans.id
+                        );
                         println!("-----------------");
                     }
                 }
@@ -313,20 +412,43 @@ async fn main() {
                 body,
                 author: default_actor(),
             };
-            let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client
+                .post(&url)
+                .json(&input)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
             let thread: QuestionThread = handle_response(res, cli.json).await;
-            
+
             if !cli.json {
-                println!("Answer added successfully to question {}!", thread.question.id);
+                println!(
+                    "Answer added successfully to question {}!",
+                    thread.question.id
+                );
             }
         }
-        Commands::Accept { question_id, answer_id } => {
-            let url = format!("{}/questions/{}/accept/{}", base_url, question_id, answer_id);
-            let res = client.post(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+        Commands::Accept {
+            question_id,
+            answer_id,
+        } => {
+            let url = format!(
+                "{}/questions/{}/accept/{}",
+                base_url, question_id, answer_id
+            );
+            let res = client.post(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let thread: QuestionThread = handle_response(res, cli.json).await;
-            
+
             if !cli.json {
-                println!("Answer {} accepted for question {}!", answer_id, thread.question.id);
+                println!(
+                    "Answer {} accepted for question {}!",
+                    answer_id, thread.question.id
+                );
             }
         }
         Commands::AttachSkill {

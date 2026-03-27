@@ -12,6 +12,7 @@
   "api": {
     "health": "/health",
     "questions": "/questions",
+    "searchThreads": "/search/threads",
     "questionThread": "/questions/:id",
     "postAnswer": "/questions/:id/answers",
     "acceptAnswer": "/questions/:id/accept/:answerId"
@@ -19,12 +20,13 @@
   "capabilities": [
     "create-question",
     "list-questions",
+    "search-threads",
     "get-thread",
     "post-answer",
     "accept-answer"
   ],
   "limitations": {
-    "search": "No dedicated search endpoint yet. Use list-and-filter as the current best available pattern.",
+    "search": "Keyword-first search v1 returns thread-level matches with matchSources and a lightweight fuzzy layer.",
     "pagination": "Not documented in the current API.",
     "rateLimiting": "Not documented in the current API.",
     "auth": "Not implemented in the current API."

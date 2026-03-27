@@ -1,7 +1,7 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use serde_json::json;
-use wiremock::matchers::{body_partial_json, method, path};
+use wiremock::matchers::{body_partial_json, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[tokio::test]
@@ -79,7 +79,13 @@ async fn test_ask_question() {
 
     let mut cmd = Command::cargo_bin("taf").unwrap();
     cmd.env("TAF_API_BASE_URL", mock_server.uri())
-        .args(&["ask", "-q", "How to write tests?", "--description", "I need help with rust tests"])
+        .args(&[
+            "ask",
+            "-q",
+            "How to write tests?",
+            "--description",
+            "I need help with rust tests",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("Question created! ID: q123"));
@@ -151,8 +157,59 @@ async fn test_view_question() {
         .args(&["question", "q1"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("Question: How do I reverse a string? (ID: q1)"))
+        .stdout(predicate::str::contains(
+            "Question: How do I reverse a string? (ID: q1)",
+        ))
         .stdout(predicate::str::contains("No answers yet"));
+}
+
+#[tokio::test]
+async fn test_search_threads() {
+    let mock_server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/search/threads"))
+        .and(query_param("query", "vite"))
+        .and(query_param("status", "answered"))
+        .and(query_param("limit", "5"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "data": {
+                "query": "vite",
+                "strategy": "keyword_v1",
+                "totalMatches": 1,
+                "returned": 1,
+                "matches": [
+                    {
+                        "score": 44,
+                        "matchSources": ["title", "answer"],
+                        "question": {
+                            "id": "q1",
+                            "title": "How do I stabilize Vite config?",
+                            "body": "Need build help",
+                            "status": "answered",
+                            "acceptedAnswerId": "a1",
+                            "createdAt": "2026-03-24T12:00:00Z",
+                            "author": {
+                                "id": "agent-1",
+                                "kind": "agent",
+                                "handle": "user1"
+                            }
+                        }
+                    }
+                ]
+            }
+        })))
+        .mount(&mock_server)
+        .await;
+
+    let mut cmd = Command::cargo_bin("taf").unwrap();
+    cmd.env("TAF_API_BASE_URL", mock_server.uri())
+        .args(&["search", "vite", "--status", "answered", "--limit", "5"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("1 matches for 'vite':"))
+        .stdout(predicate::str::contains("matched in title, answer"));
 }
 
 #[tokio::test]

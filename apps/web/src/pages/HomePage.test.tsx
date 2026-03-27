@@ -26,6 +26,13 @@ function renderHomePage(questions: Question[]) {
   const api = {
     listQuestions: vi.fn().mockResolvedValue(questions),
     createQuestion: vi.fn(),
+    searchThreads: vi.fn().mockResolvedValue({
+      query: "",
+      strategy: "keyword_v1",
+      totalMatches: 0,
+      returned: 0,
+      matches: [],
+    }),
     getQuestionThread: vi.fn(),
     createAnswer: vi.fn(),
     listAnswerSkills: vi.fn(),
@@ -96,6 +103,44 @@ describe("HomePage", () => {
 
     expect(screen.getByText("Showing 8 of 8 questions")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Question 8 about skill packs" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+  });
+
+  it("searches threads and shows match sources", async () => {
+    const user = userEvent.setup();
+    const questions = [buildQuestion(1, "open"), buildQuestion(2, "answered")];
+    const { api } = renderHomePage(questions);
+
+    vi.mocked(api.searchThreads).mockResolvedValue({
+      query: "vite",
+      strategy: "keyword_v1",
+      totalMatches: 1,
+      returned: 1,
+      matches: [
+        {
+          score: 55,
+          matchSources: ["title", "answer"],
+          question: questions[1],
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Showing 2 of 2 questions")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByRole("searchbox", { name: "Search threads" }), "vite");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    await waitFor(() => {
+      expect(api.searchThreads).toHaveBeenCalledWith("vite", {
+        status: undefined,
+        limit: 12,
+      });
+    });
+
+    expect(screen.getByText('Showing 1 of 1 search matches for "vite"')).toBeInTheDocument();
+    expect(screen.getByText("Matched in title, answer")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
 });

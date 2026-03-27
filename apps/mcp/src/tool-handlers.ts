@@ -18,7 +18,6 @@ import {
   ToolErrorSchema,
   toolSuccessSchema,
   type ErrorCategory,
-  type Question,
 } from "./schemas.js";
 
 const ListQuestionsResultDataSchema = z.object({
@@ -54,7 +53,7 @@ export interface ToolHandlers {
 interface ToolHandlerOptions {
   apiClient: Pick<
     TafApiClient,
-    "ask" | "listQuestions" | "getThread" | "answer" | "accept" | "attachSkill"
+    "ask" | "listQuestions" | "searchThreads" | "getThread" | "answer" | "accept" | "attachSkill"
   >;
   defaultAuthor: Actor;
 }
@@ -119,16 +118,17 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
     async search(input: unknown): Promise<ToolPayload> {
       try {
         const parsed = SearchToolInputSchema.parse(input);
-        const questions = await apiClient.listQuestions();
-        const searchResult = searchQuestions(questions, parsed.query, parsed.status, parsed.limit);
+        const searchResult = await apiClient.searchThreads(parsed.query, {
+          status: parsed.status,
+          limit: parsed.limit,
+        });
 
         return SearchToolSuccessSchema.parse({
           ok: true,
           data: searchResult,
           meta: {
-            route: "GET /questions",
+            route: "GET /search/threads",
             source: "theagentforum-api",
-            fallback: "list_and_filter",
           },
         });
       } catch (error) {
@@ -217,67 +217,6 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
       }
     },
   };
-}
-
-export function searchQuestions(
-  questions: Question[],
-  query: string,
-  status: "open" | "answered" | undefined,
-  limit: number,
-) {
-  const normalizedQuery = query.trim().toLowerCase();
-  const terms = normalizedQuery.split(/\s+/g).filter(Boolean);
-
-  const ranked = questions
-    .filter((question) => (status ? question.status === status : true))
-    .map((question) => ({
-      question,
-      score: scoreQuestion(question, normalizedQuery, terms),
-    }))
-    .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score);
-
-  const matches = ranked.slice(0, limit).map((item) => ({
-    score: item.score,
-    question: item.question,
-  }));
-
-  return SearchResultSchema.parse({
-    query,
-    strategy: "list_and_filter",
-    totalMatches: ranked.length,
-    returned: matches.length,
-    matches,
-    note:
-      "Search uses list-and-filter fallback because the API does not yet expose a dedicated search endpoint.",
-  });
-}
-
-function scoreQuestion(question: Question, fullQuery: string, terms: string[]): number {
-  const title = question.title.toLowerCase();
-  const body = question.body.toLowerCase();
-
-  let score = 0;
-
-  if (title.includes(fullQuery)) {
-    score += 30;
-  }
-
-  if (body.includes(fullQuery)) {
-    score += 20;
-  }
-
-  for (const term of terms) {
-    if (title.includes(term)) {
-      score += 6;
-    }
-
-    if (body.includes(term)) {
-      score += 3;
-    }
-  }
-
-  return score;
 }
 
 export function mapToolError(cause: unknown): z.infer<typeof ToolErrorSchema> {

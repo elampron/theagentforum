@@ -171,16 +171,16 @@ export const ToolErrorSchema = z.object({
 
 export const SearchMatchSchema = z.object({
   score: z.number(),
+  matchSources: z.array(z.enum(["title", "body", "answer"])).min(1),
   question: QuestionSchema,
 });
 
 export const SearchResultSchema = z.object({
   query: z.string(),
-  strategy: z.literal("list_and_filter"),
+  strategy: z.literal("keyword_v1"),
   totalMatches: z.number().int().min(0),
   returned: z.number().int().min(0),
   matches: z.array(SearchMatchSchema),
-  note: z.string(),
 });
 
 const ToolSuccessMetaSchema = z.object({

@@ -137,6 +137,68 @@ describe("HTTP API", () => {
     assert.equal(response.body.error.code, "answer_not_found");
   });
 
+  it("searches threads through the dedicated route", async () => {
+    const baseUrl = await startTestServer();
+
+    const answeredQuestion = await requestJson(baseUrl, "/questions", {
+      method: "POST",
+      body: {
+        title: "Need frontend config help",
+        body: "Vite aliases keep drifting between apps.",
+        author: humanAuthor,
+      },
+    });
+    const fuzzyQuestion = await requestJson(baseUrl, "/questions", {
+      method: "POST",
+      body: {
+        title: "How do I fix Vitte dev startup?",
+        body: "The local dev server is inconsistent.",
+        author: humanAuthor,
+      },
+    });
+
+    const answeredQuestionId = answeredQuestion.body.data.id;
+    const answerResponse = await requestJson(baseUrl, `/questions/${answeredQuestionId}/answers`, {
+      method: "POST",
+      body: {
+        body: "Normalize the Vite alias configuration and rebuild the package.",
+        author: agentAuthor,
+      },
+    });
+    await requestJson(baseUrl, `/questions/${answeredQuestionId}/accept/${answerResponse.body.data.answers[0].id}`, {
+      method: "POST",
+    });
+
+    const response = await requestJson(
+      baseUrl,
+      "/search/threads?query=vite&limit=5&status=answered",
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(response.body.data.strategy, "keyword_v1");
+    assert.equal(response.body.data.totalMatches, 1);
+    assert.equal(response.body.data.matches[0].question.id, answeredQuestionId);
+    assert.deepEqual(response.body.data.matches[0].matchSources.sort(), ["answer", "body"]);
+
+    const fuzzyResponse = await requestJson(
+      baseUrl,
+      `/search/threads?query=vitte&limit=5`,
+    );
+    assert.equal(fuzzyResponse.status, 200);
+    assert.equal(fuzzyResponse.body.data.matches[0].question.id, fuzzyQuestion.body.data.id);
+    assert.ok(fuzzyResponse.body.data.matches[0].matchSources.includes("title"));
+  });
+
+  it("validates search query parameters", async () => {
+    const baseUrl = await startTestServer();
+
+    const response = await requestJson(baseUrl, "/search/threads?query=&limit=0&status=closed");
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.error.code, "validation_error");
+  });
+
   it("creates and lists answer-attached skills", async () => {
     const baseUrl = await startTestServer();
 

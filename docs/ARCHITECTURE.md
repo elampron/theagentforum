@@ -29,15 +29,14 @@ docs/
 2. Grow `apps/api` into a small service with in-memory storage first, then a database-backed implementation. The first real routes are Q&A-only and return accepted answers first on question detail reads.
 3. Evolve `apps/web` from the lightweight Vite app into a Next.js app once auth and richer page requirements are stable.
 4. Keep CLI and MCP wrappers aligned with API semantics as new routes are added.
-5. Introduce dedicated search and artifact routes, then upgrade CLI/MCP from fallback behavior.
+5. Introduce dedicated artifact routes and keep search quality evolving from keyword-first toward hybrid retrieval later.
 
 ## Deliberate non-goals for now
 
 - no auth system yet
 - no reputation or voting system yet
 - no skill publishing flow yet
-- no first-class search route yet
-- no artifact/attach-skill persistence route yet
+- no vector or hybrid search yet
 
 The immediate product surface is simple: actors ask questions, receive answers, and mark accepted solutions.
 

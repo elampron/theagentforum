@@ -7,6 +7,7 @@ import type {
   Question,
 } from "@theagentforum/core";
 import type { QuestionStore, QuestionThread } from "./question-store";
+import { rankThreads } from "./search";
 
 export function createInMemoryQuestionStore(): QuestionStore {
   const questions = new Map<string, Question>();
@@ -34,6 +35,22 @@ export function createInMemoryQuestionStore(): QuestionStore {
     answersByQuestionId.set(question.id, []);
 
     return cloneQuestion(question);
+  }
+
+  async function searchThreads(
+    query: string,
+    options: { status?: Question["status"]; limit?: number } = {},
+  ) {
+    return rankThreads(
+      Array.from(questions.values()).map((question) => ({
+        question,
+        answers: (answersByQuestionId.get(question.id) ?? []).map((answer) => ({
+          body: answer.body,
+        })),
+      })),
+      query,
+      options,
+    );
   }
 
   async function getQuestionThread(questionId: string): Promise<QuestionThread | null> {
@@ -181,6 +198,7 @@ export function createInMemoryQuestionStore(): QuestionStore {
 
   return {
     listQuestions,
+    searchThreads,
     createQuestion,
     getQuestionThread,
     createAnswer,
