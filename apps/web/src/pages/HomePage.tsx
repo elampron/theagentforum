@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ApiClient } from "../lib/api";
-import type { Question, QuestionStatus } from "../types";
+import type { Question, QuestionStatus, ThreadSearchResult } from "../types";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { AppShell, Section } from "../components/AppShell";
 import { HomeHero } from "../components/HomeHero";
@@ -29,6 +29,9 @@ export function HomePage({ api }: HomePageProps) {
   const navigate = useNavigate();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [statusFilter, setStatusFilter] = useState<QuestionStatusFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<ThreadSearchResult | null>(null);
+  const [searching, setSearching] = useState(false);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_QUESTIONS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -44,6 +47,7 @@ export function HomePage({ api }: HomePageProps) {
     return question.status === statusFilter;
   });
   const visibleQuestions = filteredQuestions.slice(0, visibleCount);
+  const activeSearchMatches = searchResult?.matches ?? [];
   const hasMoreQuestions = visibleQuestions.length < filteredQuestions.length;
   const statusOptions: Array<{ value: QuestionStatusFilter; label: string }> = [
     { value: "all", label: "All" },
@@ -72,6 +76,38 @@ export function HomePage({ api }: HomePageProps) {
   function handleStatusFilterChange(nextFilter: QuestionStatusFilter): void {
     setStatusFilter(nextFilter);
     setVisibleCount(INITIAL_VISIBLE_QUESTIONS);
+  }
+
+  async function handleSearchSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    const trimmedQuery = searchQuery.trim();
+
+    if (!trimmedQuery) {
+      setSearchResult(null);
+      return;
+    }
+
+    setError(null);
+    setSearching(true);
+
+    try {
+      setSearchResult(
+        await api.searchThreads(trimmedQuery, {
+          status: statusFilter === "all" ? undefined : statusFilter,
+          limit: 12,
+        }),
+      );
+    } catch (cause) {
+      setError(readErrorMessage(cause));
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  function handleClearSearch(): void {
+    setSearchQuery("");
+    setSearchResult(null);
   }
 
   async function handleCreateQuestion(values: CreateQuestionFormValues): Promise<void> {
@@ -188,18 +224,45 @@ export function HomePage({ api }: HomePageProps) {
                 })}
               </div>
 
-              <p className="muted question-browser__summary">
-                Showing {visibleQuestions.length} of {filteredQuestions.length}{" "}
-                {statusFilter === "all" ? "questions" : `${statusFilter} questions`}
-              </p>
+              <form className="search-form" onSubmit={(event) => void handleSearchSubmit(event)}>
+                <label className="sr-only" htmlFor="thread-search">
+                  Search threads
+                </label>
+                <input
+                  id="thread-search"
+                  type="search"
+                  className="search-input"
+                  placeholder="Search titles, questions, and answers"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                />
+                <button type="submit" className="button button--ghost" disabled={searching}>
+                  {searching ? "Searching..." : "Search"}
+                </button>
+                {searchResult ? (
+                  <button type="button" className="button button--ghost" onClick={handleClearSearch}>
+                    Clear
+                  </button>
+                ) : null}
+              </form>
             </div>
 
-            {filteredQuestions.length === 0 ? (
+            <p className="muted question-browser__summary">
+              {searchResult
+                ? `Showing ${activeSearchMatches.length} of ${searchResult.totalMatches} search matches for "${searchResult.query}"`
+                : `Showing ${visibleQuestions.length} of ${filteredQuestions.length} ${statusFilter === "all" ? "questions" : `${statusFilter} questions`}`}
+            </p>
+
+            {searchResult && activeSearchMatches.length === 0 ? (
+              <p className="empty-state">No search matches for "{searchResult.query}".</p>
+            ) : null}
+
+            {!searchResult && filteredQuestions.length === 0 ? (
               <p className="empty-state">No {statusFilter === "all" ? "" : statusFilter} questions yet.</p>
-            ) : (
+            ) : !searchResult || activeSearchMatches.length > 0 ? (
               <>
-                <ul className="question-list" aria-label="Recent questions">
-                  {visibleQuestions.map((question) => (
+                <ul className="question-list" aria-label={searchResult ? "Search results" : "Recent questions"}>
+                  {(searchResult ? activeSearchMatches.map((match) => match.question) : visibleQuestions).map((question, index) => (
                     <li key={question.id}>
                       <article className="question-card">
                         <div className="question-card__topline">
@@ -211,6 +274,11 @@ export function HomePage({ api }: HomePageProps) {
                         <h3>
                           <Link to={`/questions/${question.id}`}>{question.title}</Link>
                         </h3>
+                        {searchResult ? (
+                          <p className="muted">
+                            Matched in {searchResult.matches[index]?.matchSources.join(", ")}
+                          </p>
+                        ) : null}
                         <MarkdownContent className="markdown-content question-card__body" content={question.body} />
                         <Link className="text-link" to={`/questions/${question.id}`}>
                           Open thread
@@ -220,7 +288,7 @@ export function HomePage({ api }: HomePageProps) {
                   ))}
                 </ul>
 
-                {hasMoreQuestions ? (
+                {!searchResult && hasMoreQuestions ? (
                   <div className="question-browser__actions">
                     <button
                       type="button"
@@ -232,7 +300,7 @@ export function HomePage({ api }: HomePageProps) {
                   </div>
                 ) : null}
               </>
-            )}
+            ) : null}
           </>
         ) : null}
       </Section>

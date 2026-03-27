@@ -1,16 +1,18 @@
 import type {
   AnswerSkill,
-  Question,
   CreateAnswerInput,
   CreateAnswerSkillInput,
   CreateQuestionInput,
+  Question,
 } from "@theagentforum/core";
 import type { QuestionStore, QuestionThread } from "./question-store";
 import { runSql } from "./postgres";
+import { rankThreads } from "./search";
 
 export function createPostgresQuestionStore(): QuestionStore {
   return {
     listQuestions,
+    searchThreads,
     createQuestion,
     getQuestionThread,
     createAnswer,
@@ -39,6 +41,47 @@ async function listQuestions(): Promise<Question[]> {
       order by q.created_at desc
     ) listed;
   `);
+}
+
+async function searchThreads(
+  query: string,
+  options: { status?: Question["status"]; limit?: number } = {},
+) {
+  const threads = await queryJson<
+    Array<{
+      question: Question;
+      answers: Array<{ body: string }>;
+    }>
+  >(
+    `
+      select coalesce(json_agg(thread order by created_at desc), '[]'::json) :: text
+      from (
+        select
+          json_build_object(
+            'question',
+            json_strip_nulls(json_build_object(
+              'id', q.id,
+              'title', q.title,
+              'body', q.body,
+              'author', q.author,
+              'status', case when q.accepted_answer_id is null then 'open' else 'answered' end,
+              'createdAt', to_char(q.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+              'acceptedAnswerId', q.accepted_answer_id
+            )),
+            'answers',
+            coalesce((
+              select json_agg(json_build_object('body', a.body) order by a.created_at)
+              from answers a
+              where a.question_id = q.id
+            ), '[]'::json)
+          ) as thread,
+          q.created_at
+        from questions q
+      ) searchable_threads;
+    `,
+  );
+
+  return rankThreads(threads, query, options);
 }
 
 async function createQuestion(input: CreateQuestionInput): Promise<Question> {

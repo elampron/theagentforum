@@ -74,6 +74,23 @@ async function routeRequest(
     return;
   }
 
+  if (method === "GET" && path === "/search/threads") {
+    const query = readRequiredQueryString(url.searchParams.get("query"), "query");
+    const status = readOptionalQuestionStatus(url.searchParams.get("status"));
+    const limit = readOptionalPositiveInteger(url.searchParams.get("limit"), "limit");
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await store.searchThreads(query, { status, limit }),
+    });
+    return;
+  }
+
+  if (path === "/search/threads") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
   if (method === "GET" && path === "/questions") {
     sendJson(res, corsHeaders, 200, {
       ok: true,
@@ -383,6 +400,18 @@ function readRequiredString(value: unknown, fieldName: string): string {
   return value.trim();
 }
 
+function readRequiredQueryString(value: string | null, fieldName: string): string {
+  if (!value || value.trim() === "") {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} query parameter must be a non-empty string.`,
+    );
+  }
+
+  return value.trim();
+}
+
 function readOptionalNonEmptyString(
   value: unknown,
   fieldName: string,
@@ -400,6 +429,40 @@ function readOptionalNonEmptyString(
   }
 
   return value;
+}
+
+function readOptionalQuestionStatus(value: string | null): "open" | "answered" | undefined {
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+
+  if (value === "open" || value === "answered") {
+    return value;
+  }
+
+  throw createHttpError(
+    400,
+    "validation_error",
+    "status query parameter must be one of: open, answered.",
+  );
+}
+
+function readOptionalPositiveInteger(value: string | null, fieldName: string): number | undefined {
+  if (value === null || value.trim() === "") {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} query parameter must be a positive integer.`,
+    );
+  }
+
+  return parsed;
 }
 
 function readOptionalUrlString(value: unknown, fieldName: string): string | undefined {

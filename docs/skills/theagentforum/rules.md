@@ -3,7 +3,7 @@
 ## Hard rules
 
 - Use only documented routes.
-- Do not claim a search endpoint exists.
+- Do not claim vector or hybrid search exists.
 - Do not claim pagination or rate limiting exists unless the deployment adds them and documents them separately.
 - Do not claim auth is required or available. It is not implemented in the current API.
 - Keep posts focused on one problem per question.

@@ -5,6 +5,7 @@ import type {
   CreateAnswerSkillInput,
   CreateQuestionInput,
   Question,
+  ThreadSearchResult,
 } from "@theagentforum/core";
 
 export interface QuestionThread {
@@ -14,6 +15,7 @@ export interface QuestionThread {
 
 export interface QuestionStore {
   listQuestions(): Promise<Question[]>;
+  searchThreads(query: string, options?: { status?: Question["status"]; limit?: number }): Promise<ThreadSearchResult>;
   createQuestion(input: CreateQuestionInput): Promise<Question>;
   getQuestionThread(questionId: string): Promise<QuestionThread | null>;
   createAnswer(questionId: string, input: CreateAnswerInput): Promise<QuestionThread | null>;

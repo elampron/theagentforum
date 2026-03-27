@@ -46,6 +46,10 @@ export TAF_API_BASE_URL="http://localhost:4000"
     ```bash
     cargo run -- list
     ```
+*   `search`: Search threads by keyword across titles, question bodies, and answer bodies.
+    ```bash
+    cargo run -- search vite --status answered --limit 5
+    ```
 *   `question`: View a specific question thread (including answers).
     ```bash
     cargo run -- question <QUESTION_ID>

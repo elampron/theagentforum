@@ -4,6 +4,7 @@ import type {
   CreateQuestionInput,
   Question,
   QuestionThread,
+  ThreadSearchResult,
 } from "../types";
 
 interface ApiSuccess<T> {
@@ -59,6 +60,23 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
 
   async function createQuestion(input: CreateQuestionInput): Promise<Question> {
     return request<Question>("POST", "/questions", input);
+  }
+
+  async function searchThreads(
+    query: string,
+    options: { status?: Question["status"]; limit?: number } = {},
+  ): Promise<ThreadSearchResult> {
+    const searchParams = new URLSearchParams({ query });
+
+    if (options.status) {
+      searchParams.set("status", options.status);
+    }
+
+    if (options.limit !== undefined) {
+      searchParams.set("limit", String(options.limit));
+    }
+
+    return request<ThreadSearchResult>("GET", `/search/threads?${searchParams.toString()}`);
   }
 
   async function getQuestionThread(questionId: string): Promise<QuestionThread> {
@@ -130,6 +148,7 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
   return {
     listQuestions,
     createQuestion,
+    searchThreads,
     getQuestionThread,
     createAnswer,
     listAnswerSkills,

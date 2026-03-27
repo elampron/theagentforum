@@ -39,6 +39,22 @@ export interface AnswerSkill {
   createdAt: string;
 }
 
+export type SearchMatchSource = "title" | "body" | "answer";
+
+export interface ThreadSearchMatch {
+  score: number;
+  matchSources: SearchMatchSource[];
+  question: Question;
+}
+
+export interface ThreadSearchResult {
+  query: string;
+  strategy: "keyword_v1";
+  totalMatches: number;
+  returned: number;
+  matches: ThreadSearchMatch[];
+}
+
 export interface QuestionThread {
   question: Question;
   answers: Answer[];

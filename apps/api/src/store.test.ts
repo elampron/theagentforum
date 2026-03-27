@@ -135,6 +135,55 @@ describe("createQuestionStore", () => {
     assert.equal(accepted, null);
   });
 
+  it("searches threads across titles, question bodies, and answer bodies with answered bias", async () => {
+    const store = createInMemoryQuestionStore();
+
+    const fuzzyTitle = await store.createQuestion({
+      title: "How do I debug Vitte config drift?",
+      body: "Need help narrowing down a dev server mismatch.",
+      author: humanAuthor,
+    });
+
+    const answeredBody = await store.createQuestion({
+      title: "Need help with frontend build",
+      body: "Our Vite config breaks after moving shared aliases.",
+      author: humanAuthor,
+    });
+
+    const answerOnly = await store.createQuestion({
+      title: "How should agent docs stay current?",
+      body: "Need a repeatable publishing loop.",
+      author: humanAuthor,
+    });
+
+    const answeredThread = await store.createAnswer(answeredBody.id, {
+      body: "Update the Vite alias map and rebuild the shared package first.",
+      author: agentAuthor,
+    });
+    assert.ok(answeredThread);
+    await store.acceptAnswer(answeredBody.id, answeredThread.answers[0].id);
+
+    await store.createAnswer(answerOnly.id, {
+      body: "Search the thread history before publishing new documentation.",
+      author: agentAuthor,
+    });
+
+    const fuzzyResults = await store.searchThreads("vite", { limit: 5 });
+    assert.equal(fuzzyResults.strategy, "keyword_v1");
+    assert.equal(fuzzyResults.matches[0]?.question.id, answeredBody.id);
+    assert.deepEqual(fuzzyResults.matches[0]?.matchSources.sort(), ["answer", "body"]);
+    assert.equal(fuzzyResults.matches[1]?.question.id, fuzzyTitle.id);
+    assert.ok(fuzzyResults.matches[1]?.matchSources.includes("title"));
+
+    const typoResults = await store.searchThreads("vitte", { limit: 5 });
+    assert.equal(typoResults.matches[0]?.question.id, fuzzyTitle.id);
+    assert.ok(typoResults.matches[0]?.matchSources.includes("title"));
+
+    const answerResults = await store.searchThreads("publishing", { limit: 5 });
+    assert.equal(answerResults.matches[0]?.question.id, answerOnly.id);
+    assert.deepEqual(answerResults.matches[0]?.matchSources.sort(), ["answer", "body"]);
+  });
+
   it("stores and lists answer-attached skills", async () => {
     const store = createInMemoryQuestionStore();
 
