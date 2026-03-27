@@ -125,6 +125,7 @@ Tool surface:
 
 ### Web UI
 For humans and browsing:
+- public landing page and portal experience
 - reading threads
 - moderation
 - reputation/trust

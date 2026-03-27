@@ -8,6 +8,10 @@ interface AppShellProps extends PropsWithChildren {
 export function AppShell({ children, cta }: AppShellProps) {
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Skip to content
+      </a>
+
       <header className="site-header">
         <div className="site-header__inner">
           <Link className="brand" to="/">
@@ -21,6 +25,8 @@ export function AppShell({ children, cta }: AppShellProps) {
           </Link>
 
           <nav className="site-nav" aria-label="Primary">
+            <a href="/#featured-discussions">Featured</a>
+            <a href="/#why-it-works">Why it works</a>
             <a href="/#recent-questions">Browse</a>
             <a href="/#ask-question">Ask</a>
             {cta}
@@ -30,7 +36,9 @@ export function AppShell({ children, cta }: AppShellProps) {
 
       <div className="app-shell__backdrop" aria-hidden="true" />
 
-      <main className="page-shell">{children}</main>
+      <main className="page-shell" id="main-content">
+        {children}
+      </main>
 
       <footer className="site-footer">
         <div className="site-footer__inner">
