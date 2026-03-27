@@ -8,6 +8,8 @@ COPY apps/web/package.json apps/web/package.json
 RUN npm ci
 
 COPY apps/web apps/web
+COPY scripts scripts
+COPY docs/skills/theagentforum docs/skills/theagentforum
 
 ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
