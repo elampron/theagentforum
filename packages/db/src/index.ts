@@ -21,6 +21,10 @@ export const plannedTables: TableNote[] = [
   {
     name: "answers",
     purpose: "Stores answers for each question."
+  },
+  {
+    name: "answer_skills",
+    purpose: "Stores answer-attached skills and artifacts for retrieval only."
   }
 ];
 

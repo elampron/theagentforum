@@ -5,8 +5,8 @@ import { TafApiClient, TafApiClientError } from "./api-client.js";
 import {
   AcceptToolInputSchema,
   AnswerToolInputSchema,
+  AnswerSkillSchema,
   AskToolInputSchema,
-  AttachSkillPlaceholderSchema,
   AttachSkillToolInputSchema,
   ErrorCategorySchema,
   GetThreadToolInputSchema,
@@ -31,13 +31,15 @@ const QuestionToolSuccessSchema = toolSuccessSchema(QuestionSchema);
 const ThreadToolSuccessSchema = toolSuccessSchema(QuestionThreadSchema);
 const SearchToolSuccessSchema = toolSuccessSchema(SearchResultSchema);
 const ListToolSuccessSchema = toolSuccessSchema(ListQuestionsResultDataSchema);
+const AnswerSkillToolSuccessSchema = toolSuccessSchema(AnswerSkillSchema);
 
 export type ToolPayload =
   | z.infer<typeof ToolErrorSchema>
   | z.infer<typeof QuestionToolSuccessSchema>
   | z.infer<typeof ThreadToolSuccessSchema>
   | z.infer<typeof SearchToolSuccessSchema>
-  | z.infer<typeof ListToolSuccessSchema>;
+  | z.infer<typeof ListToolSuccessSchema>
+  | z.infer<typeof AnswerSkillToolSuccessSchema>;
 
 export interface ToolHandlers {
   ask(input: unknown): Promise<ToolPayload>;
@@ -50,18 +52,11 @@ export interface ToolHandlers {
 }
 
 interface ToolHandlerOptions {
-  apiClient: Pick<TafApiClient, "ask" | "listQuestions" | "getThread" | "answer" | "accept">;
+  apiClient: Pick<
+    TafApiClient,
+    "ask" | "listQuestions" | "getThread" | "answer" | "accept" | "attachSkill"
+  >;
   defaultAuthor: Actor;
-}
-
-class NotImplementedError extends Error {
-  readonly details?: unknown;
-
-  constructor(message: string, details?: unknown) {
-    super(message);
-    this.name = "NotImplementedError";
-    this.details = details;
-  }
 }
 
 export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
@@ -201,22 +196,22 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
     async attachSkill(input: unknown): Promise<ToolPayload> {
       try {
         const parsed = AttachSkillToolInputSchema.parse(input);
+        const createInput = {
+          name: parsed.name,
+          ...(parsed.content !== undefined ? { content: parsed.content } : {}),
+          ...(parsed.url !== undefined ? { url: parsed.url } : {}),
+          ...(parsed.mimeType !== undefined ? { mimeType: parsed.mimeType } : {}),
+        };
+        const skill = await apiClient.attachSkill(parsed.questionId, parsed.answerId, createInput);
 
-        const placeholder = AttachSkillPlaceholderSchema.parse({
-          questionId: parsed.questionId,
-          answerId: parsed.answerId,
-          skillName: parsed.skillName,
-          status: "not_implemented",
-          message:
-            "attach-skill is not implemented in the HTTP API yet. Capture skill references in answer text for now.",
-          supplied: {
-            skillContent: Boolean(parsed.skillContent),
-            skillUrl: Boolean(parsed.skillUrl),
-            mimeType: Boolean(parsed.mimeType),
+        return AnswerSkillToolSuccessSchema.parse({
+          ok: true,
+          data: skill,
+          meta: {
+            route: "POST /questions/:questionId/answers/:answerId/skills",
+            source: "theagentforum-api",
           },
         });
-
-        throw new NotImplementedError("attach-skill is not implemented yet.", placeholder);
       } catch (error) {
         return mapToolError(error);
       }
@@ -286,18 +281,6 @@ function scoreQuestion(question: Question, fullQuery: string, terms: string[]): 
 }
 
 export function mapToolError(cause: unknown): z.infer<typeof ToolErrorSchema> {
-  if (cause instanceof NotImplementedError) {
-    return ToolErrorSchema.parse({
-      ok: false,
-      error: {
-        category: "not_implemented",
-        code: "not_implemented",
-        message: cause.message,
-        details: cause.details,
-      },
-    });
-  }
-
   if (cause instanceof TafApiClientError) {
     return ToolErrorSchema.parse({
       ok: false,

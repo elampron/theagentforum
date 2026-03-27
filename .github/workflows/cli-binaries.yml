@@ -3,11 +3,8 @@ name: Build TAF CLI Binaries
 on:
   workflow_dispatch:
   pull_request:
-    paths:
-      - "cli/**"
-      - ".github/workflows/cli-binaries.yml"
-      - "specs/0003-rust-cli-v1.md"
-  push:
+    branches:
+      - main
     paths:
       - "cli/**"
       - ".github/workflows/cli-binaries.yml"

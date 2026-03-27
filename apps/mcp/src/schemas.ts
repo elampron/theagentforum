@@ -30,6 +30,17 @@ export const AnswerSchema = z.object({
   acceptedAt: z.string().optional(),
 });
 
+export const AnswerSkillSchema = z.object({
+  id: z.string(),
+  questionId: z.string(),
+  answerId: z.string(),
+  name: z.string(),
+  content: z.string().optional(),
+  url: z.string().url().optional(),
+  mimeType: z.string().optional(),
+  createdAt: z.string(),
+});
+
 export const QuestionThreadSchema = z.object({
   question: QuestionSchema,
   answers: z.array(AnswerSchema),
@@ -51,6 +62,18 @@ export const CreateAnswerInputSchema = z.object({
   body: z.string().min(1),
   author: ActorSchema,
 });
+
+export const CreateAnswerSkillInputSchema = z
+  .object({
+    name: z.string().min(1),
+    content: z.string().min(1).optional(),
+    url: z.string().url().optional(),
+    mimeType: z.string().min(1).optional(),
+  })
+  .refine((value) => Boolean(value.content || value.url), {
+    message: "At least one of content or url is required.",
+    path: ["content"],
+  });
 
 const OptionalAuthorSchema = ActorSchema.optional();
 
@@ -86,14 +109,44 @@ export const AcceptToolInputSchema = z.object({
   answerId: z.string().min(1),
 });
 
-export const AttachSkillToolInputSchema = z.object({
+const AttachSkillToolInputBaseSchema = z.object({
   questionId: z.string().min(1),
   answerId: z.string().min(1),
-  skillName: z.string().min(1),
+  name: z.string().min(1).optional(),
+  skillName: z.string().min(1).optional(),
+  content: z.string().min(1).optional(),
   skillContent: z.string().min(1).optional(),
+  url: z.string().url().optional(),
   skillUrl: z.string().url().optional(),
   mimeType: z.string().min(1).optional(),
 });
+
+export const AttachSkillToolInputSchema = AttachSkillToolInputBaseSchema
+  .superRefine((value, ctx) => {
+    if (!(value.name ?? value.skillName)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["name"],
+        message: "name is required.",
+      });
+    }
+
+    if (!(value.content ?? value.skillContent ?? value.url ?? value.skillUrl)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["content"],
+        message: "At least one of content or url is required.",
+      });
+    }
+  })
+  .transform((value) => ({
+    questionId: value.questionId,
+    answerId: value.answerId,
+    name: value.name ?? value.skillName ?? "",
+    content: value.content ?? value.skillContent,
+    url: value.url ?? value.skillUrl,
+    mimeType: value.mimeType,
+  }));
 
 export const ErrorCategorySchema = z.enum([
   "validation_error",
@@ -130,19 +183,6 @@ export const SearchResultSchema = z.object({
   note: z.string(),
 });
 
-export const AttachSkillPlaceholderSchema = z.object({
-  questionId: z.string(),
-  answerId: z.string(),
-  skillName: z.string(),
-  status: z.literal("not_implemented"),
-  message: z.string(),
-  supplied: z.object({
-    skillContent: z.boolean(),
-    skillUrl: z.boolean(),
-    mimeType: z.boolean(),
-  }),
-});
-
 const ToolSuccessMetaSchema = z.object({
   route: z.string(),
   source: z.literal("theagentforum-api"),
@@ -160,9 +200,11 @@ export function toolSuccessSchema<T extends z.ZodTypeAny>(data: T) {
 export type ActorInput = z.infer<typeof ActorSchema>;
 export type Question = z.infer<typeof QuestionSchema>;
 export type Answer = z.infer<typeof AnswerSchema>;
+export type AnswerSkill = z.infer<typeof AnswerSkillSchema>;
 export type QuestionThread = z.infer<typeof QuestionThreadSchema>;
 export type CreateQuestionInput = z.infer<typeof CreateQuestionInputSchema>;
 export type CreateAnswerInput = z.infer<typeof CreateAnswerInputSchema>;
+export type CreateAnswerSkillInput = z.infer<typeof CreateAnswerSkillInputSchema>;
 
 export type AskToolInput = z.infer<typeof AskToolInputSchema>;
 export type ListToolInput = z.infer<typeof ListToolInputSchema>;
@@ -174,7 +216,6 @@ export type AttachSkillToolInput = z.infer<typeof AttachSkillToolInputSchema>;
 
 export type ToolError = z.infer<typeof ToolErrorSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
-export type AttachSkillPlaceholder = z.infer<typeof AttachSkillPlaceholderSchema>;
 export type ErrorCategory = z.infer<typeof ErrorCategorySchema>;
 
 export const askToolInputShape = AskToolInputSchema.shape;
@@ -183,4 +224,4 @@ export const getThreadToolInputShape = GetThreadToolInputSchema.shape;
 export const searchToolInputShape = SearchToolInputSchema.shape;
 export const answerToolInputShape = AnswerToolInputSchema.shape;
 export const acceptToolInputShape = AcceptToolInputSchema.shape;
-export const attachSkillToolInputShape = AttachSkillToolInputSchema.shape;
+export const attachSkillToolInputShape = AttachSkillToolInputBaseSchema.shape;

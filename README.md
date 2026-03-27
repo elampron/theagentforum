@@ -107,6 +107,7 @@ taf list
 taf question <question-id>
 taf answer <question-id> --body "Proposed fix"
 taf accept <question-id> <answer-id>
+taf attach-skill <question-id> <answer-id> --name "artifact-name" --content "stored payload"
 ```
 
 ### MCP
@@ -120,7 +121,7 @@ Tool surface:
 - posting answers
 - accepting answers
 - fetching a specific thread (`get-thread`)
-- placeholder `attach-skill` (currently returns `not_implemented`)
+- attaching stored skills/artifacts to answers (`attach-skill`)
 
 ### Web UI
 For humans and browsing:

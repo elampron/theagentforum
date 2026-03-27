@@ -136,6 +136,129 @@ describe("HTTP API", () => {
     assert.equal(response.body.ok, false);
     assert.equal(response.body.error.code, "answer_not_found");
   });
+
+  it("creates and lists answer-attached skills", async () => {
+    const baseUrl = await startTestServer();
+
+    const createQuestionResponse = await requestJson(baseUrl, "/questions", {
+      method: "POST",
+      body: {
+        title: "How should skills attach to answers?",
+        body: "Need storage only.",
+        author: humanAuthor,
+      },
+    });
+
+    const questionId = createQuestionResponse.body.data.id;
+    const createAnswerResponse = await requestJson(
+      baseUrl,
+      `/questions/${questionId}/answers`,
+      {
+        method: "POST",
+        body: {
+          body: "Store a name plus content or URL.",
+          author: agentAuthor,
+        },
+      },
+    );
+
+    const answerId = createAnswerResponse.body.data.answers[0].id;
+    const createSkillResponse = await requestJson(
+      baseUrl,
+      `/questions/${questionId}/answers/${answerId}/skills`,
+      {
+        method: "POST",
+        body: {
+          name: "answer-skill",
+          content: "{\"kind\":\"skill\"}",
+          mimeType: "application/json",
+        },
+      },
+    );
+
+    assert.equal(createSkillResponse.status, 201);
+    assert.equal(createSkillResponse.body.data.questionId, questionId);
+    assert.equal(createSkillResponse.body.data.answerId, answerId);
+    assert.equal(createSkillResponse.body.data.name, "answer-skill");
+
+    const listSkillsResponse = await requestJson(
+      baseUrl,
+      `/questions/${questionId}/answers/${answerId}/skills`,
+    );
+
+    assert.equal(listSkillsResponse.status, 200);
+    assert.equal(listSkillsResponse.body.data.length, 1);
+    assert.equal(listSkillsResponse.body.data[0].id, createSkillResponse.body.data.id);
+  });
+
+  it("validates answer skill payloads", async () => {
+    const baseUrl = await startTestServer();
+
+    const createQuestionResponse = await requestJson(baseUrl, "/questions", {
+      method: "POST",
+      body: {
+        title: "Validate answer skills",
+        body: "Need clear failures",
+        author: humanAuthor,
+      },
+    });
+
+    const questionId = createQuestionResponse.body.data.id;
+    const createAnswerResponse = await requestJson(
+      baseUrl,
+      `/questions/${questionId}/answers`,
+      {
+        method: "POST",
+        body: {
+          body: "Attach later",
+          author: agentAuthor,
+        },
+      },
+    );
+
+    const answerId = createAnswerResponse.body.data.answers[0].id;
+    const response = await requestJson(
+      baseUrl,
+      `/questions/${questionId}/answers/${answerId}/skills`,
+      {
+        method: "POST",
+        body: {
+          name: "",
+          mimeType: "text/plain",
+        },
+      },
+    );
+
+    assert.equal(response.status, 400);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.error.code, "validation_error");
+  });
+
+  it("returns answer_not_found for missing answer skill attachments", async () => {
+    const baseUrl = await startTestServer();
+
+    const createQuestionResponse = await requestJson(baseUrl, "/questions", {
+      method: "POST",
+      body: {
+        title: "Missing answer check",
+        body: "Need skill route errors",
+        author: humanAuthor,
+      },
+    });
+
+    const questionId = createQuestionResponse.body.data.id;
+    const response = await requestJson(
+      baseUrl,
+      `/questions/${questionId}/answers/a-404/skills`,
+      {
+        method: "GET",
+      },
+    );
+
+    assert.equal(response.status, 404);
+    assert.equal(response.body.ok, false);
+    assert.equal(response.body.error.code, "answer_not_found");
+  });
 });
 
 async function startTestServer(): Promise<string> {
