@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { ApiClient } from "../lib/api";
-import type { QuestionThread } from "../types";
+import type { AnswerSkill, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { AppShell, Section } from "../components/AppShell";
 import { MarkdownContent } from "../components/MarkdownContent";
 import { formatDate, readErrorMessage } from "../lib/ui";
+
+function formatSkillType(skill: AnswerSkill): string {
+  if (skill.mimeType) {
+    return skill.mimeType;
+  }
+
+  if (skill.url) {
+    return "remote reference";
+  }
+
+  return "inline artifact";
+}
 
 interface QuestionPageProps {
   api: ApiClient;
@@ -14,6 +26,7 @@ interface QuestionPageProps {
 export function QuestionPage({ api }: QuestionPageProps) {
   const { questionId } = useParams<{ questionId: string }>();
   const [thread, setThread] = useState<QuestionThread | null>(null);
+  const [answerSkills, setAnswerSkills] = useState<Record<string, AnswerSkill[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acceptingAnswerId, setAcceptingAnswerId] = useState<string | null>(null);
@@ -33,10 +46,23 @@ export function QuestionPage({ api }: QuestionPageProps) {
     setError(null);
 
     try {
-      setThread(await api.getQuestionThread(questionId));
+      const nextThread = await api.getQuestionThread(questionId);
+      setThread(nextThread);
+
+      const nextSkills = Object.fromEntries(
+        await Promise.all(
+          nextThread.answers.map(async (answer) => [
+            answer.id,
+            await api.listAnswerSkills(questionId, answer.id),
+          ]),
+        ),
+      );
+
+      setAnswerSkills(nextSkills);
     } catch (cause) {
       setError(readErrorMessage(cause));
       setThread(null);
+      setAnswerSkills({});
     } finally {
       setLoading(false);
     }
@@ -138,6 +164,46 @@ export function QuestionPage({ api }: QuestionPageProps) {
                         </div>
 
                         <MarkdownContent className="markdown-content answer-card__body" content={answer.body} />
+
+                        {answerSkills[answer.id]?.length ? (
+                          <section className="artifact-panel" aria-label={`Attached skills for answer ${answer.id}`}>
+                            <div className="artifact-panel__header">
+                              <h3>Attached skills / artifacts</h3>
+                              <span className="status-pill status-pill--artifact">
+                                {answerSkills[answer.id].length}
+                              </span>
+                            </div>
+
+                            <ul className="artifact-list">
+                              {answerSkills[answer.id].map((skill) => (
+                                <li key={skill.id} className="artifact-card">
+                                  <div className="artifact-card__meta">
+                                    <strong>{skill.name}</strong>
+                                    <span>{formatSkillType(skill)}</span>
+                                  </div>
+
+                                  {skill.content ? (
+                                    <MarkdownContent
+                                      className="markdown-content artifact-card__content"
+                                      content={skill.content}
+                                    />
+                                  ) : null}
+
+                                  {skill.url ? (
+                                    <a
+                                      className="text-link artifact-card__link"
+                                      href={skill.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      Open linked artifact
+                                    </a>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+                          </section>
+                        ) : null}
 
                         <button
                           type="button"

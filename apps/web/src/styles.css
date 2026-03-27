@@ -1,7 +1,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap");
 
 :root {
-  color-scheme: light;
+  color-scheme: light dark;
   font-family: "Manrope", system-ui, sans-serif;
   --page-max-width: 1180px;
   --radius-xl: 2rem;
@@ -24,14 +24,48 @@
   --highlight-soft: rgba(234, 122, 65, 0.18);
   --accepted: #1f7a47;
   --accepted-soft: #e4f5ea;
+  --artifact-soft: rgba(50, 68, 95, 0.12);
+  --artifact-text: #32445f;
   --shadow-lg: 0 30px 80px rgba(10, 23, 40, 0.16);
   --shadow-md: 0 18px 45px rgba(10, 23, 40, 0.1);
   --shadow-sm: 0 12px 28px rgba(10, 23, 40, 0.08);
-  color: var(--text-strong);
-  background:
+  --page-background:
     radial-gradient(circle at top left, rgba(255, 218, 194, 0.95), transparent 30%),
     radial-gradient(circle at top right, rgba(121, 192, 182, 0.2), transparent 26%),
     linear-gradient(180deg, #fbfcfe 0%, #f2f6fb 34%, #e8eef6 100%);
+  color: var(--text-strong);
+  background: var(--page-background);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-strong: #e6eef8;
+    --text-muted: #a8b7c9;
+    --text-soft: #90a4bc;
+    --surface-page: #0f1722;
+    --surface-strong: rgba(12, 21, 34, 0.88);
+    --surface-soft: rgba(17, 28, 42, 0.78);
+    --surface-dark: #07111c;
+    --surface-dark-soft: rgba(10, 20, 32, 0.9);
+    --border-strong: rgba(181, 202, 226, 0.18);
+    --border-soft: rgba(181, 202, 226, 0.1);
+    --accent: #34b3a7;
+    --accent-strong: #7be2d8;
+    --accent-soft: rgba(52, 179, 167, 0.16);
+    --highlight: #ffb089;
+    --highlight-soft: rgba(255, 176, 137, 0.16);
+    --accepted: #78d99d;
+    --accepted-soft: rgba(23, 114, 69, 0.18);
+    --artifact-soft: rgba(123, 151, 187, 0.18);
+    --artifact-text: #c6d7ed;
+    --shadow-lg: 0 30px 80px rgba(1, 7, 15, 0.52);
+    --shadow-md: 0 18px 45px rgba(1, 7, 15, 0.36);
+    --shadow-sm: 0 12px 28px rgba(1, 7, 15, 0.28);
+    --page-background:
+      radial-gradient(circle at top left, rgba(255, 167, 106, 0.12), transparent 30%),
+      radial-gradient(circle at top right, rgba(88, 145, 255, 0.14), transparent 28%),
+      linear-gradient(180deg, #08111d 0%, #0d1623 38%, #111c2a 100%);
+  }
 }
 
 *,
@@ -47,7 +81,8 @@ html {
 body {
   margin: 0;
   min-width: 320px;
-  background: transparent;
+  color: var(--text-strong);
+  background: var(--page-background);
 }
 
 a {
@@ -538,7 +573,8 @@ ul {
 .mini-grid,
 .why-grid,
 .question-list,
-.answer-list {
+.answer-list,
+.artifact-list {
   display: grid;
   gap: 1rem;
 }
@@ -697,8 +733,51 @@ ul {
 }
 
 .question-list,
-.answer-list {
+.answer-list,
+.artifact-list {
   list-style: none;
+}
+
+.question-browser {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.question-browser__summary {
+  font-weight: 700;
+}
+
+.question-browser__actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.filter-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.filter-chip {
+  min-height: 2.4rem;
+  padding: 0.55rem 0.95rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-soft);
+  color: var(--text-strong);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.filter-chip--active {
+  background: linear-gradient(135deg, var(--accent) 0%, #169084 100%);
+  color: #f6fffd;
+  border-color: transparent;
 }
 
 .question-card,
@@ -832,6 +911,11 @@ ul {
   color: var(--accepted);
 }
 
+.status-pill--artifact {
+  background: var(--artifact-soft);
+  color: var(--artifact-text);
+}
+
 .answer-card.accepted {
   border-color: rgba(31, 122, 71, 0.22);
   background:
@@ -840,6 +924,53 @@ ul {
 
 .answer-card__author {
   font-weight: 800;
+}
+
+.artifact-panel {
+  display: grid;
+  gap: 0.8rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-soft);
+  background: var(--surface-strong);
+}
+
+.artifact-panel__header,
+.artifact-card__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.artifact-panel__header h3 {
+  font-size: 1rem;
+}
+
+.artifact-card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+}
+
+.artifact-card__meta strong {
+  font-size: 0.98rem;
+}
+
+.artifact-card__meta span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.artifact-card__content {
+  font-size: 0.95rem;
+}
+
+.artifact-card__link {
+  width: fit-content;
 }
 
 .cta-banner {

@@ -1,4 +1,5 @@
 import type {
+  AnswerSkill,
   CreateAnswerInput,
   CreateQuestionInput,
   Question,
@@ -75,6 +76,16 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     );
   }
 
+  async function listAnswerSkills(
+    questionId: string,
+    answerId: string,
+  ): Promise<AnswerSkill[]> {
+    return request<AnswerSkill[]>(
+      "GET",
+      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
+    );
+  }
+
   async function acceptAnswer(
     questionId: string,
     answerId: string,
@@ -121,6 +132,7 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     createQuestion,
     getQuestionThread,
     createAnswer,
+    listAnswerSkills,
     acceptAnswer,
   };
 }

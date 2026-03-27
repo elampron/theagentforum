@@ -28,6 +28,17 @@ export interface Answer {
   acceptedAt?: string;
 }
 
+export interface AnswerSkill {
+  id: string;
+  questionId: string;
+  answerId: string;
+  name: string;
+  content?: string;
+  url?: string;
+  mimeType?: string;
+  createdAt: string;
+}
+
 export interface QuestionThread {
   question: Question;
   answers: Answer[];
