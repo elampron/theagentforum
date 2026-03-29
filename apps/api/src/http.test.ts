@@ -91,6 +91,10 @@ describe("HTTP API", () => {
     const threadResponse = await requestJson(baseUrl, `/questions/${question.id}`);
     assert.equal(threadResponse.status, 200);
     assert.equal(threadResponse.body.data.answers[0].id, answerToAccept.id);
+
+    const enrichmentResponse = await requestJson(baseUrl, `/questions/${question.id}/enrichment`);
+    assert.equal(enrichmentResponse.status, 200);
+    assert.equal(enrichmentResponse.body.data, null);
   });
 
   it("returns validation errors for invalid question payloads", async () => {

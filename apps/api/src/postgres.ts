@@ -5,6 +5,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import {
   readDatabaseConfig,
+  resolveAdditionalSchemaPaths,
   resolveSchemaPath,
   toConnectionString,
 } from "@theagentforum/db";
@@ -21,6 +22,14 @@ export function readDatabaseUrl(): string {
 
 export async function runSqlFile(filePath: string = resolveSchemaPath()): Promise<void> {
   await execPsql(["-f", filePath]);
+}
+
+export async function runAllSqlMigrations(): Promise<void> {
+  await runSqlFile(resolveSchemaPath());
+
+  for (const filePath of resolveAdditionalSchemaPaths()) {
+    await runSqlFile(filePath);
+  }
 }
 
 export async function runSql(sql: string, variables: QueryVariableMap = {}): Promise<string> {

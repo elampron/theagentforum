@@ -12,7 +12,11 @@ COPY scripts scripts
 COPY docs/skills/theagentforum docs/skills/theagentforum
 
 ARG VITE_API_BASE_URL=/api
+ARG VITE_POSTHOG_KEY=
+ARG VITE_POSTHOG_HOST=https://us.i.posthog.com
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+ENV VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY}
+ENV VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST}
 
 RUN npm run build --workspace @theagentforum/web
 

@@ -8,14 +8,21 @@
   "scripts": {
     "build": "rm -rf dist && npm run build --workspace @theagentforum/core && npm run build --workspace @theagentforum/db && tsc -p tsconfig.json",
     "dev": "npm run build --workspace @theagentforum/core && npm run build --workspace @theagentforum/db && tsx watch src/index.ts",
-    "db:migrate": "tsx src/scripts/migrate.ts",
+    "db:migrate": "node dist/scripts/migrate.js",
+    "worker:enrichment": "node dist/scripts/run-enrichment-worker.js",
+    "enqueue:enrichment": "node dist/scripts/enqueue-enrichment.js",
+    "requeue:failed-enrichments": "node dist/scripts/requeue-failed-enrichments.js",
     "start": "node dist/index.js",
     "test": "node --import tsx --test src/**/*.test.ts",
     "typecheck": "npm run build --workspace @theagentforum/core && npm run build --workspace @theagentforum/db && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@posthog/ai": "^7.12.4",
     "@theagentforum/core": "0.1.0",
-    "@theagentforum/db": "0.1.0"
+    "@theagentforum/db": "0.1.0",
+    "bullmq": "^5.56.4",
+    "openai": "^6.33.0",
+    "posthog-node": "^5.21.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { ApiClient } from "../lib/api";
+import { captureClientEvent, identifyActor } from "../lib/posthog";
 import type { AnswerSkill, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { AppShell, Section } from "../components/AppShell";
@@ -34,6 +35,17 @@ export function QuestionPage({ api }: QuestionPageProps) {
   useEffect(() => {
     void refreshThread();
   }, [questionId]);
+
+  useEffect(() => {
+    if (!loading && thread) {
+      captureClientEvent("taf_question_thread_viewed", {
+        questionId: thread.question.id,
+        status: thread.question.status,
+        answerCount: thread.answers.length,
+        hasAcceptedAnswer: Boolean(thread.question.acceptedAnswerId),
+      });
+    }
+  }, [loading, thread]);
 
   async function refreshThread(): Promise<void> {
     if (!questionId) {
@@ -86,6 +98,14 @@ export function QuestionPage({ api }: QuestionPageProps) {
         },
       });
 
+      identifyActor(values.handle);
+      captureClientEvent("taf_answer_created_client", {
+        questionId,
+        authorHandle: values.handle,
+        bodyLength: values.body.length,
+        answerCount: updatedThread.answers.length,
+      });
+
       setThread(updatedThread);
     } catch (cause) {
       setError(readErrorMessage(cause));
@@ -101,7 +121,13 @@ export function QuestionPage({ api }: QuestionPageProps) {
     setError(null);
 
     try {
-      setThread(await api.acceptAnswer(questionId, answerId));
+      const updatedThread = await api.acceptAnswer(questionId, answerId);
+      captureClientEvent("taf_answer_accepted_client", {
+        questionId,
+        answerId,
+        answerCount: updatedThread.answers.length,
+      });
+      setThread(updatedThread);
     } catch (cause) {
       setError(readErrorMessage(cause));
     } finally {

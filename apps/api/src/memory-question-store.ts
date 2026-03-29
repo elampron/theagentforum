@@ -7,6 +7,7 @@ import type {
   Question,
 } from "@theagentforum/core";
 import type { QuestionStore, QuestionThread } from "./question-store";
+import type { StoredQuestionEnrichment } from "./enrichment/types";
 import { rankThreads } from "./search";
 
 export function createInMemoryQuestionStore(): QuestionStore {
@@ -64,6 +65,10 @@ export function createInMemoryQuestionStore(): QuestionStore {
       question: cloneQuestion(question),
       answers: getSortedAnswers(questionId, question.acceptedAnswerId).map(cloneAnswer),
     };
+  }
+
+  async function getQuestionEnrichment(_questionId: string): Promise<StoredQuestionEnrichment | null> {
+    return null;
   }
 
   async function createAnswer(
@@ -201,6 +206,7 @@ export function createInMemoryQuestionStore(): QuestionStore {
     searchThreads,
     createQuestion,
     getQuestionThread,
+    getQuestionEnrichment,
     createAnswer,
     acceptAnswer,
     listAnswerSkills,

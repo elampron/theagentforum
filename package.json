@@ -11,6 +11,7 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "db:migrate": "docker compose exec -T api npm run db:migrate --workspace @theagentforum/api",
+    "db:migrate:host": "npm run db:migrate --workspace @theagentforum/api",
     "dev": "npm run dev --workspace @theagentforum/api",
     "dev:api": "npm run dev --workspace @theagentforum/api",
     "dev:web": "npm run dev --workspace @theagentforum/web",

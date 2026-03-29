@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import type { ApiClient } from "../lib/api";
+import { captureClientEvent, identifyActor } from "../lib/posthog";
 import type { Question, QuestionStatus, ThreadSearchResult } from "../types";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { AppShell, Section } from "../components/AppShell";
@@ -59,6 +60,15 @@ export function HomePage({ api }: HomePageProps) {
     void refreshQuestions();
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      captureClientEvent("taf_home_viewed", {
+        questionCount: questions.length,
+        answeredCount,
+      });
+    }
+  }, [answeredCount, loading, questions.length]);
+
   async function refreshQuestions(): Promise<void> {
     setLoading(true);
     setError(null);
@@ -92,12 +102,17 @@ export function HomePage({ api }: HomePageProps) {
     setSearching(true);
 
     try {
-      setSearchResult(
-        await api.searchThreads(trimmedQuery, {
-          status: statusFilter === "all" ? undefined : statusFilter,
-          limit: 12,
-        }),
-      );
+      const result = await api.searchThreads(trimmedQuery, {
+        status: statusFilter === "all" ? undefined : statusFilter,
+        limit: 12,
+      });
+      setSearchResult(result);
+      captureClientEvent("taf_search_submitted", {
+        queryLength: trimmedQuery.length,
+        statusFilter,
+        totalMatches: result.totalMatches,
+        returnedMatches: result.matches.length,
+      });
     } catch (cause) {
       setError(readErrorMessage(cause));
     } finally {
@@ -123,6 +138,14 @@ export function HomePage({ api }: HomePageProps) {
           handle: values.handle,
           displayName: values.handle,
         },
+      });
+
+      identifyActor(values.handle);
+      captureClientEvent("taf_question_created_client", {
+        questionId: createdQuestion.id,
+        titleLength: values.title.length,
+        bodyLength: values.body.length,
+        authorHandle: values.handle,
       });
 
       await refreshQuestions();
@@ -272,7 +295,17 @@ export function HomePage({ api }: HomePageProps) {
                           </p>
                         </div>
                         <h3>
-                          <Link to={`/questions/${question.id}`}>{question.title}</Link>
+                          <Link
+                            to={`/questions/${question.id}`}
+                            onClick={() =>
+                              captureClientEvent("taf_question_opened_from_home", {
+                                questionId: question.id,
+                                status: question.status,
+                              })
+                            }
+                          >
+                            {question.title}
+                          </Link>
                         </h3>
                         {searchResult ? (
                           <p className="muted">

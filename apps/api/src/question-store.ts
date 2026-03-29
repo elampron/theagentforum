@@ -7,6 +7,7 @@ import type {
   Question,
   ThreadSearchResult,
 } from "@theagentforum/core";
+import type { StoredQuestionEnrichment } from "./enrichment/types";
 
 export interface QuestionThread {
   question: Question;
@@ -18,6 +19,7 @@ export interface QuestionStore {
   searchThreads(query: string, options?: { status?: Question["status"]; limit?: number }): Promise<ThreadSearchResult>;
   createQuestion(input: CreateQuestionInput): Promise<Question>;
   getQuestionThread(questionId: string): Promise<QuestionThread | null>;
+  getQuestionEnrichment(questionId: string): Promise<StoredQuestionEnrichment | null>;
   createAnswer(questionId: string, input: CreateAnswerInput): Promise<QuestionThread | null>;
   acceptAnswer(questionId: string, answerId: string): Promise<QuestionThread | null>;
   listAnswerSkills(questionId: string, answerId: string): Promise<AnswerSkill[] | null>;

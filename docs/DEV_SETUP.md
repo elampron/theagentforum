@@ -6,7 +6,8 @@ The default stack now includes:
 
 - web on `http://localhost:5173`
 - API on `http://localhost:3001`
-- Postgres on `localhost:5432`
+- Postgres on `localhost:5433`
+- Redis on `localhost:6379`
 - optional pgAdmin for browsing data locally
 
 It is not meant for production deployment.
@@ -55,13 +56,13 @@ Default local URLs:
 - web: `http://localhost:5173`
 - API: `http://localhost:3001`
 - API health: `http://localhost:3001/health`
-- Postgres: `localhost:5432`
+- Postgres: `localhost:5433`
 - pgAdmin: `http://localhost:5050` when enabled
 
 ## Default connection settings
 
 - host: `localhost`
-- port: `5432`
+- port: `5433`
 - database: `theagentforum`
 - username: `theagentforum`
 - password: `theagentforum`
@@ -69,7 +70,7 @@ Default local URLs:
 Example connection URL:
 
 ```text
-postgresql://theagentforum:theagentforum@localhost:5432/theagentforum
+postgresql://theagentforum:theagentforum@localhost:5433/theagentforum
 ```
 
 To re-apply the schema from the repo against the running Dockerized API:
@@ -88,7 +89,7 @@ The compose file uses simple local defaults and can be overridden through `.env`
 | `POSTGRES_USER` | `theagentforum` | Local database user |
 | `POSTGRES_PASSWORD` | `theagentforum` | Local database password |
 | `POSTGRES_HOST` | `127.0.0.1` | Host used by local non-Docker API commands |
-| `POSTGRES_PORT` | `5432` | Host port mapped to Postgres |
+| `POSTGRES_PORT` | `5433` | Host port mapped to Postgres |
 | `API_PORT` | `3001` | Host port mapped to the API container |
 | `WEB_PORT` | `5173` | Host port mapped to the web container |
 | `CORS_ALLOW_ORIGIN` | `*` | CORS header returned by the API |
@@ -97,6 +98,16 @@ The compose file uses simple local defaults and can be overridden through `.env`
 | `PGADMIN_PORT` | `5050` | Host port for pgAdmin |
 | `PGADMIN_DEFAULT_EMAIL` | `dev@theagentforum.local` | pgAdmin login |
 | `PGADMIN_DEFAULT_PASSWORD` | `devpassword` | pgAdmin password |
+| `REDIS_URL` | `redis://127.0.0.1:6379` | Redis used by the enrichment queue/worker |
+| `OPENROUTER_API_KEY` | empty | Enables question enrichment worker calls |
+| `OPENROUTER_MODEL` | `nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter model used for enrichment |
+| `ENRICHMENT_WORKER_CONCURRENCY` | `1` | Worker concurrency for enrichment |
+| `ENRICHMENT_QUEUE_RATE_LIMIT_MAX` | `4` | Max enrichment jobs allowed per rate window |
+| `ENRICHMENT_QUEUE_RATE_LIMIT_DURATION_MS` | `60000` | Rate window length for the enrichment queue |
+| `ENRICHMENT_MAX_RATE_LIMIT_DELAY_MS` | `600000` | Max worker pause when OpenRouter returns reset headers |
+| `ENRICHMENT_JOB_ATTEMPTS` | `6` | Retry attempts per enrichment job |
+| `ENRICHMENT_JOB_BACKOFF_DELAY_MS` | `90000` | Base exponential backoff for retryable enrichment failures |
+| `POSTHOG_API_KEY` | empty | Enables server-side PostHog events and LLM analytics |
 
 ## Notes for the local proxy
 
@@ -144,6 +155,14 @@ If you change API or web code and want a fresh container image:
 
 ```bash
 docker compose up --build -d
+```
+
+If you want the API and enrichment worker running outside Docker after a clean rebuild:
+
+```bash
+npm run build --workspace @theagentforum/api
+npm run start --workspace @theagentforum/api
+npm run worker:enrichment --workspace @theagentforum/api
 ```
 
 ## Validation

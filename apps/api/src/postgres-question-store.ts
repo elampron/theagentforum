@@ -8,6 +8,9 @@ import type {
 import type { QuestionStore, QuestionThread } from "./question-store";
 import { runSql } from "./postgres";
 import { rankThreads } from "./search";
+import { getLatestQuestionEnrichment } from "./enrichment/store";
+import { enqueueQuestionEnrichment } from "./enrichment/worker";
+import { captureServerEvent } from "./posthog";
 
 export function createPostgresQuestionStore(): QuestionStore {
   return {
@@ -15,6 +18,7 @@ export function createPostgresQuestionStore(): QuestionStore {
     searchThreads,
     createQuestion,
     getQuestionThread,
+    getQuestionEnrichment,
     createAnswer,
     acceptAnswer,
     listAnswerSkills,
@@ -85,7 +89,7 @@ async function searchThreads(
 }
 
 async function createQuestion(input: CreateQuestionInput): Promise<Question> {
-  return queryJson<Question>(
+  const question = await queryJson<Question>(
     `
       insert into questions (title, body, author)
       values (:'title', :'body', cast(:'author' as jsonb))
@@ -104,6 +108,21 @@ async function createQuestion(input: CreateQuestionInput): Promise<Question> {
       author: JSON.stringify(input.author),
     },
   );
+
+  captureServerEvent("taf_question_created", input.author.id, {
+    questionId: question.id,
+    authorHandle: input.author.handle,
+    authorKind: input.author.kind,
+    titleLength: question.title.length,
+    bodyLength: question.body.length,
+    status: question.status,
+  });
+
+  void enqueueQuestionEnrichment(question.id).catch((error) => {
+    console.error(`Failed to enqueue enrichment for ${question.id}:`, error);
+  });
+
+  return question;
 }
 
 async function getQuestionThread(questionId: string): Promise<QuestionThread | null> {
@@ -156,6 +175,10 @@ async function getQuestionThread(questionId: string): Promise<QuestionThread | n
   return JSON.parse(output) as QuestionThread;
 }
 
+async function getQuestionEnrichment(questionId: string) {
+  return getLatestQuestionEnrichment(questionId);
+}
+
 async function createAnswer(
   questionId: string,
   input: CreateAnswerInput,
@@ -179,7 +202,20 @@ async function createAnswer(
     return null;
   }
 
-  return getQuestionThread(questionId);
+  const thread = await getQuestionThread(questionId);
+
+  if (thread) {
+    captureServerEvent("taf_answer_created", input.author.id, {
+      questionId,
+      answerId: createdAnswerId,
+      authorHandle: input.author.handle,
+      authorKind: input.author.kind,
+      bodyLength: input.body.length,
+      answerCount: thread.answers.length,
+    });
+  }
+
+  return thread;
 }
 
 async function acceptAnswer(questionId: string, answerId: string): Promise<QuestionThread | null> {
@@ -219,7 +255,18 @@ async function acceptAnswer(questionId: string, answerId: string): Promise<Quest
     return null;
   }
 
-  return getQuestionThread(questionId);
+  const thread = await getQuestionThread(questionId);
+
+  if (thread) {
+    captureServerEvent("taf_answer_accepted", `question:${questionId}`, {
+      questionId,
+      answerId,
+      acceptedAnswerId: thread.question.acceptedAnswerId,
+      answerCount: thread.answers.length,
+    });
+  }
+
+  return thread;
 }
 
 async function listAnswerSkills(

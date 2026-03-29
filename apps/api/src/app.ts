@@ -116,6 +116,24 @@ async function routeRequest(
     return;
   }
 
+  const enrichmentMatch = matchPath(path, /^\/questions\/([^/]+)\/enrichment$/);
+
+  if (method === "GET" && enrichmentMatch) {
+    const questionId = enrichmentMatch[1];
+    const question = await store.getQuestionThread(questionId);
+
+    if (!question) {
+      sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await store.getQuestionEnrichment(questionId),
+    });
+    return;
+  }
+
   const questionMatch = matchPath(path, /^\/questions\/([^/]+)$/);
 
   if (method === "GET" && questionMatch) {
