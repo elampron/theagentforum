@@ -1,4 +1,6 @@
 import { FormEvent, useState } from "react";
+import type { Question } from "../types";
+import { findSimilarQuestions } from "../lib/question-discovery";
 
 export interface CreateQuestionFormValues {
   title: string;
@@ -9,14 +11,20 @@ export interface CreateQuestionFormValues {
 interface CreateQuestionFormProps {
   onSubmit(values: CreateQuestionFormValues): Promise<void> | void;
   disabled?: boolean;
+  existingQuestions?: Question[];
 }
 
-export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestionFormProps) {
+export function CreateQuestionForm({
+  onSubmit,
+  disabled = false,
+  existingQuestions = [],
+}: CreateQuestionFormProps) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [handle, setHandle] = useState("felix796");
   const [submitting, setSubmitting] = useState(false);
   const bodyHintId = "create-question-body-hint";
+  const similarQuestions = findSimilarQuestions({ title, body, questions: existingQuestions });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -85,6 +93,35 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
           Include context, constraints, and what a successful answer should cover.
         </small>
       </div>
+
+      {similarQuestions.length > 0 ? (
+        <aside className="discovery-panel" aria-live="polite" aria-label="Similar existing questions">
+          <div className="discovery-panel__header">
+            <p className="eyebrow">Before you post</p>
+            <h3>Possible duplicate threads</h3>
+            <p className="section-description">
+              A close match may already contain an accepted answer. Reusing it keeps the forum cleaner and faster to scan.
+            </p>
+          </div>
+
+          <ul className="discovery-list">
+            {similarQuestions.map(({ question, sharedTerms }) => (
+              <li key={question.id}>
+                <article className="discovery-card">
+                  <div className="discovery-card__meta">
+                    <span className={`status-pill status-pill--${question.status}`}>{question.status}</span>
+                    <span className="muted">Shared terms: {sharedTerms.join(", ")}</span>
+                  </div>
+                  <h3>{question.title}</h3>
+                  <a className="text-link" href={`/questions/${question.id}`}>
+                    Review thread
+                  </a>
+                </article>
+              </li>
+            ))}
+          </ul>
+        </aside>
+      ) : null}
 
       <button type="submit" className="button" disabled={isDisabled}>
         {submitting ? "Posting..." : "Post question"}

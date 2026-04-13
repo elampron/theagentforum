@@ -428,6 +428,46 @@ ul {
   gap: 1rem;
 }
 
+.discovery-panel,
+.discovery-card {
+  border: 1px solid rgba(15, 118, 110, 0.14);
+  background: linear-gradient(180deg, rgba(215, 243, 238, 0.52), rgba(255, 255, 255, 0.9));
+  box-shadow: var(--shadow-sm);
+}
+
+.discovery-panel {
+  display: grid;
+  gap: 1rem;
+  padding: 1.15rem;
+  border-radius: 1.3rem;
+}
+
+.discovery-panel__header {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.discovery-list {
+  list-style: none;
+  display: grid;
+  gap: 0.85rem;
+}
+
+.discovery-card {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem 1.05rem;
+  border-radius: 1.1rem;
+}
+
+.discovery-card__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+  flex-wrap: wrap;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1.4fr 0.8fr;

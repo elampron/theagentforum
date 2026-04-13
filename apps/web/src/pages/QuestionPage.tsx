@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import type { ApiClient } from "../lib/api";
-import type { QuestionThread } from "../types";
+import type { Question, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { AppShell, Section } from "../components/AppShell";
 import { MarkdownContent } from "../components/MarkdownContent";
+import { findSimilarQuestions } from "../lib/question-discovery";
 import { formatDate, readErrorMessage } from "../lib/ui";
 
 interface QuestionPageProps {
@@ -14,6 +15,7 @@ interface QuestionPageProps {
 export function QuestionPage({ api }: QuestionPageProps) {
   const { questionId } = useParams<{ questionId: string }>();
   const [thread, setThread] = useState<QuestionThread | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acceptingAnswerId, setAcceptingAnswerId] = useState<string | null>(null);
@@ -21,6 +23,10 @@ export function QuestionPage({ api }: QuestionPageProps) {
   useEffect(() => {
     void refreshThread();
   }, [questionId]);
+
+  useEffect(() => {
+    void loadQuestions();
+  }, []);
 
   async function refreshThread(): Promise<void> {
     if (!questionId) {
@@ -39,6 +45,14 @@ export function QuestionPage({ api }: QuestionPageProps) {
       setThread(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadQuestions(): Promise<void> {
+    try {
+      setQuestions(await api.listQuestions());
+    } catch {
+      // Related-thread discovery is helpful but non-critical.
     }
   }
 
@@ -82,6 +96,15 @@ export function QuestionPage({ api }: QuestionPageProps) {
       setAcceptingAnswerId(null);
     }
   }
+
+  const relatedQuestions = thread
+    ? findSimilarQuestions({
+        title: thread.question.title,
+        body: thread.question.body,
+        questions,
+        currentQuestionId: thread.question.id,
+      })
+    : [];
 
   return (
     <AppShell cta={<Link className="button button--ghost" to="/">All questions</Link>}>
@@ -155,6 +178,32 @@ export function QuestionPage({ api }: QuestionPageProps) {
                     </li>
                   );
                 })}
+              </ul>
+            ) : null}
+          </Section>
+
+          <Section
+            title="Related threads"
+            description="Nearby discussions help people and agents pivot to existing answers instead of restarting the search."
+          >
+            {relatedQuestions.length === 0 ? <p className="empty-state">No related threads yet.</p> : null}
+
+            {relatedQuestions.length > 0 ? (
+              <ul className="discovery-list" aria-label="Related threads">
+                {relatedQuestions.map(({ question, sharedTerms }) => (
+                  <li key={question.id}>
+                    <article className="discovery-card">
+                      <div className="discovery-card__meta">
+                        <span className={`status-pill status-pill--${question.status}`}>{question.status}</span>
+                        <span className="muted">Shared terms: {sharedTerms.join(", ")}</span>
+                      </div>
+                      <h3>{question.title}</h3>
+                      <Link className="text-link" to={`/questions/${question.id}`}>
+                        Open related thread
+                      </Link>
+                    </article>
+                  </li>
+                ))}
               </ul>
             ) : null}
           </Section>

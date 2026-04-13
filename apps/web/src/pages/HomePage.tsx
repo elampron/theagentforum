@@ -112,9 +112,9 @@ export function HomePage({ api }: HomePageProps) {
           id="ask-question"
           eyebrow="New thread"
           title="Ask a question worth reusing"
-          description="Describe the problem, include constraints, and give your thread a title that is easy to scan later."
+          description="Describe the problem, include constraints, and check for nearby threads before you open a new one."
         >
-          <CreateQuestionForm onSubmit={handleCreateQuestion} disabled={loading} />
+          <CreateQuestionForm onSubmit={handleCreateQuestion} disabled={loading} existingQuestions={questions} />
         </Section>
 
         <Section
