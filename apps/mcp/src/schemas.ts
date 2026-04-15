@@ -75,6 +75,72 @@ export const CreateAnswerSkillInputSchema = z
     path: ["content"],
   });
 
+export const RegistrationStatusSchema = z.enum([
+  "awaiting_verification",
+  "pending_webauthn_registration",
+  "verified",
+  "expired",
+]);
+
+export const PairingStatusSchema = z.enum([
+  "waiting_for_verification",
+  "ready_to_pair",
+  "paired",
+  "expired",
+]);
+
+export const PairingSessionSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  status: PairingStatusSchema,
+  deviceLabel: z.string().optional(),
+  token: z.string().optional(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  redeemedAt: z.string().optional(),
+});
+
+export const RegistrationSessionSchema = z.object({
+  id: z.string(),
+  handle: z.string(),
+  displayName: z.string().optional(),
+  status: RegistrationStatusSchema,
+  challenge: z.string(),
+  verificationMethod: z.string().optional(),
+  passkeyLabel: z.string().optional(),
+  verificationUrl: z.string().optional(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  verifiedAt: z.string().optional(),
+  pairing: PairingSessionSchema,
+});
+
+export const PasskeyRegistrationOptionsSchema = z.object({
+  registrationSessionId: z.string(),
+  rp: z.object({
+    id: z.string(),
+    name: z.string(),
+  }),
+  user: z.object({
+    id: z.string(),
+    name: z.string(),
+    displayName: z.string(),
+  }),
+  challenge: z.string(),
+  pubKeyCredParams: z.array(
+    z.object({
+      type: z.literal("public-key"),
+      alg: z.number().int(),
+    }),
+  ),
+  timeout: z.number().int(),
+  attestation: z.literal("none"),
+  authenticatorSelection: z.object({
+    residentKey: z.literal("preferred"),
+    userVerification: z.literal("preferred"),
+  }),
+});
+
 const OptionalAuthorSchema = ActorSchema.optional();
 
 export const AskToolInputSchema = z.object({
@@ -148,6 +214,25 @@ export const AttachSkillToolInputSchema = AttachSkillToolInputBaseSchema
     mimeType: value.mimeType,
   }));
 
+export const StartRegistrationToolInputSchema = z.object({
+  handle: z.string().min(1),
+  displayName: z.string().min(1).optional(),
+});
+
+export const RegistrationStatusToolInputSchema = z.object({
+  registrationSessionId: z.string().min(1),
+});
+
+export const PasskeyRegisterToolInputSchema = z.object({
+  registrationSessionId: z.string().min(1),
+  passkeyLabel: z.string().min(1).optional(),
+});
+
+export const PairToolInputSchema = z.object({
+  pairingCode: z.string().min(1),
+  deviceLabel: z.string().min(1),
+});
+
 export const ErrorCategorySchema = z.enum([
   "validation_error",
   "not_found",
@@ -213,6 +298,10 @@ export type SearchToolInput = z.infer<typeof SearchToolInputSchema>;
 export type AnswerToolInput = z.infer<typeof AnswerToolInputSchema>;
 export type AcceptToolInput = z.infer<typeof AcceptToolInputSchema>;
 export type AttachSkillToolInput = z.infer<typeof AttachSkillToolInputSchema>;
+export type StartRegistrationToolInput = z.infer<typeof StartRegistrationToolInputSchema>;
+export type RegistrationStatusToolInput = z.infer<typeof RegistrationStatusToolInputSchema>;
+export type PasskeyRegisterToolInput = z.infer<typeof PasskeyRegisterToolInputSchema>;
+export type PairToolInput = z.infer<typeof PairToolInputSchema>;
 
 export type ToolError = z.infer<typeof ToolErrorSchema>;
 export type SearchResult = z.infer<typeof SearchResultSchema>;
@@ -225,3 +314,7 @@ export const searchToolInputShape = SearchToolInputSchema.shape;
 export const answerToolInputShape = AnswerToolInputSchema.shape;
 export const acceptToolInputShape = AcceptToolInputSchema.shape;
 export const attachSkillToolInputShape = AttachSkillToolInputBaseSchema.shape;
+export const startRegistrationToolInputShape = StartRegistrationToolInputSchema.shape;
+export const registrationStatusToolInputShape = RegistrationStatusToolInputSchema.shape;
+export const passkeyRegisterToolInputShape = PasskeyRegisterToolInputSchema.shape;
+export const pairToolInputShape = PairToolInputSchema.shape;

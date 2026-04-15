@@ -1538,3 +1538,42 @@ ul {
     background: rgba(22, 34, 50, 0.98);
   }
 }
+
+.auth-layout {
+  max-width: 960px;
+}
+
+.auth-hero {
+  margin-bottom: 0.5rem;
+}
+
+.auth-subtitle {
+  max-width: 42rem;
+}
+
+.wrap-gap {
+  gap: 1rem;
+}
+
+.auth-status-card {
+  gap: 1.25rem;
+}
+
+.auth-callout {
+  padding: 0.9rem 1rem;
+  border-radius: 0.85rem;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+}
+
+.auth-success {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+
+.block-code {
+  display: block;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-top: 0.35rem;
+}

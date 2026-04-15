@@ -1,9 +1,15 @@
 import type {
   AnswerSkill,
+  CompleteRegistrationVerificationInput,
   CreateAnswerInput,
   CreateQuestionInput,
+  FinishRegistrationInput,
+  PasskeyRegistrationOptions,
   Question,
   QuestionThread,
+  RedeemPairingInput,
+  RegistrationSession,
+  StartRegistrationInput,
   ThreadSearchResult,
 } from "../types";
 
@@ -58,10 +64,6 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     return request<Question[]>("GET", "/questions");
   }
 
-  async function createQuestion(input: CreateQuestionInput): Promise<Question> {
-    return request<Question>("POST", "/questions", input);
-  }
-
   async function searchThreads(
     query: string,
     options: { status?: Question["status"]; limit?: number } = {},
@@ -79,6 +81,10 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     return request<ThreadSearchResult>("GET", `/search/threads?${searchParams.toString()}`);
   }
 
+  async function createQuestion(input: CreateQuestionInput): Promise<Question> {
+    return request<Question>("POST", "/questions", input);
+  }
+
   async function getQuestionThread(questionId: string): Promise<QuestionThread> {
     return request<QuestionThread>("GET", `/questions/${encodeURIComponent(questionId)}`);
   }
@@ -94,16 +100,6 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     );
   }
 
-  async function listAnswerSkills(
-    questionId: string,
-    answerId: string,
-  ): Promise<AnswerSkill[]> {
-    return request<AnswerSkill[]>(
-      "GET",
-      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
-    );
-  }
-
   async function acceptAnswer(
     questionId: string,
     answerId: string,
@@ -112,6 +108,58 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
       "POST",
       `/questions/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`,
     );
+  }
+
+  async function listAnswerSkills(questionId: string, answerId: string): Promise<AnswerSkill[]> {
+    return request<AnswerSkill[]>(
+      "GET",
+      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
+    );
+  }
+
+  async function startRegistration(
+    input: StartRegistrationInput,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>("POST", "/auth/registrations/start", input);
+  }
+
+  async function getRegistrationSession(
+    registrationSessionId: string,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>(
+      "GET",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}`,
+    );
+  }
+
+  async function getPasskeyRegistrationOptions(
+    registrationSessionId: string,
+  ): Promise<PasskeyRegistrationOptions> {
+    return request<PasskeyRegistrationOptions>(
+      "GET",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}/passkey/options`,
+    );
+  }
+
+  async function registerPasskey(
+    input: FinishRegistrationInput,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>("POST", "/auth/passkeys/register", input);
+  }
+
+  async function completeRegistrationVerification(
+    registrationSessionId: string,
+    input: CompleteRegistrationVerificationInput,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>(
+      "POST",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}/verify`,
+      input,
+    );
+  }
+
+  async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSession> {
+    return request<RegistrationSession>("POST", "/auth/pairings/redeem", input);
   }
 
   async function request<T>(
@@ -147,12 +195,18 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
 
   return {
     listQuestions,
-    createQuestion,
     searchThreads,
+    createQuestion,
     getQuestionThread,
     createAnswer,
-    listAnswerSkills,
     acceptAnswer,
+    listAnswerSkills,
+    startRegistration,
+    getRegistrationSession,
+    getPasskeyRegistrationOptions,
+    registerPasskey,
+    completeRegistrationVerification,
+    redeemPairing,
   };
 }
 

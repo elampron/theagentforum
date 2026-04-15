@@ -4,17 +4,22 @@ import { ZodError } from "zod/v4";
 import { TafApiClient, TafApiClientError } from "./api-client.js";
 import {
   AcceptToolInputSchema,
-  AnswerToolInputSchema,
   AnswerSkillSchema,
+  AnswerToolInputSchema,
   AskToolInputSchema,
   AttachSkillToolInputSchema,
   ErrorCategorySchema,
   GetThreadToolInputSchema,
   ListToolInputSchema,
+  PairToolInputSchema,
+  PasskeyRegisterToolInputSchema,
   QuestionSchema,
   QuestionThreadSchema,
+  RegistrationSessionSchema,
+  RegistrationStatusToolInputSchema,
   SearchResultSchema,
   SearchToolInputSchema,
+  StartRegistrationToolInputSchema,
   ToolErrorSchema,
   toolSuccessSchema,
   type ErrorCategory,
@@ -31,6 +36,7 @@ const ThreadToolSuccessSchema = toolSuccessSchema(QuestionThreadSchema);
 const SearchToolSuccessSchema = toolSuccessSchema(SearchResultSchema);
 const ListToolSuccessSchema = toolSuccessSchema(ListQuestionsResultDataSchema);
 const AnswerSkillToolSuccessSchema = toolSuccessSchema(AnswerSkillSchema);
+const RegistrationSessionToolSuccessSchema = toolSuccessSchema(RegistrationSessionSchema);
 
 export type ToolPayload =
   | z.infer<typeof ToolErrorSchema>
@@ -38,7 +44,8 @@ export type ToolPayload =
   | z.infer<typeof ThreadToolSuccessSchema>
   | z.infer<typeof SearchToolSuccessSchema>
   | z.infer<typeof ListToolSuccessSchema>
-  | z.infer<typeof AnswerSkillToolSuccessSchema>;
+  | z.infer<typeof AnswerSkillToolSuccessSchema>
+  | z.infer<typeof RegistrationSessionToolSuccessSchema>;
 
 export interface ToolHandlers {
   ask(input: unknown): Promise<ToolPayload>;
@@ -48,12 +55,27 @@ export interface ToolHandlers {
   answer(input: unknown): Promise<ToolPayload>;
   accept(input: unknown): Promise<ToolPayload>;
   attachSkill(input: unknown): Promise<ToolPayload>;
+  authRegister(input: unknown): Promise<ToolPayload>;
+  authStatus(input: unknown): Promise<ToolPayload>;
+  authPasskeyRegister(input: unknown): Promise<ToolPayload>;
+  authPair(input: unknown): Promise<ToolPayload>;
 }
 
 interface ToolHandlerOptions {
   apiClient: Pick<
     TafApiClient,
-    "ask" | "listQuestions" | "searchThreads" | "getThread" | "answer" | "accept" | "attachSkill"
+    | "ask"
+    | "listQuestions"
+    | "searchThreads"
+    | "getThread"
+    | "answer"
+    | "accept"
+    | "attachSkill"
+    | "startRegistration"
+    | "getRegistrationSession"
+    | "getPasskeyRegistrationOptions"
+    | "registerPasskey"
+    | "redeemPairing"
   >;
   defaultAuthor: Actor;
 }
@@ -74,10 +96,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return QuestionToolSuccessSchema.parse({
           ok: true,
           data: created,
-          meta: {
-            route: "POST /questions",
-            source: "theagentforum-api",
-          },
+          meta: { route: "POST /questions", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -88,15 +107,11 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
       try {
         const parsed = ListToolInputSchema.parse(input ?? {});
         const questions = await apiClient.listQuestions();
-
         const filteredByStatus = parsed.status
           ? questions.filter((question) => question.status === parsed.status)
           : questions;
-
         const limited =
-          parsed.limit === undefined
-            ? filteredByStatus
-            : filteredByStatus.slice(0, parsed.limit);
+          parsed.limit === undefined ? filteredByStatus : filteredByStatus.slice(0, parsed.limit);
 
         return ListToolSuccessSchema.parse({
           ok: true,
@@ -105,10 +120,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
             returned: limited.length,
             questions: limited,
           },
-          meta: {
-            route: "GET /questions",
-            source: "theagentforum-api",
-          },
+          meta: { route: "GET /questions", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -126,10 +138,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return SearchToolSuccessSchema.parse({
           ok: true,
           data: searchResult,
-          meta: {
-            route: "GET /search/threads",
-            source: "theagentforum-api",
-          },
+          meta: { route: "GET /search/threads", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -144,10 +153,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return ThreadToolSuccessSchema.parse({
           ok: true,
           data: thread,
-          meta: {
-            route: "GET /questions/:id",
-            source: "theagentforum-api",
-          },
+          meta: { route: "GET /questions/:id", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -165,10 +171,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return ThreadToolSuccessSchema.parse({
           ok: true,
           data: thread,
-          meta: {
-            route: "POST /questions/:id/answers",
-            source: "theagentforum-api",
-          },
+          meta: { route: "POST /questions/:id/answers", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -183,10 +186,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return ThreadToolSuccessSchema.parse({
           ok: true,
           data: thread,
-          meta: {
-            route: "POST /questions/:id/accept/:answerId",
-            source: "theagentforum-api",
-          },
+          meta: { route: "POST /questions/:id/accept/:answerId", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -196,13 +196,12 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
     async attachSkill(input: unknown): Promise<ToolPayload> {
       try {
         const parsed = AttachSkillToolInputSchema.parse(input);
-        const createInput = {
+        const skill = await apiClient.attachSkill(parsed.questionId, parsed.answerId, {
           name: parsed.name,
           ...(parsed.content !== undefined ? { content: parsed.content } : {}),
           ...(parsed.url !== undefined ? { url: parsed.url } : {}),
           ...(parsed.mimeType !== undefined ? { mimeType: parsed.mimeType } : {}),
-        };
-        const skill = await apiClient.attachSkill(parsed.questionId, parsed.answerId, createInput);
+        });
 
         return AnswerSkillToolSuccessSchema.parse({
           ok: true,
@@ -216,74 +215,158 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return mapToolError(error);
       }
     },
+
+    async authRegister(input: unknown): Promise<ToolPayload> {
+      try {
+        const parsed = StartRegistrationToolInputSchema.parse(input);
+        const session = await apiClient.startRegistration(parsed);
+
+        return RegistrationSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "POST /auth/registrations/start", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authStatus(input: unknown): Promise<ToolPayload> {
+      try {
+        const parsed = RegistrationStatusToolInputSchema.parse(input);
+        const session = await apiClient.getRegistrationSession(parsed.registrationSessionId);
+
+        return RegistrationSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "GET /auth/registrations/:id", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authPasskeyRegister(input: unknown): Promise<ToolPayload> {
+      try {
+        const parsed = PasskeyRegisterToolInputSchema.parse(input);
+        const options = await apiClient.getPasskeyRegistrationOptions(parsed.registrationSessionId);
+        const session = await apiClient.registerPasskey({
+          registrationSessionId: parsed.registrationSessionId,
+          attestationResponse: `mcp:${options.challenge}:${options.user.name}`,
+          clientDataJson: JSON.stringify({
+            type: "webauthn.create",
+            challenge: options.challenge,
+            source: "mcp",
+          }),
+          passkeyLabel: parsed.passkeyLabel,
+        });
+
+        return RegistrationSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "POST /auth/passkeys/register", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authPair(input: unknown): Promise<ToolPayload> {
+      try {
+        const parsed = PairToolInputSchema.parse(input);
+        const session = await apiClient.redeemPairing(parsed);
+
+        return RegistrationSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "POST /auth/pairings/redeem", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
   };
 }
 
-export function mapToolError(cause: unknown): z.infer<typeof ToolErrorSchema> {
-  if (cause instanceof TafApiClientError) {
-    return ToolErrorSchema.parse({
-      ok: false,
-      error: {
-        category: mapApiErrorCategory(cause),
-        code: cause.code,
-        message: cause.message,
-        statusCode: cause.statusCode || undefined,
-        details: cause.details,
-      },
-    });
-  }
-
-  if (cause instanceof ZodError) {
-    return ToolErrorSchema.parse({
-      ok: false,
-      error: {
-        category: "validation_error",
-        code: "invalid_arguments",
-        message: "Tool arguments failed validation.",
-        details: cause.issues,
-      },
-    });
-  }
-
-  return ToolErrorSchema.parse({
-    ok: false,
+function mapToolError(error: unknown): ToolPayload {
+  const base = {
+    ok: false as const,
     error: {
-      category: "internal_error",
-      code: "internal_error",
-      message: cause instanceof Error ? cause.message : "Unknown MCP tool error.",
+      category: classifyError(error),
+      code: inferErrorCode(error),
+      message: inferErrorMessage(error),
+      statusCode: inferStatusCode(error),
+      details: inferDetails(error),
     },
-  });
+  };
+
+  return ToolErrorSchema.parse(base);
 }
 
-function mapApiErrorCategory(error: TafApiClientError): ErrorCategory {
-  if (
-    error.statusCode === 400 ||
-    error.code === "validation_error" ||
-    error.code === "invalid_json"
-  ) {
-    return ErrorCategorySchema.parse("validation_error");
+function classifyError(error: unknown): ErrorCategory {
+  if (error instanceof ZodError) {
+    return ErrorCategorySchema.enum.validation_error;
   }
 
-  if (
-    error.statusCode === 404 ||
-    error.code === "question_not_found" ||
-    error.code === "answer_not_found" ||
-    error.code === "not_found"
-  ) {
-    return ErrorCategorySchema.parse("not_found");
+  if (error instanceof TafApiClientError) {
+    if (error.statusCode === 404) {
+      return ErrorCategorySchema.enum.not_found;
+    }
+    if (error.statusCode === 401 || error.statusCode === 403) {
+      return ErrorCategorySchema.enum.auth_error;
+    }
+    if (error.statusCode === 0) {
+      return ErrorCategorySchema.enum.network_error;
+    }
+    if (error.statusCode >= 500) {
+      return ErrorCategorySchema.enum.server_error;
+    }
+    return ErrorCategorySchema.enum.validation_error;
   }
 
-  if (error.statusCode === 401 || error.statusCode === 403) {
-    return ErrorCategorySchema.parse("auth_error");
+  return ErrorCategorySchema.enum.internal_error;
+}
+
+function inferErrorCode(error: unknown): string {
+  if (error instanceof ZodError) {
+    return "invalid_arguments";
   }
 
-  if (error.code === "network_error" || error.statusCode === 0) {
-    return ErrorCategorySchema.parse("network_error");
+  if (error instanceof TafApiClientError) {
+    return error.code;
   }
 
-  if (error.statusCode >= 500) {
-    return ErrorCategorySchema.parse("server_error");
+  return "internal_error";
+}
+
+function inferErrorMessage(error: unknown): string {
+  if (error instanceof ZodError) {
+    return error.issues.map((issue) => issue.message).join("; ");
   }
 
-  return ErrorCategorySchema.parse("internal_error");
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unknown error.";
+}
+
+function inferStatusCode(error: unknown): number | undefined {
+  if (error instanceof TafApiClientError) {
+    return error.statusCode;
+  }
+
+  return undefined;
+}
+
+function inferDetails(error: unknown): unknown {
+  if (error instanceof TafApiClientError) {
+    return error.details;
+  }
+
+  if (error instanceof ZodError) {
+    return error.flatten();
+  }
+
+  return undefined;
 }

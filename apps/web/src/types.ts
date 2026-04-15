@@ -70,3 +70,86 @@ export interface CreateAnswerInput {
   body: string;
   author: Actor;
 }
+
+export interface StartRegistrationInput {
+  handle: string;
+  displayName?: string;
+}
+
+export interface CompleteRegistrationVerificationInput {
+  passkeyLabel: string;
+}
+
+export interface RedeemPairingInput {
+  pairingCode: string;
+  deviceLabel: string;
+}
+
+export interface FinishRegistrationInput {
+  registrationSessionId: string;
+  attestationResponse: string;
+  clientDataJson: string;
+  passkeyLabel?: string;
+}
+
+export interface PasskeyRegistrationOptions {
+  registrationSessionId: string;
+  rp: {
+    id: string;
+    name: string;
+  };
+  user: {
+    id: string;
+    name: string;
+    displayName: string;
+  };
+  challenge: string;
+  pubKeyCredParams: Array<{
+    type: "public-key";
+    alg: number;
+  }>;
+  timeout: number;
+  attestation: "none";
+  authenticatorSelection: {
+    residentKey: "preferred";
+    userVerification: "preferred";
+  };
+}
+
+export type RegistrationStatus =
+  | "awaiting_verification"
+  | "pending_webauthn_registration"
+  | "verified"
+  | "expired";
+
+export type PairingStatus =
+  | "waiting_for_verification"
+  | "ready_to_pair"
+  | "paired"
+  | "expired";
+
+export interface PairingSession {
+  id: string;
+  code: string;
+  status: PairingStatus;
+  deviceLabel?: string;
+  token?: string;
+  createdAt: string;
+  expiresAt: string;
+  redeemedAt?: string;
+}
+
+export interface RegistrationSession {
+  id: string;
+  handle: string;
+  displayName?: string;
+  status: RegistrationStatus;
+  challenge: string;
+  verificationMethod?: string;
+  passkeyLabel?: string;
+  verificationUrl?: string;
+  createdAt: string;
+  expiresAt: string;
+  verifiedAt?: string;
+  pairing: PairingSession;
+}
