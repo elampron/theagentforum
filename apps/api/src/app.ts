@@ -1,17 +1,26 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
   Actor,
+  CompleteRegistrationVerificationInput,
   CreateAnswerInput,
   CreateAnswerSkillInput,
   CreateQuestionInput,
+  FinishRegistrationInput,
+  RedeemPairingInput,
+  StartRegistrationInput,
 } from "@theagentforum/core";
+import type { AuthStore } from "./auth-store";
 import type { QuestionStore } from "./question-store";
 
 interface CreateAppOptions {
   corsAllowOrigin?: string;
 }
 
-export function createApp(store: QuestionStore, options: CreateAppOptions = {}) {
+export function createApp(
+  questionStore: QuestionStore,
+  authStore: AuthStore,
+  options: CreateAppOptions = {},
+) {
   const corsAllowOrigin = options.corsAllowOrigin ?? "*";
   const corsHeaders = {
     "access-control-allow-origin": corsAllowOrigin,
@@ -24,7 +33,7 @@ export function createApp(store: QuestionStore, options: CreateAppOptions = {}) 
     res: ServerResponse,
   ): Promise<void> {
     try {
-      await routeRequest(store, req, res, corsHeaders);
+      await routeRequest(questionStore, authStore, req, res, corsHeaders);
     } catch (error) {
       if (isHttpError(error)) {
         sendError(res, corsHeaders, error.statusCode, error.code, error.message);
@@ -44,7 +53,8 @@ export function createApp(store: QuestionStore, options: CreateAppOptions = {}) 
 }
 
 async function routeRequest(
-  store: QuestionStore,
+  questionStore: QuestionStore,
+  authStore: AuthStore,
   req: IncomingMessage,
   res: ServerResponse,
   corsHeaders: Record<string, string>,
@@ -81,7 +91,7 @@ async function routeRequest(
 
     sendJson(res, corsHeaders, 200, {
       ok: true,
-      data: await store.searchThreads(query, { status, limit }),
+      data: await questionStore.searchThreads(query, { status, limit }),
     });
     return;
   }
@@ -94,7 +104,7 @@ async function routeRequest(
   if (method === "GET" && path === "/questions") {
     sendJson(res, corsHeaders, 200, {
       ok: true,
-      data: await store.listQuestions(),
+      data: await questionStore.listQuestions(),
     });
     return;
   }
@@ -102,7 +112,7 @@ async function routeRequest(
   if (method === "POST" && path === "/questions") {
     const payload = await readJsonBody(req);
     const input = parseCreateQuestionInput(payload);
-    const question = await store.createQuestion(input);
+    const question = await questionStore.createQuestion(input);
 
     sendJson(res, corsHeaders, 201, {
       ok: true,
@@ -119,7 +129,7 @@ async function routeRequest(
   const questionMatch = matchPath(path, /^\/questions\/([^/]+)$/);
 
   if (method === "GET" && questionMatch) {
-    const thread = await store.getQuestionThread(questionMatch[1]);
+    const thread = await questionStore.getQuestionThread(questionMatch[1]);
 
     if (!thread) {
       sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -138,7 +148,7 @@ async function routeRequest(
   if (method === "POST" && answersMatch) {
     const payload = await readJsonBody(req);
     const input = parseCreateAnswerInput(payload);
-    const thread = await store.createAnswer(answersMatch[1], input);
+    const thread = await questionStore.createAnswer(answersMatch[1], input);
 
     if (!thread) {
       sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -162,10 +172,10 @@ async function routeRequest(
   if (method === "GET" && answerSkillsMatch) {
     const questionId = answerSkillsMatch[1];
     const answerId = answerSkillsMatch[2];
-    const skills = await store.listAnswerSkills(questionId, answerId);
+    const skills = await questionStore.listAnswerSkills(questionId, answerId);
 
     if (!skills) {
-      const questionExists = await store.getQuestionThread(questionId);
+      const questionExists = await questionStore.getQuestionThread(questionId);
 
       if (!questionExists) {
         sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -194,10 +204,10 @@ async function routeRequest(
     const answerId = answerSkillsMatch[2];
     const payload = await readJsonBody(req);
     const input = parseCreateAnswerSkillInput(payload);
-    const skill = await store.createAnswerSkill(questionId, answerId, input);
+    const skill = await questionStore.createAnswerSkill(questionId, answerId, input);
 
     if (!skill) {
-      const questionExists = await store.getQuestionThread(questionId);
+      const questionExists = await questionStore.getQuestionThread(questionId);
 
       if (!questionExists) {
         sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -224,10 +234,10 @@ async function routeRequest(
   if (method === "POST" && acceptMatch) {
     const questionId = acceptMatch[1];
     const answerId = acceptMatch[2];
-    const thread = await store.acceptAnswer(questionId, answerId);
+    const thread = await questionStore.acceptAnswer(questionId, answerId);
 
     if (!thread) {
-      const questionExists = await store.getQuestionThread(questionId);
+      const questionExists = await questionStore.getQuestionThread(questionId);
 
       if (!questionExists) {
         sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -252,6 +262,151 @@ async function routeRequest(
   }
 
   if (path.startsWith("/questions/")) {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/registrations/start") {
+    const payload = await readJsonBody(req);
+    const input = parseStartRegistrationInput(payload);
+
+    sendJson(res, corsHeaders, 201, {
+      ok: true,
+      data: await authStore.startRegistration(input),
+    });
+    return;
+  }
+
+  const passkeyOptionsMatch = matchPath(
+    path,
+    /^\/auth\/registrations\/([^/]+)\/passkey\/options$/,
+  );
+
+  if (method === "GET" && passkeyOptionsMatch) {
+    const options = await authStore.getPasskeyRegistrationOptions(passkeyOptionsMatch[1]);
+
+    if (!options) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "registration_session_not_found",
+        "Registration session not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: options,
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/passkeys/register") {
+    const payload = await readJsonBody(req);
+    const input = parseFinishRegistrationInput(payload);
+    const session = await authStore.finishPasskeyRegistration(input);
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "registration_session_not_found",
+        "Registration session not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
+  const registrationMatch = matchPath(path, /^\/auth\/registrations\/([^/]+)$/);
+
+  if (method === "GET" && registrationMatch) {
+    const session = await authStore.getRegistrationSession(registrationMatch[1]);
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "registration_session_not_found",
+        "Registration session not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
+  const verifyMatch = matchPath(path, /^\/auth\/registrations\/([^/]+)\/verify$/);
+
+  if (method === "POST" && verifyMatch) {
+    const payload = await readJsonBody(req);
+    const input = parseCompleteRegistrationVerificationInput(payload);
+    const session = await authStore.completeRegistrationVerification(verifyMatch[1], input);
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "registration_session_not_found",
+        "Registration session not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/pairings/redeem") {
+    const payload = await readJsonBody(req);
+    const input = parseRedeemPairingInput(payload);
+    const session = await authStore.redeemPairing(input);
+
+    if (!session) {
+      sendError(res, corsHeaders, 404, "pairing_session_not_found", "Pairing session not found.");
+      return;
+    }
+
+    if (session.pairing.status !== "paired") {
+      sendError(
+        res,
+        corsHeaders,
+        409,
+        "pairing_not_ready",
+        "Pairing session is not ready to redeem.",
+        {
+          registrationStatus: session.status,
+          pairingStatus: session.pairing.status,
+        },
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
+  if (path.startsWith("/auth/")) {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
@@ -358,6 +513,45 @@ function parseCreateAnswerSkillInput(payload: unknown): CreateAnswerSkillInput {
   };
 }
 
+function parseStartRegistrationInput(payload: unknown): StartRegistrationInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    handle: readRequiredString(input.handle, "handle"),
+    displayName: readOptionalString(input.displayName, "displayName"),
+  };
+}
+
+function parseFinishRegistrationInput(payload: unknown): FinishRegistrationInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    registrationSessionId: readRequiredString(input.registrationSessionId, "registrationSessionId"),
+    attestationResponse: readRequiredString(input.attestationResponse, "attestationResponse"),
+    clientDataJson: readRequiredString(input.clientDataJson, "clientDataJson"),
+    passkeyLabel: readOptionalString(input.passkeyLabel, "passkeyLabel"),
+  };
+}
+
+function parseCompleteRegistrationVerificationInput(
+  payload: unknown,
+): CompleteRegistrationVerificationInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    passkeyLabel: readRequiredString(input.passkeyLabel, "passkeyLabel"),
+  };
+}
+
+function parseRedeemPairingInput(payload: unknown): RedeemPairingInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    pairingCode: readRequiredString(input.pairingCode, "pairingCode"),
+    deviceLabel: readRequiredString(input.deviceLabel, "deviceLabel"),
+  };
+}
+
 function parseActor(value: unknown): Actor {
   const actor = asRecord(value, "author must be an object.");
   const displayName = actor.displayName;
@@ -406,6 +600,22 @@ function readRequiredQueryString(value: string | null, fieldName: string): strin
       400,
       "validation_error",
       `${fieldName} query parameter must be a non-empty string.`,
+    );
+  }
+
+  return value.trim();
+}
+
+function readOptionalString(value: unknown, fieldName: string): string | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be a string.`,
     );
   }
 

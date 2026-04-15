@@ -7,8 +7,10 @@ import * as z from "zod/v4";
 import {
   ApiErrorSchema,
   AnswerSkillSchema,
+  PasskeyRegistrationOptionsSchema,
   QuestionSchema,
   QuestionThreadSchema,
+  RegistrationSessionSchema,
   SearchResultSchema,
 } from "./schemas.js";
 
@@ -134,6 +136,49 @@ export class TafApiClient {
       `/questions/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`,
       QuestionThreadSchema,
     );
+  }
+
+  async startRegistration(input: {
+    handle: string;
+    displayName?: string;
+  }): Promise<z.infer<typeof RegistrationSessionSchema>> {
+    return this.request("POST", "/auth/registrations/start", RegistrationSessionSchema, input);
+  }
+
+  async getRegistrationSession(
+    registrationSessionId: string,
+  ): Promise<z.infer<typeof RegistrationSessionSchema>> {
+    return this.request(
+      "GET",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}`,
+      RegistrationSessionSchema,
+    );
+  }
+
+  async getPasskeyRegistrationOptions(
+    registrationSessionId: string,
+  ): Promise<z.infer<typeof PasskeyRegistrationOptionsSchema>> {
+    return this.request(
+      "GET",
+      `/auth/registrations/${encodeURIComponent(registrationSessionId)}/passkey/options`,
+      PasskeyRegistrationOptionsSchema,
+    );
+  }
+
+  async registerPasskey(input: {
+    registrationSessionId: string;
+    attestationResponse: string;
+    clientDataJson: string;
+    passkeyLabel?: string;
+  }): Promise<z.infer<typeof RegistrationSessionSchema>> {
+    return this.request("POST", "/auth/passkeys/register", RegistrationSessionSchema, input);
+  }
+
+  async redeemPairing(input: {
+    pairingCode: string;
+    deviceLabel: string;
+  }): Promise<z.infer<typeof RegistrationSessionSchema>> {
+    return this.request("POST", "/auth/pairings/redeem", RegistrationSessionSchema, input);
   }
 
   private async request<TData>(

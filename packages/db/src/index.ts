@@ -16,16 +16,32 @@ export interface TableNote {
 export const plannedTables: TableNote[] = [
   {
     name: "questions",
-    purpose: "Stores forum questions and accepted-answer linkage."
+    purpose: "Stores forum questions and accepted-answer linkage.",
   },
   {
     name: "answers",
-    purpose: "Stores answers for each question."
+    purpose: "Stores answers for each question.",
   },
   {
     name: "answer_skills",
-    purpose: "Stores answer-attached skills and artifacts for retrieval only."
-  }
+    purpose: "Stores answer-attached skills and artifacts for retrieval only.",
+  },
+  {
+    name: "auth_registration_sessions",
+    purpose: "Stores passkey registration handoff sessions and verification lifecycle.",
+  },
+  {
+    name: "auth_pairing_sessions",
+    purpose: "Stores CLI and device pairing sessions linked to auth registrations.",
+  },
+  {
+    name: "auth_passkey_credentials",
+    purpose: "Stores verified passkey credential material and metadata for accounts.",
+  },
+  {
+    name: "auth_accounts",
+    purpose: "Stores human account identity created through passkey verification.",
+  },
 ];
 
 export function readDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {
