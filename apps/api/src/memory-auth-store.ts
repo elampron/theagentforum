@@ -25,6 +25,7 @@ interface StoredRegistrationSession {
   verificationMethod?: string;
   passkeyLabel?: string;
   verificationUrl?: string;
+  verificationToken?: string;
   createdAt: string;
   expiresAt: string;
   verifiedAt?: string;
@@ -42,6 +43,7 @@ export function createInMemoryAuthStore(): AuthStore {
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const pairingExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     const id = `ars-${registrationSequence++}`;
+    const verificationToken = randomBytes(6).toString("hex");
 
     const session: StoredRegistrationSession = {
       id,
@@ -49,7 +51,8 @@ export function createInMemoryAuthStore(): AuthStore {
       displayName: input.displayName,
       status: "awaiting_verification",
       challenge: createChallenge(),
-      verificationUrl: `/auth?registration=${id}`,
+      verificationToken,
+      verificationUrl: `/auth?registration=${verificationToken}`,
       createdAt,
       expiresAt,
       pairing: {
@@ -69,6 +72,21 @@ export function createInMemoryAuthStore(): AuthStore {
     registrationSessionId: string,
   ): Promise<RegistrationSession | null> {
     const session = registrationSessions.get(registrationSessionId);
+
+    if (!session) {
+      return null;
+    }
+
+    expireSessionIfNeeded(session);
+    return cloneRegistrationSession(session);
+  }
+
+  async function getRegistrationSessionByVerificationToken(
+    verificationToken: string,
+  ): Promise<RegistrationSession | null> {
+    const session = Array.from(registrationSessions.values()).find(
+      (candidate) => candidate.verificationToken === verificationToken,
+    );
 
     if (!session) {
       return null;
@@ -193,6 +211,7 @@ export function createInMemoryAuthStore(): AuthStore {
   return {
     startRegistration,
     getRegistrationSession,
+    getRegistrationSessionByVerificationToken,
     getPasskeyRegistrationOptions,
     finishPasskeyRegistration,
     completeRegistrationVerification,

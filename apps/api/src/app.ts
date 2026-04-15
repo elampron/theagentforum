@@ -277,6 +277,31 @@ async function routeRequest(
     return;
   }
 
+  if (method === "GET" && path === "/auth/resolve") {
+    const verificationToken = readRequiredQueryString(
+      url.searchParams.get("registration"),
+      "registration",
+    );
+    const session = await authStore.getRegistrationSessionByVerificationToken(verificationToken);
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "registration_session_not_found",
+        "Registration session not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
   const passkeyOptionsMatch = matchPath(
     path,
     /^\/auth\/registrations\/([^/]+)\/passkey\/options$/,

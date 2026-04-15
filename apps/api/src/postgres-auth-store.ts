@@ -14,6 +14,7 @@ export function createPostgresAuthStore(): AuthStore {
   return {
     startRegistration,
     getRegistrationSession,
+    getRegistrationSessionByVerificationToken,
     getPasskeyRegistrationOptions,
     finishPasskeyRegistration,
     completeRegistrationVerification,
@@ -22,6 +23,7 @@ export function createPostgresAuthStore(): AuthStore {
 }
 
 async function startRegistration(input: StartRegistrationInput): Promise<RegistrationSession> {
+  const verificationToken = randomBytes(6).toString("hex");
   const registrationSession = await queryJson<RegistrationSession>(
     `
       with ensured_account as (
@@ -65,7 +67,7 @@ async function startRegistration(input: StartRegistrationInput): Promise<Registr
       handle: input.handle,
       display_name: input.displayName ?? "",
       challenge: createChallenge(),
-      verification_url: `/auth?registration=${randomBytes(6).toString("hex")}`,
+      verification_url: `/auth?registration=${verificationToken}`,
       pairing_code: createPairingCode(),
     },
   );
@@ -78,6 +80,25 @@ async function getRegistrationSession(
 ): Promise<RegistrationSession | null> {
   await expireRegistrationSession(registrationSessionId);
   const output = await selectRegistrationSession(registrationSessionId);
+  return output ? (JSON.parse(output) as RegistrationSession) : null;
+}
+
+async function getRegistrationSessionByVerificationToken(
+  verificationToken: string,
+): Promise<RegistrationSession | null> {
+  await expireRegistrationSessionByVerificationToken(verificationToken);
+
+  const output = await runSql(
+    `
+      select ${registrationSessionSelect("r", "p", ":'verification_token'")} :: text
+      from auth_registration_sessions r
+      join auth_pairing_sessions p
+        on p.registration_session_id = r.id
+      where r.verification_url = concat('/auth?registration=', :'verification_token');
+    `,
+    { verification_token: verificationToken },
+  );
+
   return output ? (JSON.parse(output) as RegistrationSession) : null;
 }
 
@@ -314,6 +335,23 @@ async function expireRegistrationByPairingCode(pairingCode: string): Promise<voi
   );
 }
 
+async function expireRegistrationSessionByVerificationToken(
+  verificationToken: string,
+): Promise<void> {
+  await runSql(
+    `
+      update auth_registration_sessions
+      set
+        status = 'expired',
+        updated_at = now()
+      where verification_url = concat('/auth?registration=', :'verification_token')
+        and status <> 'verified'
+        and expires_at <= now();
+    `,
+    { verification_token: verificationToken },
+  );
+}
+
 async function selectRegistrationSession(registrationSessionId: string): Promise<string> {
   return runSql(
     `
@@ -330,6 +368,7 @@ async function selectRegistrationSession(registrationSessionId: string): Promise
 function registrationSessionSelect(
   registrationAlias: string,
   pairingAlias: string,
+  verificationTokenExpression = `regexp_replace(${registrationAlias}.verification_url, '^/auth\\?registration=', '')`,
 ): string {
   return `json_build_object(
     'id', ${registrationAlias}.id,
@@ -340,6 +379,7 @@ function registrationSessionSelect(
     'verificationMethod', ${registrationAlias}.verification_method,
     'passkeyLabel', ${registrationAlias}.passkey_label,
     'verificationUrl', ${registrationAlias}.verification_url,
+    'verificationToken', ${verificationTokenExpression},
     'createdAt', to_char(${registrationAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'expiresAt', to_char(${registrationAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'verifiedAt', case

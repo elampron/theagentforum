@@ -132,6 +132,15 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     );
   }
 
+  async function resolveRegistrationSession(
+    verificationToken: string,
+  ): Promise<RegistrationSession> {
+    return request<RegistrationSession>(
+      "GET",
+      `/auth/resolve?registration=${encodeURIComponent(verificationToken)}`,
+    );
+  }
+
   async function getPasskeyRegistrationOptions(
     registrationSessionId: string,
   ): Promise<PasskeyRegistrationOptions> {
@@ -203,6 +212,7 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     listAnswerSkills,
     startRegistration,
     getRegistrationSession,
+    resolveRegistrationSession,
     getPasskeyRegistrationOptions,
     registerPasskey,
     completeRegistrationVerification,

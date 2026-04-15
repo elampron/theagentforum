@@ -92,6 +92,8 @@ describe("HTTP API", () => {
     assert.equal(started.body.data.status, "awaiting_verification");
     assert.equal(started.body.data.pairing.status, "waiting_for_verification");
     assert.match(started.body.data.challenge, /^[A-Za-z0-9_-]+$/);
+    assert.match(started.body.data.verificationUrl, /^\/auth\?registration=/);
+    assert.match(started.body.data.verificationToken, /^[a-f0-9]{12}$/);
 
     const registrationId = started.body.data.id;
     const pairingCode = started.body.data.pairing.code;
@@ -127,6 +129,26 @@ describe("HTTP API", () => {
     assert.equal(redeemed.body.data.pairing.status, "paired");
     assert.equal(redeemed.body.data.pairing.deviceLabel, "pixel-bot");
     assert.match(redeemed.body.data.pairing.token, /^taf_/);
+  });
+
+  it("resolves a registration session from the public verification token", async () => {
+    const app = createTestApp();
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "pixel-resolve",
+        displayName: "Pixel Resolve",
+      },
+    });
+
+    const resolved = await requestJson(
+      app,
+      `/auth/resolve?registration=${started.body.data.verificationToken}`,
+    );
+
+    assert.equal(resolved.status, 200);
+    assert.equal(resolved.body.data.id, started.body.data.id);
   });
 
   it("returns validation errors for invalid auth payloads", async () => {

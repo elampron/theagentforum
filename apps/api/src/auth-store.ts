@@ -10,6 +10,9 @@ import type {
 export interface AuthStore {
   startRegistration(input: StartRegistrationInput): Promise<RegistrationSession>;
   getRegistrationSession(registrationSessionId: string): Promise<RegistrationSession | null>;
+  getRegistrationSessionByVerificationToken(
+    verificationToken: string,
+  ): Promise<RegistrationSession | null>;
   getPasskeyRegistrationOptions(
     registrationSessionId: string,
   ): Promise<PasskeyRegistrationOptions | null>;

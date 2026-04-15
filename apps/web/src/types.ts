@@ -148,6 +148,7 @@ export interface RegistrationSession {
   verificationMethod?: string;
   passkeyLabel?: string;
   verificationUrl?: string;
+  verificationToken?: string;
   createdAt: string;
   expiresAt: string;
   verifiedAt?: string;

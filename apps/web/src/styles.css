@@ -1559,6 +1559,76 @@ ul {
   gap: 1.25rem;
 }
 
+.auth-guide-card {
+  gap: 1rem;
+}
+
+.auth-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  list-style: none;
+  counter-reset: auth-steps;
+}
+
+.auth-steps li {
+  counter-increment: auth-steps;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-elevated);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.auth-steps li::before {
+  content: counter(auth-steps);
+  display: inline-grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.6rem;
+  border-radius: 999px;
+  background: var(--artifact-soft);
+  color: var(--text-strong);
+  font-size: 0.85rem;
+}
+
+.auth-steps li.active {
+  border-color: rgba(15, 118, 110, 0.28);
+  background: rgba(15, 118, 110, 0.08);
+  color: var(--text-strong);
+}
+
+.auth-tip {
+  background: rgba(234, 122, 65, 0.08);
+  border-color: rgba(234, 122, 65, 0.18);
+}
+
+.status-pills-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-elevated);
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.status-chip--done {
+  border-color: rgba(31, 122, 71, 0.24);
+  background: rgba(31, 122, 71, 0.1);
+  color: var(--accepted);
+}
+
 .auth-callout {
   padding: 0.9rem 1rem;
   border-radius: 0.85rem;
@@ -1576,4 +1646,16 @@ ul {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   margin-top: 0.35rem;
+}
+
+@media (max-width: 900px) {
+  .auth-steps {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-steps {
+    grid-template-columns: 1fr;
+  }
 }
