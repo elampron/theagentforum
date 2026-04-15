@@ -17,6 +17,7 @@ export function AuthPage({ api }: AuthPageProps) {
   const [creatingPasskey, setCreatingPasskey] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
   const [passkeyLabel, setPasskeyLabel] = useState("This device passkey");
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   useEffect(() => {
     if (!registrationParam) {
@@ -27,7 +28,16 @@ export function AuthPage({ api }: AuthPageProps) {
       setLoadingSession(true);
       setError(null);
       try {
-        setRegistrationSession(await api.getRegistrationSession(registrationParam));
+        try {
+          setRegistrationSession(await api.getRegistrationSession(registrationParam));
+        } catch (cause) {
+          if (cause instanceof ApiClientError && cause.code === "registration_session_not_found") {
+            setRegistrationSession(await api.resolveRegistrationSession(registrationParam));
+            return;
+          }
+
+          throw cause;
+        }
       } catch (cause) {
         setError(readErrorMessage(cause));
       } finally {
@@ -37,12 +47,33 @@ export function AuthPage({ api }: AuthPageProps) {
   }, [api, registrationParam]);
 
   const verificationUrl = useMemo(() => {
-    if (!registrationSession?.id) {
+    if (!registrationSession?.verificationToken) {
       return null;
     }
 
-    return `${window.location.origin}/auth?registration=${registrationSession.id}`;
+    return `${window.location.origin}/auth?registration=${registrationSession.verificationToken}`;
   }, [registrationSession]);
+
+  const canCreatePasskey =
+    registrationSession !== null &&
+    !creatingPasskey &&
+    (registrationSession.status === "awaiting_verification" ||
+      registrationSession.status === "pending_webauthn_registration");
+
+  const canRedeemPairing =
+    registrationSession !== null &&
+    !redeeming &&
+    registrationSession.pairing.status === "ready_to_pair";
+
+  const currentStep = registrationSession
+    ? registrationSession.pairing.status === "paired"
+      ? 4
+      : registrationSession.status === "verified"
+        ? 4
+        : registrationSession.status === "pending_webauthn_registration"
+          ? 3
+          : 2
+    : 1;
 
   async function handleStartRegistration(formData: FormData): Promise<void> {
     setStarting(true);
@@ -140,6 +171,16 @@ export function AuthPage({ api }: AuthPageProps) {
     }
   }
 
+  async function copyValue(value: string, field: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      window.setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1500);
+    } catch {
+      setError("Could not copy to clipboard.");
+    }
+  }
+
   return (
     <main className="layout auth-layout">
       <header className="stack auth-hero">
@@ -156,6 +197,23 @@ export function AuthPage({ api }: AuthPageProps) {
 
       {error ? <p className="error">{error}</p> : null}
       {loadingSession ? <p className="muted">Loading registration session...</p> : null}
+
+      <section className="card stack auth-guide-card">
+        <div>
+          <p className="eyebrow">How this works</p>
+          <h2>Browser verifies you, agent gets paired afterward</h2>
+          <p className="muted">
+            Start in the CLI or here, complete the browser passkey step, then redeem the pairing code to issue an agent token.
+          </p>
+        </div>
+
+        <ol className="auth-steps" aria-label="Authentication steps">
+          <li className={currentStep >= 1 ? "active" : undefined}>Start registration</li>
+          <li className={currentStep >= 2 ? "active" : undefined}>Open verification link</li>
+          <li className={currentStep >= 3 ? "active" : undefined}>Create passkey</li>
+          <li className={currentStep >= 4 ? "active" : undefined}>Redeem pairing for token</li>
+        </ol>
+      </section>
 
       <section className="card stack">
         <div>
@@ -188,6 +246,10 @@ export function AuthPage({ api }: AuthPageProps) {
             {starting ? "Starting..." : "Start passkey registration"}
           </button>
         </form>
+
+        <p className="field-hint">
+          If you already started from the CLI, you can skip this form and just open the verification link you were given.
+        </p>
       </section>
 
       {registrationSession ? (
@@ -197,12 +259,19 @@ export function AuthPage({ api }: AuthPageProps) {
               <div>
                 <h2>2. Confirm the handoff</h2>
                 <p className="muted">
-                  Use the same browser, a new tab, or a mobile device. The registration link carries the full state.
+                  Open the verification link in any browser. That link is the handoff between CLI and web.
                 </p>
               </div>
               <button type="button" onClick={() => void handleRefreshStatus()}>
                 Refresh status
               </button>
+            </div>
+
+            <div className="auth-callout auth-tip">
+              <strong>What you should do next</strong>
+              <p className="muted">
+                Copy the verification URL, open it in a browser, then click <strong>Create passkey</strong>. Once the status changes to verified, come back and redeem pairing.
+              </p>
             </div>
 
             <dl className="definition-list">
@@ -228,17 +297,33 @@ export function AuthPage({ api }: AuthPageProps) {
 
             {verificationUrl ? (
               <div className="auth-callout">
-                <p className="muted">Verification URL</p>
-                <code className="block-code">{verificationUrl}</code>
+                <div className="row between center wrap-gap">
+                  <div>
+                    <p className="muted">Verification URL</p>
+                    <code className="block-code">{verificationUrl}</code>
+                  </div>
+                  <button type="button" className="button button--ghost" onClick={() => void copyValue(verificationUrl, "verification-url")}>
+                    {copiedField === "verification-url" ? "Copied" : "Copy link"}
+                  </button>
+                </div>
               </div>
             ) : null}
+
+            <div className="status-pills-row" aria-label="Current auth status">
+              <span className={`status-chip ${registrationSession.status === "verified" ? "status-chip--done" : ""}`}>
+                Registration: {registrationSession.status}
+              </span>
+              <span className={`status-chip ${registrationSession.pairing.status === "ready_to_pair" || registrationSession.pairing.status === "paired" ? "status-chip--done" : ""}`}>
+                Pairing: {registrationSession.pairing.status}
+              </span>
+            </div>
           </section>
 
           <section className="card stack">
             <div>
               <h2>3. Create the passkey</h2>
               <p className="muted">
-                This flow is wired like real passkey registration, with simulated browser ceremony right now so we can ship the experience end to end.
+                Click once. If it works, this section should move the registration to <strong>verified</strong> and unlock pairing.
               </p>
             </div>
 
@@ -253,15 +338,24 @@ export function AuthPage({ api }: AuthPageProps) {
 
             <button
               type="button"
-              disabled={
-                creatingPasskey ||
-                (registrationSession.status !== "awaiting_verification" &&
-                  registrationSession.status !== "pending_webauthn_registration")
-              }
+              disabled={!canCreatePasskey}
               onClick={() => void handleCreatePasskey()}
             >
               {creatingPasskey ? "Creating passkey..." : "Create passkey now"}
             </button>
+
+            {registrationSession.status === "verified" ? (
+              <div className="auth-callout auth-success">
+                <strong>Passkey step complete</strong>
+                <p className="muted">
+                  Nice, the registration is verified. You can redeem the pairing code now.
+                </p>
+              </div>
+            ) : (
+              <p className="field-hint">
+                Expected result: registration status becomes <strong>verified</strong> and pairing becomes <strong>ready_to_pair</strong>.
+              </p>
+            )}
           </section>
 
           <section className="card stack">
@@ -293,16 +387,30 @@ export function AuthPage({ api }: AuthPageProps) {
               </label>
               <button
                 type="submit"
-                disabled={redeeming || registrationSession.pairing.status !== "ready_to_pair"}
+                disabled={!canRedeemPairing}
               >
                 {redeeming ? "Redeeming..." : "Redeem pairing"}
               </button>
             </form>
 
+            {registrationSession.pairing.status !== "ready_to_pair" && registrationSession.pairing.status !== "paired" ? (
+              <p className="field-hint">
+                Pairing stays locked until the browser passkey step verifies successfully.
+              </p>
+            ) : null}
+
             {registrationSession.pairing.token ? (
               <div className="auth-callout auth-success">
-                <p className="muted">Issued token</p>
-                <code className="block-code">{registrationSession.pairing.token}</code>
+                <div className="row between center wrap-gap">
+                  <div>
+                    <p className="muted">Issued token</p>
+                    <code className="block-code">{registrationSession.pairing.token}</code>
+                  </div>
+                  <button type="button" className="button button--ghost" onClick={() => void copyValue(registrationSession.pairing.token ?? "", "issued-token")}>
+                    {copiedField === "issued-token" ? "Copied" : "Copy token"}
+                  </button>
+                </div>
+                <p className="field-hint">This is the token the CLI or MCP client should use next.</p>
               </div>
             ) : null}
           </section>

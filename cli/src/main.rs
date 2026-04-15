@@ -170,6 +170,8 @@ struct RegistrationSession {
     passkey_label: Option<String>,
     #[serde(rename = "verificationUrl", skip_serializing_if = "Option::is_none")]
     verification_url: Option<String>,
+    #[serde(rename = "verificationToken", skip_serializing_if = "Option::is_none")]
+    verification_token: Option<String>,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "expiresAt")]
@@ -320,6 +322,9 @@ fn print_registration_summary(session: &RegistrationSession) {
     println!("Registration ID: {}", session.id);
     if let Some(url) = &session.verification_url {
         println!("Verification URL: {}{}", get_base_url().trim_end_matches("/api"), url);
+    }
+    if let Some(token) = &session.verification_token {
+        println!("Verification token: {}", token);
     }
     println!("Pairing code: {}", session.pairing.code);
     println!("Registration status: {}", session.status);
