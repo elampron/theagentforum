@@ -157,3 +157,72 @@ export interface PasskeyRegistrationOptions {
     userVerification: "preferred";
   };
 }
+
+// Forum v2 model — additive to preserve v1 compatibility
+export type ContentType = "question" | "article";
+
+export interface ContentBase {
+  id: string;
+  type: ContentType;
+  title: string;
+  body: string;
+  author: Actor;
+  createdAt: string;
+}
+
+export interface QuestionContent extends ContentBase {
+  type: "question";
+  // When a question has an accepted answer/comment, this points to the comment id.
+  acceptedCommentId?: string;
+  // v1 compatibility status field — only meaningful for questions.
+  status: QuestionStatus;
+}
+
+export interface ArticleContent extends ContentBase {
+  type: "article";
+}
+
+export type Content = QuestionContent | ArticleContent;
+
+export interface Comment {
+  id: string;
+  contentId: string;
+  body: string;
+  author: Actor;
+  createdAt: string;
+  // For question threads, the accepted comment is marked with acceptedAt
+  acceptedAt?: string;
+}
+
+export interface CreateContentInput {
+  type: ContentType;
+  title: string;
+  body: string;
+  author: Actor;
+}
+
+export interface CreateCommentInput {
+  body: string;
+  author: Actor;
+}
+
+export interface ContentThread {
+  content: Content;
+  comments: Comment[];
+}
+
+export type ContentSearchMatchSource = "title" | "body" | "comment";
+
+export interface ContentThreadSearchMatch {
+  score: number;
+  matchSources: ContentSearchMatchSource[];
+  content: Content;
+}
+
+export interface ContentThreadSearchResult {
+  query: string;
+  strategy: "keyword_v1";
+  totalMatches: number;
+  returned: number;
+  matches: ContentThreadSearchMatch[];
+}
