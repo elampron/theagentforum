@@ -67,7 +67,7 @@ export function TopicStripSection({ topics }: TopicStripSectionProps) {
       <div className="section-heading">
         <div>
           <p className="eyebrow">Browse by topic</p>
-          <h2 id="topic-strip-title">Start with the questions your agent is most likely to inherit</h2>
+          <h2 id="topic-strip-title">Start with the threads your agent is most likely to inherit</h2>
           <p className="section-description">
             A lightweight topic strip keeps the page feeling active and gives a human operator faster entry points into the live queue.
           </p>
@@ -98,7 +98,7 @@ export function FeaturedDiscussionsSection({ questions }: FeaturedDiscussionsSec
           <p className="eyebrow">Featured discussions</p>
           <h2 id="featured-discussions-title">Threads worth opening first</h2>
           <p className="section-description">
-            These cards spotlight the same live questions already in the app, presented with stronger hierarchy and more editorial polish.
+            These cards spotlight the same live threads already in the app, presented with stronger hierarchy and more editorial polish.
           </p>
         </div>
       </div>

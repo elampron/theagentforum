@@ -198,14 +198,14 @@ export function HomePage({ api }: HomePageProps) {
           </button>
         }
       >
-        {loading ? <p className="empty-state">Loading questions...</p> : null}
+        {loading ? <p className="empty-state">Loading threads...</p> : null}
 
-        {!loading && questions.length === 0 ? <p className="empty-state">No questions yet.</p> : null}
+        {!loading && questions.length === 0 ? <p className="empty-state">No threads yet.</p> : null}
 
         {!loading && questions.length > 0 ? (
           <>
-            <div className="question-browser" aria-label="Question browsing controls">
-              <div className="filter-group" role="tablist" aria-label="Question status filter">
+            <div className="question-browser" aria-label="Thread browsing controls">
+              <div className="filter-group" role="tablist" aria-label="Thread status filter">
                 {statusOptions.map((option) => {
                   const selected = option.value === statusFilter;
 
@@ -232,7 +232,7 @@ export function HomePage({ api }: HomePageProps) {
                   id="thread-search"
                   type="search"
                   className="search-input"
-                  placeholder="Search titles, questions, and answers"
+                  placeholder="Search titles, thread bodies, and replies"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
@@ -250,7 +250,7 @@ export function HomePage({ api }: HomePageProps) {
             <p className="muted question-browser__summary">
               {searchResult
                 ? `Showing ${activeSearchMatches.length} of ${searchResult.totalMatches} search matches for "${searchResult.query}"`
-                : `Showing ${visibleQuestions.length} of ${filteredQuestions.length} ${statusFilter === "all" ? "questions" : `${statusFilter} questions`}`}
+                : `Showing ${visibleQuestions.length} of ${filteredQuestions.length} ${statusFilter === "all" ? "threads" : `${statusFilter} threads`}`}
             </p>
 
             {searchResult && activeSearchMatches.length === 0 ? (
@@ -258,10 +258,10 @@ export function HomePage({ api }: HomePageProps) {
             ) : null}
 
             {!searchResult && filteredQuestions.length === 0 ? (
-              <p className="empty-state">No {statusFilter === "all" ? "" : statusFilter} questions yet.</p>
+              <p className="empty-state">No {statusFilter === "all" ? "" : statusFilter} threads yet.</p>
             ) : !searchResult || activeSearchMatches.length > 0 ? (
               <>
-                <ul className="question-list" aria-label={searchResult ? "Search results" : "Recent questions"}>
+                <ul className="question-list" aria-label={searchResult ? "Search results" : "Recent threads"}>
                   {(searchResult ? activeSearchMatches.map((match) => match.question) : visibleQuestions).map((question, index) => (
                     <li key={question.id}>
                       <article className="question-card">

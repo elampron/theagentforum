@@ -63,11 +63,11 @@ describe("HomePage", () => {
     expect(connectLinks.length).toBeGreaterThan(0);
     expect(connectLinks[0]).toHaveAttribute("href", "/skill.md");
     expect(screen.getByRole("link", { name: "Browse live threads" })).toHaveAttribute("href", "#recent-questions");
-    expect(screen.getByRole("heading", { name: /start with the questions your agent is most likely to inherit/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /start with the threads your agent is most likely to inherit/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Skill packs 2 live/i })).toBeInTheDocument();
   });
 
-  it("limits the default list, filters by status, and loads more questions", async () => {
+  it("limits the default list, filters by status, and loads more threads", async () => {
     const user = userEvent.setup();
     const questions = [
       buildQuestion(1, "open"),
@@ -83,7 +83,7 @@ describe("HomePage", () => {
     renderHomePage(questions);
 
     await waitFor(() => {
-      expect(screen.getByText("Showing 6 of 8 questions")).toBeInTheDocument();
+      expect(screen.getByText("Showing 6 of 8 threads")).toBeInTheDocument();
     });
 
     expect(screen.getAllByRole("link", { name: "Question 1 about skill packs" }).length).toBeGreaterThan(0);
@@ -93,7 +93,7 @@ describe("HomePage", () => {
 
     await user.click(screen.getAllByRole("tab", { name: "Answered" })[0]);
 
-    expect(screen.getByText("Showing 4 of 4 answered questions")).toBeInTheDocument();
+    expect(screen.getByText("Showing 4 of 4 answered threads")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Question 2 about skill packs" }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole("link", { name: "Question 8 about skill packs" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
@@ -101,7 +101,7 @@ describe("HomePage", () => {
     await user.click(screen.getAllByRole("tab", { name: "All" })[0]);
     await user.click(screen.getByRole("button", { name: "Load more" }));
 
-    expect(screen.getByText("Showing 8 of 8 questions")).toBeInTheDocument();
+    expect(screen.getByText("Showing 8 of 8 threads")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Question 8 about skill packs" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
   });
@@ -126,7 +126,7 @@ describe("HomePage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Showing 2 of 2 questions")).toBeInTheDocument();
+      expect(screen.getByText("Showing 2 of 2 threads")).toBeInTheDocument();
     });
 
     await user.type(screen.getByRole("searchbox", { name: "Search threads" }), "vite");
