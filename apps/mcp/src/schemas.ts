@@ -46,6 +46,47 @@ export const QuestionThreadSchema = z.object({
   answers: z.array(AnswerSchema),
 });
 
+export const ContentTypeSchema = z.enum(["question", "article"]);
+
+export const ContentSchema = z.object({
+  id: z.string(),
+  type: ContentTypeSchema,
+  title: z.string(),
+  body: z.string(),
+  author: ActorSchema,
+  createdAt: z.string(),
+  status: QuestionStatusSchema.optional(),
+  acceptedCommentId: z.string().optional(),
+});
+
+export const CommentSchema = z.object({
+  id: z.string(),
+  contentId: z.string(),
+  body: z.string(),
+  author: ActorSchema,
+  createdAt: z.string(),
+  acceptedAt: z.string().optional(),
+});
+
+export const ContentThreadSchema = z.object({
+  content: ContentSchema,
+  comments: z.array(CommentSchema),
+});
+
+export const ContentSearchMatchSchema = z.object({
+  score: z.number(),
+  matchSources: z.array(z.enum(["title", "body", "comment"])).min(1),
+  content: ContentSchema,
+});
+
+export const ContentSearchResultSchema = z.object({
+  query: z.string(),
+  strategy: z.literal("keyword_v1"),
+  totalMatches: z.number().int().min(0),
+  returned: z.number().int().min(0),
+  matches: z.array(ContentSearchMatchSchema),
+});
+
 export const ApiErrorSchema = z.object({
   code: z.string(),
   message: z.string(),
@@ -143,6 +184,23 @@ export const PasskeyRegistrationOptionsSchema = z.object({
 
 const OptionalAuthorSchema = ActorSchema.optional();
 
+function requireIdAlias(
+  value: { primary?: string; alias?: string },
+  ctx: z.RefinementCtx,
+  field: string,
+  aliasField: string,
+): void {
+  if (value.primary ?? value.alias) {
+    return;
+  }
+
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: [field],
+    message: `${field} (or ${aliasField}) is required.`,
+  });
+}
+
 export const AskToolInputSchema = z.object({
   title: z.string().min(1).max(300),
   body: z.string().min(1).default("No body provided."),
@@ -154,9 +212,23 @@ export const ListToolInputSchema = z.object({
   limit: z.number().int().min(1).max(200).optional(),
 });
 
-export const GetThreadToolInputSchema = z.object({
-  questionId: z.string().min(1),
+const GetThreadToolInputBaseSchema = z.object({
+  questionId: z.string().min(1).optional(),
+  contentId: z.string().min(1).optional(),
 });
+
+export const GetThreadToolInputSchema = GetThreadToolInputBaseSchema
+  .superRefine((value, ctx) => {
+    requireIdAlias(
+      { primary: value.questionId, alias: value.contentId },
+      ctx,
+      "questionId",
+      "contentId",
+    );
+  })
+  .transform((value) => ({
+    questionId: value.questionId ?? value.contentId ?? "",
+  }));
 
 export const SearchToolInputSchema = z.object({
   query: z.string().min(1),
@@ -164,20 +236,60 @@ export const SearchToolInputSchema = z.object({
   limit: z.number().int().min(1).max(200).default(10),
 });
 
-export const AnswerToolInputSchema = z.object({
-  questionId: z.string().min(1),
+const AnswerToolInputBaseSchema = z.object({
+  questionId: z.string().min(1).optional(),
+  contentId: z.string().min(1).optional(),
   body: z.string().min(1),
   author: OptionalAuthorSchema,
 });
 
-export const AcceptToolInputSchema = z.object({
-  questionId: z.string().min(1),
-  answerId: z.string().min(1),
+export const AnswerToolInputSchema = AnswerToolInputBaseSchema
+  .superRefine((value, ctx) => {
+    requireIdAlias(
+      { primary: value.questionId, alias: value.contentId },
+      ctx,
+      "questionId",
+      "contentId",
+    );
+  })
+  .transform((value) => ({
+    questionId: value.questionId ?? value.contentId ?? "",
+    body: value.body,
+    author: value.author,
+  }));
+
+const AcceptToolInputBaseSchema = z.object({
+  questionId: z.string().min(1).optional(),
+  contentId: z.string().min(1).optional(),
+  answerId: z.string().min(1).optional(),
+  commentId: z.string().min(1).optional(),
 });
 
+export const AcceptToolInputSchema = AcceptToolInputBaseSchema
+  .superRefine((value, ctx) => {
+    requireIdAlias(
+      { primary: value.questionId, alias: value.contentId },
+      ctx,
+      "questionId",
+      "contentId",
+    );
+    requireIdAlias(
+      { primary: value.answerId, alias: value.commentId },
+      ctx,
+      "answerId",
+      "commentId",
+    );
+  })
+  .transform((value) => ({
+    questionId: value.questionId ?? value.contentId ?? "",
+    answerId: value.answerId ?? value.commentId ?? "",
+  }));
+
 const AttachSkillToolInputBaseSchema = z.object({
-  questionId: z.string().min(1),
-  answerId: z.string().min(1),
+  questionId: z.string().min(1).optional(),
+  contentId: z.string().min(1).optional(),
+  answerId: z.string().min(1).optional(),
+  commentId: z.string().min(1).optional(),
   name: z.string().min(1).optional(),
   skillName: z.string().min(1).optional(),
   content: z.string().min(1).optional(),
@@ -189,6 +301,19 @@ const AttachSkillToolInputBaseSchema = z.object({
 
 export const AttachSkillToolInputSchema = AttachSkillToolInputBaseSchema
   .superRefine((value, ctx) => {
+    requireIdAlias(
+      { primary: value.questionId, alias: value.contentId },
+      ctx,
+      "questionId",
+      "contentId",
+    );
+    requireIdAlias(
+      { primary: value.answerId, alias: value.commentId },
+      ctx,
+      "answerId",
+      "commentId",
+    );
+
     if (!(value.name ?? value.skillName)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -206,8 +331,8 @@ export const AttachSkillToolInputSchema = AttachSkillToolInputBaseSchema
     }
   })
   .transform((value) => ({
-    questionId: value.questionId,
-    answerId: value.answerId,
+    questionId: value.questionId ?? value.contentId ?? "",
+    answerId: value.answerId ?? value.commentId ?? "",
     name: value.name ?? value.skillName ?? "",
     content: value.content ?? value.skillContent,
     url: value.url ?? value.skillUrl,
@@ -309,10 +434,10 @@ export type ErrorCategory = z.infer<typeof ErrorCategorySchema>;
 
 export const askToolInputShape = AskToolInputSchema.shape;
 export const listToolInputShape = ListToolInputSchema.shape;
-export const getThreadToolInputShape = GetThreadToolInputSchema.shape;
+export const getThreadToolInputShape = GetThreadToolInputBaseSchema.shape;
 export const searchToolInputShape = SearchToolInputSchema.shape;
-export const answerToolInputShape = AnswerToolInputSchema.shape;
-export const acceptToolInputShape = AcceptToolInputSchema.shape;
+export const answerToolInputShape = AnswerToolInputBaseSchema.shape;
+export const acceptToolInputShape = AcceptToolInputBaseSchema.shape;
 export const attachSkillToolInputShape = AttachSkillToolInputBaseSchema.shape;
 export const startRegistrationToolInputShape = StartRegistrationToolInputSchema.shape;
 export const registrationStatusToolInputShape = RegistrationStatusToolInputSchema.shape;

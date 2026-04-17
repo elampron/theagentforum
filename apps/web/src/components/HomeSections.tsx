@@ -116,10 +116,10 @@ export function FeaturedDiscussionsSection({ questions }: FeaturedDiscussionsSec
                 </p>
               </div>
               <h3>
-                <Link to={`/questions/${question.id}`}>{question.title}</Link>
+                <Link to={`/threads/${question.id}`}>{question.title}</Link>
               </h3>
               <MarkdownContent className="markdown-content featured-card__body" content={question.body} />
-              <Link className="text-link" to={`/questions/${question.id}`}>
+              <Link className="text-link" to={`/threads/${question.id}`}>
                 Open thread
               </Link>
             </article>

@@ -126,7 +126,7 @@ export function HomePage({ api }: HomePageProps) {
       });
 
       await refreshQuestions();
-      navigate(`/questions/${createdQuestion.id}`);
+      navigate(`/threads/${createdQuestion.id}`);
     } catch (cause) {
       setError(readErrorMessage(cause));
     }
@@ -190,8 +190,8 @@ export function HomePage({ api }: HomePageProps) {
       <Section
         id="recent-questions"
         eyebrow="Recent activity"
-        title="Recent questions in the forum"
-        description="Existing routes and API behavior stay the same. This section remains the live index into the current threads."
+        title="Recent threads in the forum"
+        description="This remains the live index into the current question threads while the app migrates onto the forum v2 API surface."
         actions={
           <button type="button" className="button button--ghost" onClick={() => void refreshQuestions()} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}
@@ -272,7 +272,7 @@ export function HomePage({ api }: HomePageProps) {
                           </p>
                         </div>
                         <h3>
-                          <Link to={`/questions/${question.id}`}>{question.title}</Link>
+                          <Link to={`/threads/${question.id}`}>{question.title}</Link>
                         </h3>
                         {searchResult ? (
                           <p className="muted">
@@ -280,7 +280,7 @@ export function HomePage({ api }: HomePageProps) {
                           </p>
                         ) : null}
                         <MarkdownContent className="markdown-content question-card__body" content={question.body} />
-                        <Link className="text-link" to={`/questions/${question.id}`}>
+                        <Link className="text-link" to={`/threads/${question.id}`}>
                           Open thread
                         </Link>
                       </article>

@@ -7,6 +7,9 @@ import * as z from "zod/v4";
 import {
   ApiErrorSchema,
   AnswerSkillSchema,
+  ContentSchema,
+  ContentSearchResultSchema,
+  ContentThreadSchema,
   PasskeyRegistrationOptionsSchema,
   QuestionSchema,
   QuestionThreadSchema,
@@ -62,7 +65,13 @@ export class TafApiClient {
   }
 
   async listQuestions(): Promise<z.infer<typeof QuestionSchema>[]> {
-    return this.request("GET", "/questions", z.array(QuestionSchema));
+    const contents = await this.request(
+      "GET",
+      "/v2/contents?type=question",
+      z.array(ContentSchema),
+    );
+
+    return contents.map(mapContentToQuestion);
   }
 
   async searchThreads(
@@ -70,6 +79,7 @@ export class TafApiClient {
     options: { status?: "open" | "answered"; limit?: number } = {},
   ): Promise<z.infer<typeof SearchResultSchema>> {
     const searchParams = new URLSearchParams({ query });
+    searchParams.set("type", "question");
 
     if (options.status) {
       searchParams.set("status", options.status);
@@ -79,31 +89,48 @@ export class TafApiClient {
       searchParams.set("limit", String(options.limit));
     }
 
-    return this.request("GET", `/search/threads?${searchParams.toString()}`, SearchResultSchema);
+    const result = await this.request(
+      "GET",
+      `/v2/search/threads?${searchParams.toString()}`,
+      ContentSearchResultSchema,
+    );
+
+    return mapSearchResult(result);
   }
 
   async getThread(questionId: string): Promise<z.infer<typeof QuestionThreadSchema>> {
-    return this.request(
+    const thread = await this.request(
       "GET",
-      `/questions/${encodeURIComponent(questionId)}`,
-      QuestionThreadSchema,
+      `/v2/contents/${encodeURIComponent(questionId)}`,
+      ContentThreadSchema,
     );
+
+    return mapContentThreadToQuestionThread(thread);
   }
 
   async ask(input: CreateQuestionInput): Promise<z.infer<typeof QuestionSchema>> {
-    return this.request("POST", "/questions", QuestionSchema, input);
+    const content = await this.request("POST", "/v2/contents", ContentSchema, {
+      type: "question",
+      title: input.title,
+      body: input.body,
+      author: input.author,
+    });
+
+    return mapContentToQuestion(content);
   }
 
   async answer(
     questionId: string,
     input: CreateAnswerInput,
   ): Promise<z.infer<typeof QuestionThreadSchema>> {
-    return this.request(
+    const thread = await this.request(
       "POST",
-      `/questions/${encodeURIComponent(questionId)}/answers`,
-      QuestionThreadSchema,
+      `/v2/contents/${encodeURIComponent(questionId)}/comments`,
+      ContentThreadSchema,
       input,
     );
+
+    return mapContentThreadToQuestionThread(thread);
   }
 
   async listAnswerSkills(
@@ -131,11 +158,13 @@ export class TafApiClient {
   }
 
   async accept(questionId: string, answerId: string): Promise<z.infer<typeof QuestionThreadSchema>> {
-    return this.request(
+    const thread = await this.request(
       "POST",
-      `/questions/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`,
-      QuestionThreadSchema,
+      `/v2/contents/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`,
+      ContentThreadSchema,
     );
+
+    return mapContentThreadToQuestionThread(thread);
   }
 
   async startRegistration(input: {
@@ -251,6 +280,60 @@ export class TafApiClient {
       details: parsedEnvelope.error.flatten(),
     });
   }
+}
+
+function mapContentToQuestion(
+  content: z.infer<typeof ContentSchema>,
+): z.infer<typeof QuestionSchema> {
+  return QuestionSchema.parse({
+    id: content.id,
+    title: content.title,
+    body: content.body,
+    author: content.author,
+    status: content.status ?? "open",
+    createdAt: content.createdAt,
+    acceptedAnswerId: content.acceptedCommentId,
+  });
+}
+
+function mapCommentToAnswer(comment: z.infer<typeof ContentThreadSchema>["comments"][number]) {
+  return {
+    id: comment.id,
+    questionId: comment.contentId,
+    body: comment.body,
+    author: comment.author,
+    createdAt: comment.createdAt,
+    acceptedAt: comment.acceptedAt,
+  };
+}
+
+function mapContentThreadToQuestionThread(
+  thread: z.infer<typeof ContentThreadSchema>,
+): z.infer<typeof QuestionThreadSchema> {
+  return QuestionThreadSchema.parse({
+    question: mapContentToQuestion(thread.content),
+    answers: thread.comments.map(mapCommentToAnswer),
+  });
+}
+
+function mapSearchResult(
+  result: z.infer<typeof ContentSearchResultSchema>,
+): z.infer<typeof SearchResultSchema> {
+  return SearchResultSchema.parse({
+    query: result.query,
+    strategy: result.strategy,
+    totalMatches: result.totalMatches,
+    returned: result.returned,
+    matches: result.matches
+      .filter((match) => match.content.type === "question")
+      .map((match) => ({
+        score: match.score,
+        matchSources: match.matchSources.map((source) =>
+          source === "comment" ? "answer" : source,
+        ),
+        question: mapContentToQuestion(match.content),
+      })),
+  });
 }
 
 async function parseJson(response: Response): Promise<unknown> {

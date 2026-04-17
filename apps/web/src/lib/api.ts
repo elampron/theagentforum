@@ -1,4 +1,5 @@
 import type {
+  Answer,
   AnswerSkill,
   CompleteRegistrationVerificationInput,
   CreateAnswerInput,
@@ -6,6 +7,7 @@ import type {
   FinishRegistrationInput,
   PasskeyRegistrationOptions,
   Question,
+  SearchMatchSource,
   QuestionThread,
   RedeemPairingInput,
   RegistrationSession,
@@ -28,6 +30,45 @@ interface ApiError {
 }
 
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
+
+interface ForumContent {
+  id: string;
+  type: "question" | "article";
+  title: string;
+  body: string;
+  author: Question["author"];
+  createdAt: string;
+  status?: Question["status"];
+  acceptedCommentId?: string;
+}
+
+interface ForumComment {
+  id: string;
+  contentId: string;
+  body: string;
+  author: Answer["author"];
+  createdAt: string;
+  acceptedAt?: string;
+}
+
+interface ForumContentThread {
+  content: ForumContent;
+  comments: ForumComment[];
+}
+
+interface ForumSearchMatch {
+  score: number;
+  matchSources: Array<"title" | "body" | "comment">;
+  content: ForumContent;
+}
+
+interface ForumSearchResult {
+  query: string;
+  strategy: "keyword_v1";
+  totalMatches: number;
+  returned: number;
+  matches: ForumSearchMatch[];
+}
 
 export class ApiClientError extends Error {
   readonly statusCode: number;
@@ -61,7 +102,8 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
 
   async function listQuestions(): Promise<Question[]> {
-    return request<Question[]>("GET", "/questions");
+    const contents = await request<ForumContent[]>("GET", "/v2/contents?type=question");
+    return contents.map(mapContentToQuestion);
   }
 
   async function searchThreads(
@@ -69,6 +111,7 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     options: { status?: Question["status"]; limit?: number } = {},
   ): Promise<ThreadSearchResult> {
     const searchParams = new URLSearchParams({ query });
+    searchParams.set("type", "question");
 
     if (options.status) {
       searchParams.set("status", options.status);
@@ -78,36 +121,57 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
       searchParams.set("limit", String(options.limit));
     }
 
-    return request<ThreadSearchResult>("GET", `/search/threads?${searchParams.toString()}`);
+    const result = await request<ForumSearchResult>(
+      "GET",
+      `/v2/search/threads?${searchParams.toString()}`,
+    );
+
+    return mapSearchResult(result);
   }
 
   async function createQuestion(input: CreateQuestionInput): Promise<Question> {
-    return request<Question>("POST", "/questions", input);
+    const content = await request<ForumContent>("POST", "/v2/contents", {
+      type: "question",
+      title: input.title,
+      body: input.body,
+      author: input.author,
+    });
+
+    return mapContentToQuestion(content);
   }
 
   async function getQuestionThread(questionId: string): Promise<QuestionThread> {
-    return request<QuestionThread>("GET", `/questions/${encodeURIComponent(questionId)}`);
+    const thread = await request<ForumContentThread>(
+      "GET",
+      `/v2/contents/${encodeURIComponent(questionId)}`,
+    );
+
+    return mapContentThreadToQuestionThread(thread);
   }
 
   async function createAnswer(
     questionId: string,
     input: CreateAnswerInput,
   ): Promise<QuestionThread> {
-    return request<QuestionThread>(
+    const thread = await request<ForumContentThread>(
       "POST",
-      `/questions/${encodeURIComponent(questionId)}/answers`,
+      `/v2/contents/${encodeURIComponent(questionId)}/comments`,
       input,
     );
+
+    return mapContentThreadToQuestionThread(thread);
   }
 
   async function acceptAnswer(
     questionId: string,
     answerId: string,
   ): Promise<QuestionThread> {
-    return request<QuestionThread>(
+    const thread = await request<ForumContentThread>(
       "POST",
-      `/questions/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`,
+      `/v2/contents/${encodeURIComponent(questionId)}/accept/${encodeURIComponent(answerId)}`,
     );
+
+    return mapContentThreadToQuestionThread(thread);
   }
 
   async function listAnswerSkills(questionId: string, answerId: string): Promise<AnswerSkill[]> {
@@ -218,6 +282,60 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     completeRegistrationVerification,
     redeemPairing,
   };
+}
+
+function mapContentToQuestion(content: ForumContent): Question {
+  return {
+    id: content.id,
+    title: content.title,
+    body: content.body,
+    author: content.author,
+    status: content.status ?? "open",
+    createdAt: content.createdAt,
+    acceptedAnswerId: content.acceptedCommentId,
+  };
+}
+
+function mapCommentToAnswer(comment: ForumComment): Answer {
+  return {
+    id: comment.id,
+    questionId: comment.contentId,
+    body: comment.body,
+    author: comment.author,
+    createdAt: comment.createdAt,
+    acceptedAt: comment.acceptedAt,
+  };
+}
+
+function mapContentThreadToQuestionThread(thread: ForumContentThread): QuestionThread {
+  return {
+    question: mapContentToQuestion(thread.content),
+    answers: thread.comments.map(mapCommentToAnswer),
+  };
+}
+
+function mapSearchResult(result: ForumSearchResult): ThreadSearchResult {
+  return {
+    query: result.query,
+    strategy: result.strategy,
+    totalMatches: result.totalMatches,
+    returned: result.returned,
+    matches: result.matches
+      .filter((match) => match.content.type === "question")
+      .map((match) => ({
+        score: match.score,
+        matchSources: match.matchSources.map(mapMatchSource),
+        question: mapContentToQuestion(match.content),
+      })),
+  };
+}
+
+function mapMatchSource(source: ForumSearchMatch["matchSources"][number]): SearchMatchSource {
+  if (source === "comment") {
+    return "answer";
+  }
+
+  return source;
 }
 
 export type ApiClient = ReturnType<typeof createApiClient>;
