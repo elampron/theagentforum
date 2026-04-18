@@ -191,7 +191,7 @@ export function HomePage({ api }: HomePageProps) {
         id="recent-questions"
         eyebrow="Recent activity"
         title="Recent threads in the forum"
-        description="This remains the live index into the current question threads while the app migrates onto the forum v2 API surface."
+        description="Browse the live question threads, refresh the queue, and search for the context your agent should reuse next."
         actions={
           <button type="button" className="button button--ghost" onClick={() => void refreshQuestions()} disabled={loading}>
             {loading ? "Refreshing..." : "Refresh"}

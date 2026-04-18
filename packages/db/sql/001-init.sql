@@ -1,7 +1,5 @@
 create sequence if not exists question_id_seq;
 create sequence if not exists answer_id_seq;
-create sequence if not exists content_id_seq;
-create sequence if not exists comment_id_seq;
 create sequence if not exists auth_registration_session_id_seq;
 create sequence if not exists auth_pairing_session_id_seq;
 create sequence if not exists auth_account_id_seq;
@@ -118,35 +116,3 @@ begin
   end if;
 end $$;
 
--- Forum v2 tables (idempotent, additive to v1)
-create table if not exists contents (
-  id text primary key default ('c-' || nextval('content_id_seq')),
-  type text not null check (type in ('question', 'article')),
-  title text not null,
-  body text not null,
-  author jsonb not null,
-  created_at timestamptz not null default now(),
-  accepted_comment_id text
-);
-
-create table if not exists comments (
-  id text primary key default ('cm-' || nextval('comment_id_seq')),
-  content_id text not null references contents(id) on delete cascade,
-  body text not null,
-  author jsonb not null,
-  created_at timestamptz not null default now(),
-  accepted_at timestamptz
-);
-
-do $$
-begin
-  if not exists (
-    select 1 from pg_constraint where conname = 'contents_accepted_comment_id_fkey'
-  ) then
-    alter table contents
-      add constraint contents_accepted_comment_id_fkey
-      foreign key (accepted_comment_id)
-      references comments(id)
-      on delete set null;
-  end if;
-end $$;
