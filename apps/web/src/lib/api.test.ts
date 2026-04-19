@@ -17,6 +17,7 @@ describe("createApiClient", () => {
           data: [
             {
               id: "q-1",
+              type: "question",
               title: "How to test?",
               body: "Need examples",
               author: {
@@ -45,7 +46,7 @@ describe("createApiClient", () => {
     expect(questions[0].id).toBe("q-1");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:3001/questions",
+      "http://localhost:3001/v2/contents?type=question",
       expect.objectContaining({
         method: "GET",
       }),
@@ -94,9 +95,10 @@ describe("createApiClient", () => {
             matches: [
               {
                 score: 42,
-                matchSources: ["title", "answer"],
-                question: {
+                matchSources: ["title", "comment"],
+                content: {
                   id: "q-1",
+                  type: "question",
                   title: "How to fix Vite drift?",
                   body: "Need a stable config",
                   author: {
@@ -106,7 +108,7 @@ describe("createApiClient", () => {
                   },
                   status: "answered",
                   createdAt: "2026-03-24T00:00:00.000Z",
-                  acceptedAnswerId: "a-1",
+                  acceptedCommentId: "a-1",
                 },
               },
             ],
@@ -126,7 +128,7 @@ describe("createApiClient", () => {
 
     expect(result.matches[0].matchSources).toEqual(["title", "answer"]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:3001/search/threads?query=vite&status=answered&limit=5",
+      "http://localhost:3001/v2/search/threads?query=vite&type=question&status=answered&limit=5",
       expect.objectContaining({
         method: "GET",
       }),

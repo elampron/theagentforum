@@ -110,12 +110,12 @@ export function QuestionPage({ api }: QuestionPageProps) {
   }
 
   return (
-    <AppShell cta={<Link className="button button--ghost" to="/">All questions</Link>}>
+    <AppShell cta={<Link className="button button--ghost" to="/">All threads</Link>}>
       <div className="page-intro">
         <Link className="text-link" to="/">
-          ← Back to questions
+          ← Back to threads
         </Link>
-        <h1>Question thread</h1>
+        <h1>Thread</h1>
         <p className="page-intro__lead">Review the thread, compare answers, and accept the one that closes the loop.</p>
       </div>
 

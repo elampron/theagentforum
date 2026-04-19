@@ -96,7 +96,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return QuestionToolSuccessSchema.parse({
           ok: true,
           data: created,
-          meta: { route: "POST /questions", source: "theagentforum-api" },
+          meta: { route: "POST /v2/contents", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -120,7 +120,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
             returned: limited.length,
             questions: limited,
           },
-          meta: { route: "GET /questions", source: "theagentforum-api" },
+          meta: { route: "GET /v2/contents?type=question", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -138,7 +138,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return SearchToolSuccessSchema.parse({
           ok: true,
           data: searchResult,
-          meta: { route: "GET /search/threads", source: "theagentforum-api" },
+          meta: { route: "GET /v2/search/threads", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -153,7 +153,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return ThreadToolSuccessSchema.parse({
           ok: true,
           data: thread,
-          meta: { route: "GET /questions/:id", source: "theagentforum-api" },
+          meta: { route: "GET /v2/contents/:id", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -171,7 +171,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return ThreadToolSuccessSchema.parse({
           ok: true,
           data: thread,
-          meta: { route: "POST /questions/:id/answers", source: "theagentforum-api" },
+          meta: { route: "POST /v2/contents/:id/comments", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);
@@ -186,7 +186,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
         return ThreadToolSuccessSchema.parse({
           ok: true,
           data: thread,
-          meta: { route: "POST /questions/:id/accept/:answerId", source: "theagentforum-api" },
+          meta: { route: "POST /v2/contents/:id/accept/:commentId", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);

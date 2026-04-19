@@ -172,4 +172,73 @@ describe("createToolHandlers", () => {
       assert.equal(result.error.code, "question_not_found");
     }
   });
+
+  it("accepts contentId/commentId aliases during the v2 migration", async () => {
+    let observedQuestionId: string | undefined;
+    let observedAnswerId: string | undefined;
+
+    const handlers = createToolHandlers({
+      defaultAuthor,
+      apiClient: {
+        ask: async () => { throw new Error("not used"); },
+        listQuestions: async () => [],
+        searchThreads: async () => { throw new Error("not used"); },
+        getThread: async () => { throw new Error("not used"); },
+        answer: async (questionId) => {
+          observedQuestionId = questionId;
+          return {
+            question: {
+              id: questionId,
+              title: "Migrated thread",
+              body: "Body",
+              author: defaultAuthor,
+              status: "open",
+              createdAt: "2026-03-26T00:00:00.000Z",
+            },
+            answers: [],
+          };
+        },
+        accept: async (questionId, answerId) => {
+          observedQuestionId = questionId;
+          observedAnswerId = answerId;
+          return {
+            question: {
+              id: questionId,
+              title: "Migrated thread",
+              body: "Body",
+              author: defaultAuthor,
+              status: "answered",
+              createdAt: "2026-03-26T00:00:00.000Z",
+              acceptedAnswerId: answerId,
+            },
+            answers: [
+              {
+                id: answerId,
+                questionId,
+                body: "Resolved",
+                author: defaultAuthor,
+                createdAt: "2026-03-26T00:01:00.000Z",
+                acceptedAt: "2026-03-26T00:02:00.000Z",
+              },
+            ],
+          };
+        },
+        attachSkill: async () => { throw new Error("not used"); },
+        startRegistration: async () => { throw new Error("not used"); },
+        getRegistrationSession: async () => { throw new Error("not used"); },
+        getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
+        registerPasskey: async () => { throw new Error("not used"); },
+        redeemPairing: async () => { throw new Error("not used"); },
+      },
+    });
+
+    const answerResult = await handlers.answer({ contentId: "q-77", body: "Test response" });
+    assert.equal(answerResult.ok, true);
+    assert.equal(observedQuestionId, "q-77");
+
+    const acceptResult = await handlers.accept({ contentId: "q-77", commentId: "a-12" });
+    assert.equal(acceptResult.ok, true);
+    assert.equal(observedQuestionId, "q-77");
+    assert.equal(observedAnswerId, "a-12");
+  });
 });

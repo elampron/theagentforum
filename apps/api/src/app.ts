@@ -5,12 +5,16 @@ import type {
   CreateAnswerInput,
   CreateAnswerSkillInput,
   CreateQuestionInput,
+  CreateContentInput,
+  CreateCommentInput,
   FinishRegistrationInput,
   RedeemPairingInput,
   StartRegistrationInput,
 } from "@theagentforum/core";
 import type { AuthStore } from "./auth-store";
 import type { QuestionStore } from "./question-store";
+import type { ForumStore } from "./forum-store";
+import { createForumAdapter } from "./forum-adapter";
 
 interface CreateAppOptions {
   corsAllowOrigin?: string;
@@ -28,12 +32,14 @@ export function createApp(
     "access-control-allow-headers": "content-type",
   };
 
+  const forumStore: ForumStore = createForumAdapter(questionStore);
+
   return async function app(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
     try {
-      await routeRequest(questionStore, authStore, req, res, corsHeaders);
+      await routeRequest(questionStore, authStore, forumStore, req, res, corsHeaders);
     } catch (error) {
       if (isHttpError(error)) {
         sendError(res, corsHeaders, error.statusCode, error.code, error.message);
@@ -55,6 +61,7 @@ export function createApp(
 async function routeRequest(
   questionStore: QuestionStore,
   authStore: AuthStore,
+  forumStore: ForumStore,
   req: IncomingMessage,
   res: ServerResponse,
   corsHeaders: Record<string, string>,
@@ -263,6 +270,106 @@ async function routeRequest(
 
   if (path.startsWith("/questions/")) {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  // v2 forum endpoints (experimental)
+  if (method === "GET" && path === "/v2/contents") {
+    const type = readOptionalString(url.searchParams.get("type"), "type") as
+      | "question"
+      | "article"
+      | undefined;
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await forumStore.listContents(type),
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/v2/contents") {
+    const payload = await readJsonBody(req);
+    const input = parseCreateContentInput(payload);
+    const content = await forumStore.createContent(input);
+    sendJson(res, corsHeaders, 201, { ok: true, data: content });
+    return;
+  }
+
+  if (method === "GET" && path === "/v2/search/threads") {
+    const query = readRequiredQueryString(url.searchParams.get("query"), "query");
+    const type = readOptionalString(url.searchParams.get("type"), "type") as
+      | "question"
+      | "article"
+      | undefined;
+    const status = readOptionalQuestionStatus(url.searchParams.get("status"));
+    const limit = readOptionalPositiveInteger(url.searchParams.get("limit"), "limit");
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await forumStore.searchThreads(query, { type, status, limit }),
+    });
+    return;
+  }
+
+  const contentMatch = matchPath(path, /^\/v2\/contents\/([^/]+)$/);
+
+  if (method === "GET" && contentMatch) {
+    const thread = await forumStore.getContentThread(contentMatch[1]);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, { ok: true, data: thread });
+    return;
+  }
+
+  const commentsMatch = matchPath(path, /^\/v2\/contents\/([^/]+)\/comments$/);
+
+  if (method === "POST" && commentsMatch) {
+    const payload = await readJsonBody(req);
+    const input = parseCreateCommentInput(payload);
+    const thread = await forumStore.createComment(commentsMatch[1], input);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 201, { ok: true, data: thread });
+    return;
+  }
+
+  const acceptCommentMatch = matchPath(
+    path,
+    /^\/v2\/contents\/([^/]+)\/accept\/([^/]+)$/,
+  );
+
+  if (method === "POST" && acceptCommentMatch) {
+    const contentId = acceptCommentMatch[1];
+    const commentId = acceptCommentMatch[2];
+    const thread = await forumStore.acceptComment(contentId, commentId);
+
+    if (!thread) {
+      const existing = await forumStore.getContentThread(contentId);
+
+      if (!existing) {
+        sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+        return;
+      }
+
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "comment_not_found",
+        "Comment not found for the specified content.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, { ok: true, data: thread });
     return;
   }
 
@@ -535,6 +642,35 @@ function parseCreateAnswerSkillInput(payload: unknown): CreateAnswerSkillInput {
     content,
     url,
     mimeType: readOptionalNonEmptyString(input.mimeType, "mimeType"),
+  };
+}
+
+function parseCreateContentInput(payload: unknown): CreateContentInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  const type = readRequiredString(input.type, "type");
+  if (type !== "question" && type !== "article") {
+    throw createHttpError(
+      400,
+      "validation_error",
+      "type must be one of: question, article.",
+    );
+  }
+
+  return {
+    type,
+    title: readRequiredString(input.title, "title"),
+    body: readRequiredString(input.body, "body"),
+    author: parseActor(input.author),
+  };
+}
+
+function parseCreateCommentInput(payload: unknown): CreateCommentInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    body: readRequiredString(input.body, "body"),
+    author: parseActor(input.author),
   };
 }
 
