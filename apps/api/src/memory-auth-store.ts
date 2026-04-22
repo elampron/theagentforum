@@ -1,17 +1,26 @@
 import { randomBytes } from "node:crypto";
 import type {
+  AuthenticationSession,
   CompleteRegistrationVerificationInput,
   PairingSession,
+  PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
   RedeemPairingInput,
   RegistrationSession,
+  StartAuthenticationInput,
   StartRegistrationInput,
 } from "@theagentforum/core";
-import type { AuthStore, VerifiedPasskeyRegistration } from "./auth-store";
+import type {
+  AuthStore,
+  StoredPasskeyCredential,
+  VerifiedPasskeyAuthentication,
+  VerifiedPasskeyRegistration,
+} from "./auth-store";
 
 interface StoredCredential {
   credentialId: string;
   publicKey: string;
+  signCount: number;
   label?: string;
   transports?: string[];
 }
@@ -32,11 +41,26 @@ interface StoredRegistrationSession {
   pairing: PairingSession;
 }
 
+interface StoredAuthenticationSession {
+  id: string;
+  handle: string;
+  displayName?: string;
+  status: AuthenticationSession["status"];
+  challenge: string;
+  verificationMethod?: string;
+  passkeyLabel?: string;
+  createdAt: string;
+  expiresAt: string;
+  verifiedAt?: string;
+}
+
 export function createInMemoryAuthStore(): AuthStore {
   const registrationSessions = new Map<string, StoredRegistrationSession>();
+  const authenticationSessions = new Map<string, StoredAuthenticationSession>();
   const credentialsByHandle = new Map<string, StoredCredential[]>();
   let registrationSequence = 1;
   let pairingSequence = 1;
+  let authenticationSequence = 1;
 
   async function startRegistration(input: StartRegistrationInput): Promise<RegistrationSession> {
     const createdAt = new Date().toISOString();
@@ -77,7 +101,7 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    expireSessionIfNeeded(session);
+    expireRegistrationSessionIfNeeded(session);
     return cloneRegistrationSession(session);
   }
 
@@ -92,7 +116,7 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    expireSessionIfNeeded(session);
+    expireRegistrationSessionIfNeeded(session);
     return cloneRegistrationSession(session);
   }
 
@@ -105,7 +129,7 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    expireSessionIfNeeded(session);
+    expireRegistrationSessionIfNeeded(session);
 
     if (session.status === "expired") {
       return null;
@@ -147,7 +171,7 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    expireSessionIfNeeded(session);
+    expireRegistrationSessionIfNeeded(session);
 
     if (session.status === "expired") {
       return cloneRegistrationSession(session);
@@ -156,13 +180,21 @@ export function createInMemoryAuthStore(): AuthStore {
     const verifiedAt = new Date().toISOString();
     const label = input.passkeyLabel?.trim() || `${session.handle} passkey`;
     const credentials = credentialsByHandle.get(session.handle) ?? [];
+    const existingCredential = credentials.find((credential) => credential.credentialId === input.credentialId);
 
-    credentials.push({
-      credentialId: input.credentialId,
-      publicKey: input.publicKey,
-      label,
-      transports: input.transports,
-    });
+    if (existingCredential) {
+      existingCredential.publicKey = input.publicKey;
+      existingCredential.label = label;
+      existingCredential.transports = input.transports;
+    } else {
+      credentials.push({
+        credentialId: input.credentialId,
+        publicKey: input.publicKey,
+        signCount: 0,
+        label,
+        transports: input.transports,
+      });
+    }
     credentialsByHandle.set(session.handle, credentials);
 
     session.status = "verified";
@@ -178,13 +210,25 @@ export function createInMemoryAuthStore(): AuthStore {
     registrationSessionId: string,
     input: CompleteRegistrationVerificationInput,
   ): Promise<RegistrationSession | null> {
-    return finishPasskeyRegistration({
-      registrationSessionId,
-      credentialId: `manual-${registrationSessionId}`,
-      publicKey: JSON.stringify({ source: "manual_internal" }),
-      verificationMethod: "manual_internal",
-      passkeyLabel: input.passkeyLabel,
-    });
+    const session = registrationSessions.get(registrationSessionId);
+
+    if (!session) {
+      return null;
+    }
+
+    expireRegistrationSessionIfNeeded(session);
+
+    if (session.status === "expired") {
+      return cloneRegistrationSession(session);
+    }
+
+    session.status = "verified";
+    session.verificationMethod = "manual_internal";
+    session.passkeyLabel = input.passkeyLabel.trim();
+    session.verifiedAt = new Date().toISOString();
+    session.pairing.status = "ready_to_pair";
+
+    return cloneRegistrationSession(session);
   }
 
   async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSession | null> {
@@ -196,7 +240,7 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    expireSessionIfNeeded(session);
+    expireRegistrationSessionIfNeeded(session);
 
     if (session.pairing.status !== "ready_to_pair") {
       return cloneRegistrationSession(session);
@@ -210,6 +254,139 @@ export function createInMemoryAuthStore(): AuthStore {
     return cloneRegistrationSession(session);
   }
 
+  async function startAuthentication(
+    input: StartAuthenticationInput,
+  ): Promise<AuthenticationSession | null> {
+    const credentials = (credentialsByHandle.get(input.handle) ?? []).filter(isAuthenticatablePasskey);
+
+    if (credentials.length === 0) {
+      return null;
+    }
+
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    const latestRegistration = Array.from(registrationSessions.values())
+      .filter((candidate) => candidate.handle === input.handle)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+
+    const session: StoredAuthenticationSession = {
+      id: `aas-${authenticationSequence++}`,
+      handle: input.handle,
+      displayName: latestRegistration?.displayName,
+      status: "awaiting_authentication",
+      challenge: createChallenge(),
+      createdAt,
+      expiresAt,
+    };
+
+    authenticationSessions.set(session.id, session);
+    return cloneAuthenticationSession(session);
+  }
+
+  async function getAuthenticationSession(
+    authenticationSessionId: string,
+  ): Promise<AuthenticationSession | null> {
+    const session = authenticationSessions.get(authenticationSessionId);
+
+    if (!session) {
+      return null;
+    }
+
+    expireAuthenticationSessionIfNeeded(session);
+    return cloneAuthenticationSession(session);
+  }
+
+  async function getPasskeyAuthenticationOptions(
+    authenticationSessionId: string,
+  ): Promise<PasskeyAuthenticationOptions | null> {
+    const session = authenticationSessions.get(authenticationSessionId);
+
+    if (!session) {
+      return null;
+    }
+
+    expireAuthenticationSessionIfNeeded(session);
+
+    if (session.status === "expired") {
+      return null;
+    }
+
+    const credentials = (credentialsByHandle.get(session.handle) ?? []).filter(isAuthenticatablePasskey);
+    if (credentials.length === 0) {
+      return null;
+    }
+
+    session.status = session.status === "verified" ? session.status : "pending_webauthn_authentication";
+
+    return {
+      authenticationSessionId: session.id,
+      challenge: session.challenge,
+      rpId: "theagentforum.local",
+      allowCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        type: "public-key" as const,
+        ...(credential.transports && credential.transports.length > 0
+          ? { transports: credential.transports }
+          : {}),
+      })),
+      timeout: 60000,
+      userVerification: "required",
+    };
+  }
+
+  async function getPasskeyCredential(
+    credentialId: string,
+  ): Promise<StoredPasskeyCredential | null> {
+    for (const [handle, credentials] of credentialsByHandle.entries()) {
+      const credential = credentials.find((candidate) => candidate.credentialId === credentialId);
+      if (credential) {
+        return {
+          handle,
+          credentialId: credential.credentialId,
+          publicKey: credential.publicKey,
+          signCount: credential.signCount,
+          label: credential.label,
+          transports: credential.transports,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  async function finishPasskeyAuthentication(
+    input: VerifiedPasskeyAuthentication,
+  ): Promise<AuthenticationSession | null> {
+    const session = authenticationSessions.get(input.authenticationSessionId);
+
+    if (!session) {
+      return null;
+    }
+
+    expireAuthenticationSessionIfNeeded(session);
+
+    if (session.status === "expired") {
+      return cloneAuthenticationSession(session);
+    }
+
+    const credentials = credentialsByHandle.get(session.handle) ?? [];
+    const credential = credentials.find((candidate) => candidate.credentialId === input.credentialId);
+
+    if (!credential) {
+      return null;
+    }
+
+    credential.signCount = input.signCount;
+    const verifiedAt = new Date().toISOString();
+
+    session.status = "verified";
+    session.verificationMethod = input.verificationMethod;
+    session.passkeyLabel = input.passkeyLabel ?? credential.label;
+    session.verifiedAt = verifiedAt;
+
+    return cloneAuthenticationSession(session);
+  }
+
   return {
     startRegistration,
     getRegistrationSession,
@@ -218,6 +395,11 @@ export function createInMemoryAuthStore(): AuthStore {
     finishPasskeyRegistration,
     completeRegistrationVerification,
     redeemPairing,
+    startAuthentication,
+    getAuthenticationSession,
+    getPasskeyAuthenticationOptions,
+    getPasskeyCredential,
+    finishPasskeyAuthentication,
   };
 }
 
@@ -233,7 +415,7 @@ function createToken(): string {
   return `taf_${randomBytes(18).toString("base64url")}`;
 }
 
-function expireSessionIfNeeded(session: StoredRegistrationSession): void {
+function expireRegistrationSessionIfNeeded(session: StoredRegistrationSession): void {
   const now = Date.now();
 
   if (session.status !== "expired" && Date.parse(session.expiresAt) <= now) {
@@ -245,9 +427,31 @@ function expireSessionIfNeeded(session: StoredRegistrationSession): void {
   }
 }
 
+function expireAuthenticationSessionIfNeeded(session: StoredAuthenticationSession): void {
+  if (
+    session.status !== "expired"
+    && session.status !== "verified"
+    && Date.parse(session.expiresAt) <= Date.now()
+  ) {
+    session.status = "expired";
+  }
+}
+
+function isAuthenticatablePasskey(credential: StoredCredential): boolean {
+  return !credential.credentialId.startsWith("manual-");
+}
+
 function cloneRegistrationSession(session: StoredRegistrationSession): RegistrationSession {
   return {
     ...session,
     pairing: { ...session.pairing },
+  };
+}
+
+function cloneAuthenticationSession(
+  session: StoredAuthenticationSession,
+): AuthenticationSession {
+  return {
+    ...session,
   };
 }

@@ -7,8 +7,10 @@ import type {
   CreateQuestionInput,
   CreateContentInput,
   CreateCommentInput,
+  FinishAuthenticationInput,
   FinishRegistrationInput,
   RedeemPairingInput,
+  StartAuthenticationInput,
   StartRegistrationInput,
 } from "@theagentforum/core";
 import type { AuthStore } from "./auth-store";
@@ -18,6 +20,7 @@ import { createForumAdapter } from "./forum-adapter";
 import {
   deriveRequestOrigin,
   deriveRpId,
+  verifyPasskeyAuthentication,
   verifyPasskeyRegistration,
   WebAuthnVerificationError,
 } from "./webauthn";
@@ -585,6 +588,176 @@ async function routeRequest(
     return;
   }
 
+  if (method === "POST" && path === "/auth/authentications/start") {
+    const payload = await readJsonBody(req);
+    const input = parseStartAuthenticationInput(payload);
+    const session = await authStore.startAuthentication(input);
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "passkey_authentication_not_available",
+        "No registered passkey was found for that handle.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 201, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
+  const passkeyAuthenticationOptionsMatch = matchPath(
+    path,
+    /^\/auth\/authentications\/([^/]+)\/passkey\/options$/,
+  );
+
+  if (method === "GET" && passkeyAuthenticationOptionsMatch) {
+    const authenticationSession = await authStore.getAuthenticationSession(passkeyAuthenticationOptionsMatch[1]);
+
+    if (!authenticationSession) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "authentication_session_not_found",
+        "Authentication session not found.",
+      );
+      return;
+    }
+
+    if (authenticationSession.status === "verified") {
+      sendError(
+        res,
+        corsHeaders,
+        409,
+        "authentication_session_not_pending",
+        "Authentication session has already been verified.",
+      );
+      return;
+    }
+
+    if (authenticationSession.status === "expired") {
+      sendError(
+        res,
+        corsHeaders,
+        409,
+        "authentication_session_expired",
+        "Authentication session has expired.",
+      );
+      return;
+    }
+
+    const options = await authStore.getPasskeyAuthenticationOptions(passkeyAuthenticationOptionsMatch[1]);
+
+    if (!options) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "authentication_session_not_found",
+        "Authentication session not found.",
+      );
+      return;
+    }
+
+    const requestOrigin = deriveRequestOrigin(req.headers.origin, url, {
+      forwardedHost: req.headers["x-forwarded-host"],
+      forwardedProto: req.headers["x-forwarded-proto"],
+      referer: req.headers.referer,
+    });
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: {
+        ...options,
+        rpId: deriveRpId(requestOrigin),
+      },
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/passkeys/authenticate") {
+    const payload = await readJsonBody(req);
+    const input = parseFinishAuthenticationInput(payload);
+    const authenticationSession = await authStore.getAuthenticationSession(input.authenticationSessionId);
+
+    if (!authenticationSession) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "authentication_session_not_found",
+        "Authentication session not found.",
+      );
+      return;
+    }
+
+    if (
+      authenticationSession.status !== "awaiting_authentication"
+      && authenticationSession.status !== "pending_webauthn_authentication"
+    ) {
+      sendError(
+        res,
+        corsHeaders,
+        409,
+        "authentication_session_not_pending",
+        authenticationSession.status === "expired"
+          ? "Authentication session has expired."
+          : "Authentication session has already been verified.",
+      );
+      return;
+    }
+
+    const passkeyCredential = await authStore.getPasskeyCredential(input.credential.id);
+
+    if (!passkeyCredential || passkeyCredential.handle !== authenticationSession.handle) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "passkey_credential_not_found",
+        "Passkey credential not found for this authentication request.",
+      );
+      return;
+    }
+
+    const requestOrigin = deriveRequestOrigin(req.headers.origin, url, {
+      forwardedHost: req.headers["x-forwarded-host"],
+      forwardedProto: req.headers["x-forwarded-proto"],
+      referer: req.headers.referer,
+    });
+    const session = await authStore.finishPasskeyAuthentication(
+      verifyPasskeyAuthentication(input, {
+        authenticationSession,
+        passkeyCredential,
+        expectedOrigin: requestOrigin,
+        expectedRpId: deriveRpId(requestOrigin),
+      }),
+    );
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "authentication_session_not_found",
+        "Authentication session not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
   if (path.startsWith("/auth/")) {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
@@ -730,6 +903,14 @@ function parseStartRegistrationInput(payload: unknown): StartRegistrationInput {
   };
 }
 
+function parseStartAuthenticationInput(payload: unknown): StartAuthenticationInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    handle: readRequiredString(input.handle, "handle"),
+  };
+}
+
 function parseFinishRegistrationInput(payload: unknown): FinishRegistrationInput {
   const input = asRecord(payload, "Request body must be an object.");
   const credential = asRecord(input.credential, "credential must be an object.");
@@ -782,6 +963,51 @@ function parseFinishRegistrationInput(payload: unknown): FinishRegistrationInput
   };
 }
 
+
+function parseFinishAuthenticationInput(payload: unknown): FinishAuthenticationInput {
+  const input = asRecord(payload, "Request body must be an object.");
+  const credential = asRecord(input.credential, "credential must be an object.");
+  const response = asRecord(credential.response, "credential.response must be an object.");
+  const credentialType = readRequiredString(credential.type, "credential.type");
+
+  if (credentialType !== "public-key") {
+    throw createHttpError(400, "validation_error", "credential.type must be public-key.");
+  }
+
+  const clientExtensionResults = readOptionalRecord(
+    credential.clientExtensionResults,
+    "credential.clientExtensionResults",
+  );
+
+  return {
+    authenticationSessionId: readRequiredString(
+      input.authenticationSessionId,
+      "authenticationSessionId",
+    ),
+    credential: {
+      id: readRequiredString(credential.id, "credential.id"),
+      rawId: readRequiredString(credential.rawId, "credential.rawId"),
+      type: "public-key",
+      response: {
+        authenticatorData: readRequiredString(
+          response.authenticatorData,
+          "credential.response.authenticatorData",
+        ),
+        clientDataJSON: readRequiredString(
+          response.clientDataJSON,
+          "credential.response.clientDataJSON",
+        ),
+        signature: readRequiredString(response.signature, "credential.response.signature"),
+        userHandle: readOptionalString(response.userHandle, "credential.response.userHandle"),
+      },
+      authenticatorAttachment: readOptionalString(
+        credential.authenticatorAttachment,
+        "credential.authenticatorAttachment",
+      ),
+      clientExtensionResults,
+    },
+  };
+}
 
 function parseCompleteRegistrationVerificationInput(
   payload: unknown,

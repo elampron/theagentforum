@@ -4,6 +4,7 @@ create sequence if not exists auth_registration_session_id_seq;
 create sequence if not exists auth_pairing_session_id_seq;
 create sequence if not exists auth_account_id_seq;
 create sequence if not exists auth_passkey_credential_id_seq;
+create sequence if not exists auth_authentication_session_id_seq;
 
 create table if not exists questions (
   id text primary key default ('q-' || nextval('question_id_seq')),
@@ -100,6 +101,29 @@ create table if not exists auth_passkey_credentials (
 
 create index if not exists auth_passkey_credentials_account_id_idx
   on auth_passkey_credentials (account_id, created_at);
+
+create table if not exists auth_authentication_sessions (
+  id text primary key default ('aas-' || nextval('auth_authentication_session_id_seq')),
+  account_id text not null references auth_accounts(id) on delete cascade,
+  handle text not null,
+  display_name text,
+  status text not null default 'awaiting_authentication',
+  challenge text not null,
+  verification_method text,
+  passkey_label text,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '15 minutes'),
+  verified_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint auth_authentication_sessions_status_check
+    check (status in ('awaiting_authentication', 'pending_webauthn_authentication', 'verified', 'expired'))
+);
+
+create index if not exists auth_authentication_sessions_account_id_idx
+  on auth_authentication_sessions (account_id, created_at);
+
+create index if not exists auth_authentication_sessions_handle_idx
+  on auth_authentication_sessions (handle, created_at);
 
 do $$
 begin
