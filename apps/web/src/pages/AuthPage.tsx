@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiClientError, type ApiClient } from "../lib/api";
-import type { RegistrationSession } from "../types";
+import type {
+  FinishRegistrationInput,
+  PasskeyRegistrationOptions,
+  RegistrationSession,
+} from "../types";
 
 interface AuthPageProps {
   api: ApiClient;
@@ -117,23 +121,12 @@ export function AuthPage({ api }: AuthPageProps) {
 
     try {
       const options = await api.getPasskeyRegistrationOptions(registrationSession.id);
-
-      const attestationResponse =
-        typeof window !== "undefined" && "btoa" in window
-          ? window.btoa(`${options.challenge}:${options.user.name}:${Date.now()}`)
-          : `${options.challenge}:${options.user.name}:${Date.now()}`;
-
-      const clientDataJson = JSON.stringify({
-        type: "webauthn.create",
-        challenge: options.challenge,
-        origin: window.location.origin,
-      });
+      const credential = await createBrowserCredential(options);
 
       setRegistrationSession(
         await api.registerPasskey({
           registrationSessionId: registrationSession.id,
-          attestationResponse,
-          clientDataJson,
+          credential,
           passkeyLabel: passkeyLabel.trim() || `${options.user.displayName} passkey`,
         }),
       );
@@ -418,6 +411,109 @@ export function AuthPage({ api }: AuthPageProps) {
       ) : null}
     </main>
   );
+}
+
+type BrowserCredentialWithAttestation = {
+  id: string;
+  rawId: ArrayBuffer;
+  response: {
+    attestationObject: ArrayBuffer;
+    clientDataJSON: ArrayBuffer;
+    getPublicKey?: () => ArrayBuffer | null;
+    getPublicKeyAlgorithm?: () => number;
+    getTransports?: () => string[];
+  };
+  authenticatorAttachment?: string | null;
+  getClientExtensionResults?: () => AuthenticationExtensionsClientOutputs;
+};
+
+async function createBrowserCredential(
+  options: PasskeyRegistrationOptions,
+): Promise<FinishRegistrationInput["credential"]> {
+  const credentials = navigator.credentials;
+
+  if (!credentials?.create || typeof window.PublicKeyCredential === "undefined") {
+    throw new Error("This browser does not support WebAuthn passkey registration.");
+  }
+
+  const created = await credentials.create({
+    publicKey: {
+      challenge: toArrayBuffer(decodeMaybeBase64Url(options.challenge)),
+      rp: options.rp,
+      user: {
+        id: toArrayBuffer(decodeMaybeBase64Url(options.user.id)),
+        name: options.user.name,
+        displayName: options.user.displayName,
+      },
+      pubKeyCredParams: options.pubKeyCredParams,
+      timeout: options.timeout,
+      attestation: options.attestation,
+      authenticatorSelection: options.authenticatorSelection,
+    },
+  });
+
+  if (!created || typeof created !== "object" || !("rawId" in created) || !("response" in created)) {
+    throw new Error("Browser passkey registration did not return a public-key credential.");
+  }
+
+  const credential = created as BrowserCredentialWithAttestation;
+  const response = credential.response;
+
+  if (!response || typeof response !== "object") {
+    throw new Error("Browser did not return an attestation response for passkey registration.");
+  }
+
+  const publicKey = response.getPublicKey?.() ?? null;
+  const publicKeyAlgorithm = response.getPublicKeyAlgorithm?.();
+  const transports = response.getTransports?.();
+
+  return {
+    id: credential.id,
+    rawId: toBase64Url(new Uint8Array(credential.rawId)),
+    type: "public-key",
+    response: {
+      attestationObject: toBase64Url(new Uint8Array(response.attestationObject)),
+      clientDataJSON: toBase64Url(new Uint8Array(response.clientDataJSON)),
+      ...(publicKey ? { publicKey: toBase64Url(new Uint8Array(publicKey)) } : {}),
+      ...(typeof publicKeyAlgorithm === "number" ? { publicKeyAlgorithm } : {}),
+      ...(transports && transports.length > 0 ? { transports } : {}),
+    },
+    authenticatorAttachment: credential.authenticatorAttachment ?? undefined,
+    clientExtensionResults: credential.getClientExtensionResults?.() as Record<string, unknown> | undefined,
+  };
+}
+
+function decodeMaybeBase64Url(value: string): Uint8Array {
+  try {
+    return decodeBase64Url(value);
+  } catch {
+    return new TextEncoder().encode(value);
+  }
+}
+
+function toArrayBuffer(value: Uint8Array): ArrayBuffer {
+  return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = window.atob(padded);
+  return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+function toBase64Url(value: Uint8Array): string {
+  let binary = "";
+
+  value.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return window
+    .btoa(binary)
+    .replace(/=+$/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
 }
 
 function trimOptionalField(value: FormDataEntryValue | null): string | undefined {

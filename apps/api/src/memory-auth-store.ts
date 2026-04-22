@@ -1,19 +1,19 @@
 import { randomBytes } from "node:crypto";
 import type {
   CompleteRegistrationVerificationInput,
-  FinishRegistrationInput,
   PairingSession,
   PasskeyRegistrationOptions,
   RedeemPairingInput,
   RegistrationSession,
   StartRegistrationInput,
 } from "@theagentforum/core";
-import type { AuthStore } from "./auth-store";
+import type { AuthStore, VerifiedPasskeyRegistration } from "./auth-store";
 
 interface StoredCredential {
   credentialId: string;
   publicKey: string;
   label?: string;
+  transports?: string[];
 }
 
 interface StoredRegistrationSession {
@@ -139,7 +139,7 @@ export function createInMemoryAuthStore(): AuthStore {
   }
 
   async function finishPasskeyRegistration(
-    input: FinishRegistrationInput,
+    input: VerifiedPasskeyRegistration,
   ): Promise<RegistrationSession | null> {
     const session = registrationSessions.get(input.registrationSessionId);
 
@@ -158,14 +158,15 @@ export function createInMemoryAuthStore(): AuthStore {
     const credentials = credentialsByHandle.get(session.handle) ?? [];
 
     credentials.push({
-      credentialId: readCredentialId(input.attestationResponse),
-      publicKey: input.clientDataJson,
+      credentialId: input.credentialId,
+      publicKey: input.publicKey,
       label,
+      transports: input.transports,
     });
     credentialsByHandle.set(session.handle, credentials);
 
     session.status = "verified";
-    session.verificationMethod = "webauthn_simulated";
+    session.verificationMethod = input.verificationMethod;
     session.passkeyLabel = label;
     session.verifiedAt = verifiedAt;
     session.pairing.status = "ready_to_pair";
@@ -179,8 +180,9 @@ export function createInMemoryAuthStore(): AuthStore {
   ): Promise<RegistrationSession | null> {
     return finishPasskeyRegistration({
       registrationSessionId,
-      attestationResponse: `manual-${registrationSessionId}`,
-      clientDataJson: JSON.stringify({ source: "manual" }),
+      credentialId: `manual-${registrationSessionId}`,
+      publicKey: JSON.stringify({ source: "manual_internal" }),
+      verificationMethod: "manual_internal",
       passkeyLabel: input.passkeyLabel,
     });
   }
@@ -229,10 +231,6 @@ function createPairingCode(): string {
 
 function createToken(): string {
   return `taf_${randomBytes(18).toString("base64url")}`;
-}
-
-function readCredentialId(attestationResponse: string): string {
-  return attestationResponse.trim() || `cred_${randomBytes(8).toString("hex")}`;
 }
 
 function expireSessionIfNeeded(session: StoredRegistrationSession): void {

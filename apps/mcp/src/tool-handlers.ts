@@ -249,22 +249,15 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
     async authPasskeyRegister(input: unknown): Promise<ToolPayload> {
       try {
         const parsed = PasskeyRegisterToolInputSchema.parse(input);
-        const options = await apiClient.getPasskeyRegistrationOptions(parsed.registrationSessionId);
         const session = await apiClient.registerPasskey({
           registrationSessionId: parsed.registrationSessionId,
-          attestationResponse: `mcp:${options.challenge}:${options.user.name}`,
-          clientDataJson: JSON.stringify({
-            type: "webauthn.create",
-            challenge: options.challenge,
-            source: "mcp",
-          }),
           passkeyLabel: parsed.passkeyLabel,
         });
 
         return RegistrationSessionToolSuccessSchema.parse({
           ok: true,
           data: session,
-          meta: { route: "POST /auth/passkeys/register", source: "theagentforum-api" },
+          meta: { route: "POST /auth/registrations/:id/verify", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);

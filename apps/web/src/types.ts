@@ -85,10 +85,24 @@ export interface RedeemPairingInput {
   deviceLabel: string;
 }
 
+export interface WebAuthnCredentialPayload {
+  id: string;
+  rawId: string;
+  type: "public-key";
+  response: {
+    attestationObject: string;
+    clientDataJSON: string;
+    publicKey?: string;
+    publicKeyAlgorithm?: number;
+    transports?: string[];
+  };
+  authenticatorAttachment?: string;
+  clientExtensionResults?: Record<string, unknown>;
+}
+
 export interface FinishRegistrationInput {
   registrationSessionId: string;
-  attestationResponse: string;
-  clientDataJson: string;
+  credential: WebAuthnCredentialPayload;
   passkeyLabel?: string;
 }
 

@@ -18,7 +18,7 @@ For launch work in progress:
 - bot or device pairing after verification
 - no third-party auth provider dependency
 - smooth UX across web + CLI + MCP
-- explicit honesty that the current ceremony is a launch-focused simulated WebAuthn pass, not final cryptographic production hardening
+- explicit honesty that the browser passkey step now runs through a real WebAuthn registration ceremony, while full login/assertion hardening and broader auth enforcement still remain for later work
 
 ## Current flow
 
@@ -32,7 +32,7 @@ For launch work in progress:
 2. `GET /auth/registrations/:id/passkey/options`
    Returns passkey registration options shaped like browser WebAuthn creation options.
 3. `POST /auth/passkeys/register`
-   Completes the passkey registration slice and records a passkey credential row.
+   Verifies a browser-created WebAuthn registration payload against the pending session challenge and origin, then records a passkey credential row.
 4. `GET /auth/registrations/:id`
    Returns the current registration and pairing state.
 5. `POST /auth/pairings/redeem`
@@ -63,7 +63,7 @@ Pairing session states:
 - `auth_pairing_sessions`
   Stores pairing code, issued token, device label, and redeem state.
 - `auth_passkey_credentials`
-  Stores passkey credential identifiers and placeholder public key data.
+  Stores passkey credential identifiers, public key material, and related metadata for verified registrations.
 
 ## Smooth UX target
 
@@ -77,12 +77,13 @@ Pairing session states:
 - `taf auth register` starts the flow and prints the verification URL + pairing code
 - `taf auth status <registration-id>` checks progress
 - `taf auth pair <code> --device-label <name>` redeems the pairing and prints token material
-- `taf auth quickstart` runs the full start -> poll -> pair narrative in one place
+- `taf auth quickstart` is still a development helper built on the internal verification fallback, not a replacement for the real browser passkey ceremony
 
 ### MCP
 - use the same token from pairing redemption
 - pass `TAF_API_TOKEN` into MCP runtime config
 - keep agent auth aligned with the same API flow instead of inventing a parallel identity path
+- non-browser MCP registration helpers still use the internal verification fallback rather than pretending to perform a browser WebAuthn ceremony
 
 ## Still not done
 
@@ -90,8 +91,9 @@ This slice is real and usable, but it is not the final security-hardening pass y
 
 Still needed later:
 
-- true browser WebAuthn attestation/assertion verification
-- sign counter and replay protections
+- returning-user sign-in / assertion flow
+- stronger attestation trust validation and broader WebAuthn hardening
+- sign counter and replay protections wired into authenticated sign-in
 - stronger audit / rate limiting / abuse controls
 - richer account/session management
 - production recovery and credential lifecycle operations

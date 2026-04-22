@@ -1,14 +1,13 @@
 import { randomBytes } from "node:crypto";
 import type {
   CompleteRegistrationVerificationInput,
-  FinishRegistrationInput,
   PasskeyRegistrationOptions,
   RedeemPairingInput,
   RegistrationSession,
   StartRegistrationInput,
 } from "@theagentforum/core";
 import { runSql } from "./postgres";
-import type { AuthStore } from "./auth-store";
+import type { AuthStore, VerifiedPasskeyRegistration } from "./auth-store";
 
 export function createPostgresAuthStore(): AuthStore {
   return {
@@ -153,7 +152,7 @@ async function getPasskeyRegistrationOptions(
 }
 
 async function finishPasskeyRegistration(
-  input: FinishRegistrationInput,
+  input: VerifiedPasskeyRegistration,
 ): Promise<RegistrationSession | null> {
   await expireRegistrationSession(input.registrationSessionId);
 
@@ -168,7 +167,7 @@ async function finishPasskeyRegistration(
           end,
           verification_method = case
             when expires_at <= now() then verification_method
-            else 'webauthn_simulated'
+            else :'verification_method'
           end,
           passkey_label = case
             when expires_at <= now() then passkey_label
@@ -227,9 +226,10 @@ async function finishPasskeyRegistration(
     {
       registration_session_id: input.registrationSessionId,
       passkey_label: input.passkeyLabel ?? "",
-      credential_id: readCredentialId(input.attestationResponse),
-      public_key: input.clientDataJson,
-      transports: JSON.stringify(["internal", "hybrid"]),
+      verification_method: input.verificationMethod,
+      credential_id: input.credentialId,
+      public_key: input.publicKey,
+      transports: JSON.stringify(input.transports ?? []),
     },
   );
 
@@ -242,8 +242,9 @@ async function completeRegistrationVerification(
 ): Promise<RegistrationSession | null> {
   return finishPasskeyRegistration({
     registrationSessionId,
-    attestationResponse: `manual-${registrationSessionId}`,
-    clientDataJson: JSON.stringify({ source: "manual" }),
+    credentialId: `manual-${registrationSessionId}`,
+    publicKey: JSON.stringify({ source: "manual_internal" }),
+    verificationMethod: "manual_internal",
     passkeyLabel: input.passkeyLabel,
   });
 }
@@ -419,6 +420,3 @@ function createToken(): string {
   return `taf_${randomBytes(18).toString("base64url")}`;
 }
 
-function readCredentialId(attestationResponse: string): string {
-  return attestationResponse.trim() || `cred_${randomBytes(8).toString("hex")}`;
-}

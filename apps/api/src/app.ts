@@ -15,6 +15,12 @@ import type { AuthStore } from "./auth-store";
 import type { QuestionStore } from "./question-store";
 import type { ForumStore } from "./forum-store";
 import { createForumAdapter } from "./forum-adapter";
+import {
+  deriveRequestOrigin,
+  deriveRpId,
+  verifyPasskeyRegistration,
+  WebAuthnVerificationError,
+} from "./webauthn";
 
 interface CreateAppOptions {
   corsAllowOrigin?: string;
@@ -43,6 +49,11 @@ export function createApp(
     } catch (error) {
       if (isHttpError(error)) {
         sendError(res, corsHeaders, error.statusCode, error.code, error.message);
+        return;
+      }
+
+      if (error instanceof WebAuthnVerificationError) {
+        sendError(res, corsHeaders, 400, "webauthn_verification_failed", error.message);
         return;
       }
 
@@ -428,9 +439,17 @@ async function routeRequest(
       return;
     }
 
+    const requestOrigin = deriveRequestOrigin(req.headers.origin, url);
+
     sendJson(res, corsHeaders, 200, {
       ok: true,
-      data: options,
+      data: {
+        ...options,
+        rp: {
+          ...options.rp,
+          id: deriveRpId(requestOrigin),
+        },
+      },
     });
     return;
   }
@@ -438,7 +457,27 @@ async function routeRequest(
   if (method === "POST" && path === "/auth/passkeys/register") {
     const payload = await readJsonBody(req);
     const input = parseFinishRegistrationInput(payload);
-    const session = await authStore.finishPasskeyRegistration(input);
+    const registrationSession = await authStore.getRegistrationSession(input.registrationSessionId);
+
+    if (!registrationSession) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "registration_session_not_found",
+        "Registration session not found.",
+      );
+      return;
+    }
+
+    const requestOrigin = deriveRequestOrigin(req.headers.origin, url);
+    const session = await authStore.finishPasskeyRegistration(
+      verifyPasskeyRegistration(input, {
+        registrationSession,
+        expectedOrigin: requestOrigin,
+        expectedRpId: deriveRpId(requestOrigin),
+      }),
+    );
 
     if (!session) {
       sendError(
@@ -685,14 +724,56 @@ function parseStartRegistrationInput(payload: unknown): StartRegistrationInput {
 
 function parseFinishRegistrationInput(payload: unknown): FinishRegistrationInput {
   const input = asRecord(payload, "Request body must be an object.");
+  const credential = asRecord(input.credential, "credential must be an object.");
+  const response = asRecord(credential.response, "credential.response must be an object.");
+  const credentialType = readRequiredString(credential.type, "credential.type");
+
+  if (credentialType !== "public-key") {
+    throw createHttpError(400, "validation_error", "credential.type must be public-key.");
+  }
+
+  const publicKeyAlgorithm = readOptionalInteger(
+    response.publicKeyAlgorithm,
+    "credential.response.publicKeyAlgorithm",
+  );
+  const clientExtensionResults = readOptionalRecord(
+    credential.clientExtensionResults,
+    "credential.clientExtensionResults",
+  );
+  const transports = readOptionalStringArray(
+    response.transports,
+    "credential.response.transports",
+  );
 
   return {
     registrationSessionId: readRequiredString(input.registrationSessionId, "registrationSessionId"),
-    attestationResponse: readRequiredString(input.attestationResponse, "attestationResponse"),
-    clientDataJson: readRequiredString(input.clientDataJson, "clientDataJson"),
     passkeyLabel: readOptionalString(input.passkeyLabel, "passkeyLabel"),
+    credential: {
+      id: readRequiredString(credential.id, "credential.id"),
+      rawId: readRequiredString(credential.rawId, "credential.rawId"),
+      type: "public-key",
+      response: {
+        attestationObject: readRequiredString(
+          response.attestationObject,
+          "credential.response.attestationObject",
+        ),
+        clientDataJSON: readRequiredString(
+          response.clientDataJSON,
+          "credential.response.clientDataJSON",
+        ),
+        publicKey: readOptionalString(response.publicKey, "credential.response.publicKey"),
+        publicKeyAlgorithm,
+        transports,
+      },
+      authenticatorAttachment: readOptionalString(
+        credential.authenticatorAttachment,
+        "credential.authenticatorAttachment",
+      ),
+      clientExtensionResults,
+    },
   };
 }
+
 
 function parseCompleteRegistrationVerificationInput(
   payload: unknown,
@@ -781,6 +862,60 @@ function readOptionalString(value: unknown, fieldName: string): string | undefin
   }
 
   return value.trim();
+}
+
+function readOptionalInteger(value: unknown, fieldName: string): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be an integer.`,
+    );
+  }
+
+  return value;
+}
+
+function readOptionalRecord(
+  value: unknown,
+  fieldName: string,
+): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be an object.`,
+    );
+  }
+
+  return value as Record<string, unknown>;
+}
+
+function readOptionalStringArray(
+  value: unknown,
+  fieldName: string,
+): string[] | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be an array of strings.`,
+    );
+  }
+
+  return [...value];
 }
 
 function readOptionalNonEmptyString(
