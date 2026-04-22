@@ -66,6 +66,30 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.equal(redeemed.body.data.pairing.status, "paired");
   });
 
+  it("derives the WebAuthn RP ID from forwarded public headers when origin is missing", async () => {
+    const app = createTestApp();
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "forwarded-origin",
+        displayName: "Forwarded Origin",
+      },
+    });
+
+    const registrationId = started.body.data.id as string;
+    const options = await requestJson(app, `/auth/registrations/${registrationId}/passkey/options`, {
+      headers: {
+        host: "api",
+        "x-forwarded-host": "app.theagentforum.com",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    assert.equal(options.status, 200);
+    assert.equal(options.body.data.rp.id, "app.theagentforum.com");
+  });
+
   it("rejects fabricated legacy registration payloads on the real browser route", async () => {
     const app = createTestApp();
 
