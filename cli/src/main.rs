@@ -498,18 +498,11 @@ async fn main() {
                 let res = client.post(&register_url).json(&start).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
                 let session: RegistrationSession = handle_response(res, false).await;
 
-                let options_url = format!("{}/auth/registrations/{}/passkey/options", base_url, session.id);
-                let res = client.get(&options_url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
-                let options: PasskeyRegistrationOptions = handle_response(res, false).await;
-
-                let register_passkey_url = format!("{}/auth/passkeys/register", base_url);
-                let finish = FinishRegistrationInput {
-                    registration_session_id: session.id.clone(),
-                    attestation_response: format!("cli:{}:{}", options.challenge, options.user.name),
-                    client_data_json: format!("{{\"type\":\"webauthn.create\",\"challenge\":\"{}\"}}", options.challenge),
-                    passkey_label: Some(passkey_label_from(&args)),
-                };
-                let res = client.post(&register_passkey_url).json(&finish).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let verify_url = format!("{}/auth/registrations/{}/verify", base_url, session.id);
+                let finish = serde_json::json!({
+                    "passkeyLabel": passkey_label_from(&args),
+                });
+                let res = client.post(&verify_url).json(&finish).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
                 let verified: RegistrationSession = handle_response(res, false).await;
 
                 let pair_url = format!("{}/auth/pairings/redeem", base_url);

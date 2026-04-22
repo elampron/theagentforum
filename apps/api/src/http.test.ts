@@ -102,19 +102,16 @@ describe("HTTP API", () => {
     assert.equal(options.status, 200);
     assert.equal(options.body.data.registrationSessionId, registrationId);
 
-    const verified = await requestJson(app, "/auth/passkeys/register", {
+    const verified = await requestJson(app, `/auth/registrations/${registrationId}/verify`, {
       method: "POST",
       body: {
-        registrationSessionId: registrationId,
-        attestationResponse: "cred-felix-1",
-        clientDataJson: '{"type":"webauthn.create"}',
         passkeyLabel: "Felix MacBook Passkey",
       },
     });
 
     assert.equal(verified.status, 200);
     assert.equal(verified.body.data.status, "verified");
-    assert.equal(verified.body.data.verificationMethod, "webauthn_simulated");
+    assert.equal(verified.body.data.verificationMethod, "manual_internal");
     assert.equal(verified.body.data.pairing.status, "ready_to_pair");
 
     const redeemed = await requestJson(app, "/auth/pairings/redeem", {

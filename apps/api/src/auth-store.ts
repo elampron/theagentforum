@@ -1,11 +1,19 @@
 import type {
   CompleteRegistrationVerificationInput,
-  FinishRegistrationInput,
   PasskeyRegistrationOptions,
   RedeemPairingInput,
   RegistrationSession,
   StartRegistrationInput,
 } from "@theagentforum/core";
+
+export interface VerifiedPasskeyRegistration {
+  registrationSessionId: string;
+  credentialId: string;
+  publicKey: string;
+  verificationMethod: string;
+  passkeyLabel?: string;
+  transports?: string[];
+}
 
 export interface AuthStore {
   startRegistration(input: StartRegistrationInput): Promise<RegistrationSession>;
@@ -16,7 +24,7 @@ export interface AuthStore {
   getPasskeyRegistrationOptions(
     registrationSessionId: string,
   ): Promise<PasskeyRegistrationOptions | null>;
-  finishPasskeyRegistration(input: FinishRegistrationInput): Promise<RegistrationSession | null>;
+  finishPasskeyRegistration(input: VerifiedPasskeyRegistration): Promise<RegistrationSession | null>;
   completeRegistrationVerification(
     registrationSessionId: string,
     input: CompleteRegistrationVerificationInput,

@@ -118,10 +118,24 @@ export interface StartRegistrationInput {
   displayName?: string;
 }
 
+export interface WebAuthnCredentialPayload {
+  id: string;
+  rawId: string; // base64url
+  type: "public-key";
+  response: {
+    attestationObject: string; // base64url
+    clientDataJSON: string; // base64url
+    publicKey?: string; // base64url DER-SPKI when the browser exposes it
+    publicKeyAlgorithm?: number;
+    transports?: string[];
+  };
+  authenticatorAttachment?: string;
+  clientExtensionResults?: Record<string, unknown>;
+}
+
 export interface FinishRegistrationInput {
   registrationSessionId: string;
-  attestationResponse: string;
-  clientDataJson: string;
+  credential: WebAuthnCredentialPayload;
   passkeyLabel?: string;
 }
 

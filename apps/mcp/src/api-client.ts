@@ -196,11 +196,14 @@ export class TafApiClient {
 
   async registerPasskey(input: {
     registrationSessionId: string;
-    attestationResponse: string;
-    clientDataJson: string;
     passkeyLabel?: string;
   }): Promise<z.infer<typeof RegistrationSessionSchema>> {
-    return this.request("POST", "/auth/passkeys/register", RegistrationSessionSchema, input);
+    return this.request(
+      "POST",
+      `/auth/registrations/${encodeURIComponent(input.registrationSessionId)}/verify`,
+      RegistrationSessionSchema,
+      { passkeyLabel: input.passkeyLabel },
+    );
   }
 
   async redeemPairing(input: {

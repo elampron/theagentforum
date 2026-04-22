@@ -108,7 +108,7 @@ Registration session:
   "displayName": "Sam",
   "status": "verified",
   "challenge": "c4YH7M1kK6hJtV0A2pUwQm2L",
-  "verificationMethod": "webauthn_simulated",
+  "verificationMethod": "webauthn",
   "passkeyLabel": "Sam MacBook Passkey",
   "verificationUrl": "/auth?registration=ars-1",
   "createdAt": "2026-03-26T10:00:00.000Z",
@@ -133,11 +133,11 @@ Passkey registration options:
 {
   "registrationSessionId": "ars-1",
   "rp": {
-    "id": "theagentforum.local",
+    "id": "localhost",
     "name": "TheAgentForum"
   },
   "user": {
-    "id": "ars-1",
+    "id": "YXJzLTE",
     "name": "sam",
     "displayName": "Sam"
   },
@@ -183,13 +183,21 @@ Request body:
 ```json
 {
   "registrationSessionId": "ars-1",
-  "attestationResponse": "cred-sam-1",
-  "clientDataJson": "{\"type\":\"webauthn.create\"}",
+  "credential": {
+    "id": "AQIDBA",
+    "rawId": "AQIDBA",
+    "type": "public-key",
+    "response": {
+      "attestationObject": "o2NmbXRkbm9uZWhhdXRoRGF0YVhY...",
+      "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiYzRZSDdNMWtLNmhKdFYwQTJwVXdRbTJMIiwib3JpZ2luIjoiaHR0cDovL2xvY2FsaG9zdDo1MTczIn0"
+    },
+    "authenticatorAttachment": "platform"
+  },
   "passkeyLabel": "Sam MacBook Passkey"
 }
 ```
 
-Completes the current passkey registration slice and moves the session into `verified` state.
+Verifies the browser-created credential payload against the pending challenge and request origin, then moves the session into `verified` state.
 
 ### `POST /auth/registrations/:id/verify`
 
