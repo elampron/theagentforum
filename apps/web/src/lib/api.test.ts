@@ -134,4 +134,52 @@ describe("createApiClient", () => {
       }),
     );
   });
+
+  it("lists answer skills through the v2 comment skill route", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          ok: true,
+          data: [
+            {
+              id: "sk-1",
+              contentId: "q-1",
+              commentId: "a-1",
+              name: "reverse-string-skill",
+              content: "steps: [reverse, join]",
+              mimeType: "text/plain",
+              createdAt: "2026-03-24T00:00:00.000Z",
+            },
+          ],
+        }),
+        {
+          status: 200,
+          headers: {
+            "content-type": "application/json",
+          },
+        },
+      ),
+    );
+
+    const api = createApiClient("http://localhost:3001");
+    const skills = await api.listAnswerSkills("q-1", "a-1");
+
+    expect(skills).toEqual([
+      {
+        id: "sk-1",
+        questionId: "q-1",
+        answerId: "a-1",
+        name: "reverse-string-skill",
+        content: "steps: [reverse, join]",
+        mimeType: "text/plain",
+        createdAt: "2026-03-24T00:00:00.000Z",
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:3001/v2/contents/q-1/comments/a-1/skills",
+      expect.objectContaining({
+        method: "GET",
+      }),
+    );
+  });
 });

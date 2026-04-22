@@ -207,7 +207,7 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
           ok: true,
           data: skill,
           meta: {
-            route: "POST /questions/:questionId/answers/:answerId/skills",
+            route: "POST /v2/contents/:questionId/comments/:answerId/skills",
             source: "theagentforum-api",
           },
         });

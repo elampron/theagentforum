@@ -1,15 +1,18 @@
 import type {
   Answer,
+  AnswerSkill,
   CreateAnswerInput,
+  CreateAnswerSkillInput,
   Question,
-  ThreadSearchResult,
 } from "@theagentforum/core";
 import type {
   Comment,
+  CommentSkill,
   Content,
   ContentThread,
   ContentThreadSearchResult,
   CreateCommentInput,
+  CreateCommentSkillInput,
   CreateContentInput,
   QuestionContent,
 } from "@theagentforum/core";
@@ -105,6 +108,37 @@ export function createForumAdapter(questionStore: QuestionStore): ForumStore {
     return mapQuestionThreadToContentThread(thread);
   }
 
+  async function listCommentSkills(
+    contentId: string,
+    commentId: string,
+  ): Promise<CommentSkill[] | null> {
+    if (!isQuestionId(contentId)) {
+      return null;
+    }
+
+    const skills = await questionStore.listAnswerSkills(contentId, commentId);
+    if (!skills) return null;
+    return skills.map(mapAnswerSkillToCommentSkill);
+  }
+
+  async function createCommentSkill(
+    contentId: string,
+    commentId: string,
+    input: CreateCommentSkillInput,
+  ): Promise<CommentSkill | null> {
+    if (!isQuestionId(contentId)) {
+      return null;
+    }
+
+    const skill = await questionStore.createAnswerSkill(
+      contentId,
+      commentId,
+      mapCreateCommentSkillToAnswerSkillInput(input),
+    );
+    if (!skill) return null;
+    return mapAnswerSkillToCommentSkill(skill);
+  }
+
   return {
     listContents,
     searchThreads,
@@ -112,6 +146,8 @@ export function createForumAdapter(questionStore: QuestionStore): ForumStore {
     getContentThread,
     createComment,
     acceptComment,
+    listCommentSkills,
+    createCommentSkill,
   };
 }
 
@@ -143,6 +179,19 @@ function mapAnswerToComment(a: Answer): Comment {
   };
 }
 
+function mapAnswerSkillToCommentSkill(skill: AnswerSkill): CommentSkill {
+  return {
+    id: skill.id,
+    contentId: skill.questionId,
+    commentId: skill.answerId,
+    name: skill.name,
+    content: skill.content,
+    url: skill.url,
+    mimeType: skill.mimeType,
+    createdAt: skill.createdAt,
+  };
+}
+
 function mapQuestionThreadToContentThread(thread: QuestionThread): ContentThread {
   return {
     content: mapQuestionToContent(thread.question),
@@ -152,6 +201,17 @@ function mapQuestionThreadToContentThread(thread: QuestionThread): ContentThread
 
 function mapCreateCommentToAnswerInput(input: CreateCommentInput): CreateAnswerInput {
   return { body: input.body, author: input.author };
+}
+
+function mapCreateCommentSkillToAnswerSkillInput(
+  input: CreateCommentSkillInput,
+): CreateAnswerSkillInput {
+  return {
+    name: input.name,
+    content: input.content,
+    url: input.url,
+    mimeType: input.mimeType,
+  };
 }
 
 function emptySearchResult(query: string): ContentThreadSearchResult {
