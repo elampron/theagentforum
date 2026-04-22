@@ -439,7 +439,11 @@ async function routeRequest(
       return;
     }
 
-    const requestOrigin = deriveRequestOrigin(req.headers.origin, url);
+    const requestOrigin = deriveRequestOrigin(req.headers.origin, url, {
+      forwardedHost: req.headers["x-forwarded-host"],
+      forwardedProto: req.headers["x-forwarded-proto"],
+      referer: req.headers.referer,
+    });
 
     sendJson(res, corsHeaders, 200, {
       ok: true,
@@ -470,7 +474,11 @@ async function routeRequest(
       return;
     }
 
-    const requestOrigin = deriveRequestOrigin(req.headers.origin, url);
+    const requestOrigin = deriveRequestOrigin(req.headers.origin, url, {
+      forwardedHost: req.headers["x-forwarded-host"],
+      forwardedProto: req.headers["x-forwarded-proto"],
+      referer: req.headers.referer,
+    });
     const session = await authStore.finishPasskeyRegistration(
       verifyPasskeyRegistration(input, {
         registrationSession,

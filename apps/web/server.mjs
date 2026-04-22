@@ -3,6 +3,7 @@ import { access, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { Readable } from "node:stream";
+import { createProxyHeaders } from "./src/lib/proxy-headers.js";
 
 const port = Number(process.env.PORT ?? 5173);
 const apiProxyTarget = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3001";
@@ -104,32 +105,6 @@ async function proxyApiRequest(req, res, requestUrl, method) {
   }
 
   Readable.fromWeb(upstreamResponse.body).pipe(res);
-}
-
-function createProxyHeaders(requestHeaders) {
-  const headers = new Headers();
-
-  for (const [key, value] of Object.entries(requestHeaders)) {
-    if (value === undefined) {
-      continue;
-    }
-
-    const headerName = key.toLowerCase();
-
-    if (headerName === "host" || headerName === "content-length" || headerName === "connection") {
-      continue;
-    }
-
-    if (Array.isArray(value)) {
-      for (const item of value) {
-        headers.append(key, item);
-      }
-    } else {
-      headers.set(key, value);
-    }
-  }
-
-  return headers;
 }
 
 async function readRequestBody(req) {

@@ -368,12 +368,60 @@ function toBase64Url(value: Uint8Array): string {
     .replace(/\//g, "_");
 }
 
-export function deriveRequestOrigin(originHeader: string | string[] | undefined, fallbackUrl: URL): string {
-  if (typeof originHeader === "string" && originHeader.trim() !== "") {
-    return originHeader.trim();
+interface RequestOriginFallbackHeaders {
+  forwardedHost?: string | string[];
+  forwardedProto?: string | string[];
+  referer?: string | string[];
+}
+
+export function deriveRequestOrigin(
+  originHeader: string | string[] | undefined,
+  fallbackUrl: URL,
+  headers: RequestOriginFallbackHeaders = {},
+): string {
+  const explicitOrigin = readFirstHeaderValue(originHeader);
+  if (explicitOrigin) {
+    return explicitOrigin;
+  }
+
+  const forwardedHost = readFirstHeaderValue(headers.forwardedHost);
+  if (forwardedHost) {
+    const forwardedProto = readFirstHeaderValue(headers.forwardedProto)
+      ?? fallbackUrl.protocol.replace(/:$/, "")
+      ?? "http";
+    return `${forwardedProto}://${forwardedHost}`;
+  }
+
+  const referer = readFirstHeaderValue(headers.referer);
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {
+      // Fall back to the request URL origin when referer is malformed.
+    }
   }
 
   return fallbackUrl.origin;
+}
+
+function readFirstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = readFirstHeaderValue(item);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const [first] = value.split(",", 1);
+  const normalized = first?.trim();
+  return normalized ? normalized : undefined;
 }
 
 export function deriveRpId(origin: string): string {
