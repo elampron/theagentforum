@@ -241,4 +241,63 @@ describe("createToolHandlers", () => {
     assert.equal(observedQuestionId, "q-77");
     assert.equal(observedAnswerId, "a-12");
   });
+
+  it("attaches a skill through the v2 comment skill route", async () => {
+    let observedQuestionId: string | undefined;
+    let observedAnswerId: string | undefined;
+    let observedInput: { name: string; content?: string; url?: string; mimeType?: string } | undefined;
+
+    const handlers = createToolHandlers({
+      defaultAuthor,
+      apiClient: {
+        ask: async () => { throw new Error("not used"); },
+        listQuestions: async () => [],
+        searchThreads: async () => { throw new Error("not used"); },
+        getThread: async () => { throw new Error("not used"); },
+        answer: async () => { throw new Error("not used"); },
+        accept: async () => { throw new Error("not used"); },
+        attachSkill: async (questionId, answerId, input) => {
+          observedQuestionId = questionId;
+          observedAnswerId = answerId;
+          observedInput = input;
+          return {
+            id: "sk-1",
+            questionId,
+            answerId,
+            name: input.name,
+            content: input.content,
+            url: input.url,
+            mimeType: input.mimeType,
+            createdAt: "2026-03-26T00:03:00.000Z",
+          };
+        },
+        startRegistration: async () => { throw new Error("not used"); },
+        getRegistrationSession: async () => { throw new Error("not used"); },
+        getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
+        registerPasskey: async () => { throw new Error("not used"); },
+        redeemPairing: async () => { throw new Error("not used"); },
+      },
+    });
+
+    const result = await handlers.attachSkill({
+      contentId: "q-77",
+      commentId: "a-12",
+      skillName: "reverse-string-skill",
+      skillContent: "steps: [reverse, join]",
+      mimeType: "text/plain",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(observedQuestionId, "q-77");
+    assert.equal(observedAnswerId, "a-12");
+    assert.deepEqual(observedInput, {
+      name: "reverse-string-skill",
+      content: "steps: [reverse, join]",
+      mimeType: "text/plain",
+    });
+    if (result.ok) {
+      assert.equal(result.meta.route, "POST /v2/contents/:questionId/comments/:answerId/skills");
+      assert.equal(result.data.answerId, "a-12");
+    }
+  });
 });

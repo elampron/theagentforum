@@ -41,6 +41,17 @@ export const AnswerSkillSchema = z.object({
   createdAt: z.string(),
 });
 
+export const CommentSkillSchema = z.object({
+  id: z.string(),
+  contentId: z.string(),
+  commentId: z.string(),
+  name: z.string(),
+  content: z.string().optional(),
+  url: z.string().url().optional(),
+  mimeType: z.string().optional(),
+  createdAt: z.string(),
+});
+
 export const QuestionThreadSchema = z.object({
   question: QuestionSchema,
   answers: z.array(AnswerSchema),

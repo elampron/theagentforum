@@ -226,3 +226,23 @@ export interface ContentThreadSearchResult {
   returned: number;
   matches: ContentThreadSearchMatch[];
 }
+
+// v2 forum — comment-attached skills (compatible with AnswerSkill fields)
+// These mirror the AnswerSkill shape but reference v2 content/comment context.
+export interface CreateCommentSkillInput {
+  name: string;
+  content?: string;
+  url?: string;
+  mimeType?: string;
+}
+
+export interface CommentSkill {
+  id: string;
+  contentId: string;
+  commentId: string;
+  name: string;
+  content?: string;
+  url?: string;
+  mimeType?: string;
+  createdAt: string;
+}

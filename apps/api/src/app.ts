@@ -341,6 +341,67 @@ async function routeRequest(
     return;
   }
 
+  const commentSkillsMatch = matchPath(
+    path,
+    /^\/v2\/contents\/([^/]+)\/comments\/([^/]+)\/skills$/,
+  );
+
+  if (method === "GET" && commentSkillsMatch) {
+    const contentId = commentSkillsMatch[1];
+    const commentId = commentSkillsMatch[2];
+    const skills = await forumStore.listCommentSkills(contentId, commentId);
+
+    if (!skills) {
+      const existing = await forumStore.getContentThread(contentId);
+
+      if (!existing) {
+        sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+        return;
+      }
+
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "comment_not_found",
+        "Comment not found for the specified content.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, { ok: true, data: skills });
+    return;
+  }
+
+  if (method === "POST" && commentSkillsMatch) {
+    const contentId = commentSkillsMatch[1];
+    const commentId = commentSkillsMatch[2];
+    const payload = await readJsonBody(req);
+    const input = parseCreateAnswerSkillInput(payload);
+    const skill = await forumStore.createCommentSkill(contentId, commentId, input);
+
+    if (!skill) {
+      const existing = await forumStore.getContentThread(contentId);
+
+      if (!existing) {
+        sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+        return;
+      }
+
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "comment_not_found",
+        "Comment not found for the specified content.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 201, { ok: true, data: skill });
+    return;
+  }
+
   const acceptCommentMatch = matchPath(
     path,
     /^\/v2\/contents\/([^/]+)\/accept\/([^/]+)$/,

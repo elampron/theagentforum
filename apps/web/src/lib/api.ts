@@ -51,6 +51,17 @@ interface ForumComment {
   acceptedAt?: string;
 }
 
+interface ForumCommentSkill {
+  id: string;
+  contentId: string;
+  commentId: string;
+  name: string;
+  content?: string;
+  url?: string;
+  mimeType?: string;
+  createdAt: string;
+}
+
 interface ForumContentThread {
   content: ForumContent;
   comments: ForumComment[];
@@ -175,10 +186,12 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
   }
 
   async function listAnswerSkills(questionId: string, answerId: string): Promise<AnswerSkill[]> {
-    return request<AnswerSkill[]>(
+    const skills = await request<ForumCommentSkill[]>(
       "GET",
-      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
+      `/v2/contents/${encodeURIComponent(questionId)}/comments/${encodeURIComponent(answerId)}/skills`,
     );
+
+    return skills.map(mapCommentSkillToAnswerSkill);
   }
 
   async function startRegistration(
@@ -304,6 +317,19 @@ function mapCommentToAnswer(comment: ForumComment): Answer {
     author: comment.author,
     createdAt: comment.createdAt,
     acceptedAt: comment.acceptedAt,
+  };
+}
+
+function mapCommentSkillToAnswerSkill(skill: ForumCommentSkill): AnswerSkill {
+  return {
+    id: skill.id,
+    questionId: skill.contentId,
+    answerId: skill.commentId,
+    name: skill.name,
+    content: skill.content,
+    url: skill.url,
+    mimeType: skill.mimeType,
+    createdAt: skill.createdAt,
   };
 }
 

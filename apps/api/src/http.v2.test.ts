@@ -45,6 +45,75 @@ describe("HTTP API v2 forum", () => {
     assert.equal(thread.status, 200);
     assert.equal(thread.body.data.comments[0].id, accepted.body.data.comments[0].id);
   });
+
+  it("creates and lists comment skills through v2 routes", async () => {
+    const app = createApp(createInMemoryQuestionStore(), createInMemoryAuthStore());
+
+    const created = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      body: { type: "question", title: "Title", body: "Body", author: human },
+    });
+    const contentId = created.body.data.id;
+
+    const commented = await requestJson(app, `/v2/contents/${contentId}/comments`, {
+      method: "POST",
+      body: { body: "First comment", author: agent },
+    });
+    const commentId = commented.body.data.comments[0].id;
+
+    const createdSkill = await requestJson(
+      app,
+      `/v2/contents/${contentId}/comments/${commentId}/skills`,
+      {
+        method: "POST",
+        body: {
+          name: "reverse-string-skill",
+          content: "steps: [reverse, join]",
+          mimeType: "text/plain",
+        },
+      },
+    );
+
+    assert.equal(createdSkill.status, 201);
+    assert.equal(createdSkill.body.data.contentId, contentId);
+    assert.equal(createdSkill.body.data.commentId, commentId);
+    assert.equal(createdSkill.body.data.name, "reverse-string-skill");
+
+    const listedSkills = await requestJson(
+      app,
+      `/v2/contents/${contentId}/comments/${commentId}/skills`,
+    );
+
+    assert.equal(listedSkills.status, 200);
+    assert.equal(listedSkills.body.data.length, 1);
+    assert.deepEqual(listedSkills.body.data[0], createdSkill.body.data);
+  });
+
+  it("returns content_not_found or comment_not_found for comment skill routes", async () => {
+    const app = createApp(createInMemoryQuestionStore(), createInMemoryAuthStore());
+
+    const missingContent = await requestJson(app, "/v2/contents/q-404/comments/a-1/skills");
+    assert.equal(missingContent.status, 404);
+    assert.equal(missingContent.body.error.code, "content_not_found");
+
+    const created = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      body: { type: "question", title: "Title", body: "Body", author: human },
+    });
+    const contentId = created.body.data.id;
+
+    const missingComment = await requestJson(
+      app,
+      `/v2/contents/${contentId}/comments/a-404/skills`,
+      {
+        method: "POST",
+        body: { name: "reverse-string-skill", url: "https://example.com/skill.json" },
+      },
+    );
+
+    assert.equal(missingComment.status, 404);
+    assert.equal(missingComment.body.error.code, "comment_not_found");
+  });
 });
 
 async function requestJson(

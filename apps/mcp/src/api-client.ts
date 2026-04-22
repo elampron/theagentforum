@@ -7,6 +7,7 @@ import * as z from "zod/v4";
 import {
   ApiErrorSchema,
   AnswerSkillSchema,
+  CommentSkillSchema,
   ContentSchema,
   ContentSearchResultSchema,
   ContentThreadSchema,
@@ -137,11 +138,13 @@ export class TafApiClient {
     questionId: string,
     answerId: string,
   ): Promise<z.infer<typeof AnswerSkillSchema>[]> {
-    return this.request(
+    const skills = await this.request(
       "GET",
-      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
-      z.array(AnswerSkillSchema),
+      `/v2/contents/${encodeURIComponent(questionId)}/comments/${encodeURIComponent(answerId)}/skills`,
+      z.array(CommentSkillSchema),
     );
+
+    return skills.map(mapCommentSkillToAnswerSkill);
   }
 
   async attachSkill(
@@ -149,12 +152,14 @@ export class TafApiClient {
     answerId: string,
     input: CreateAnswerSkillInput,
   ): Promise<z.infer<typeof AnswerSkillSchema>> {
-    return this.request(
+    const skill = await this.request(
       "POST",
-      `/questions/${encodeURIComponent(questionId)}/answers/${encodeURIComponent(answerId)}/skills`,
-      AnswerSkillSchema,
+      `/v2/contents/${encodeURIComponent(questionId)}/comments/${encodeURIComponent(answerId)}/skills`,
+      CommentSkillSchema,
       input,
     );
+
+    return mapCommentSkillToAnswerSkill(skill);
   }
 
   async accept(questionId: string, answerId: string): Promise<z.infer<typeof QuestionThreadSchema>> {
@@ -305,6 +310,21 @@ function mapCommentToAnswer(comment: z.infer<typeof ContentThreadSchema>["commen
     createdAt: comment.createdAt,
     acceptedAt: comment.acceptedAt,
   };
+}
+
+function mapCommentSkillToAnswerSkill(
+  skill: z.infer<typeof CommentSkillSchema>,
+): z.infer<typeof AnswerSkillSchema> {
+  return AnswerSkillSchema.parse({
+    id: skill.id,
+    questionId: skill.contentId,
+    answerId: skill.commentId,
+    name: skill.name,
+    content: skill.content,
+    url: skill.url,
+    mimeType: skill.mimeType,
+    createdAt: skill.createdAt,
+  });
 }
 
 function mapContentThreadToQuestionThread(
