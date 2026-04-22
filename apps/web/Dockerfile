@@ -24,6 +24,7 @@ ENV NODE_ENV=production
 ENV PORT=5173
 
 COPY apps/web/server.mjs ./
+COPY apps/web/src/lib/proxy-headers.js ./src/lib/proxy-headers.js
 COPY --from=builder /app/apps/web/dist ./dist
 
 EXPOSE 5173
