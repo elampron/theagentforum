@@ -1,13 +1,30 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import {
+  createHash,
+  createPublicKey,
+  timingSafeEqual,
+  verify as verifySignature,
+} from "node:crypto";
 import type {
+  AuthenticationSession,
+  FinishAuthenticationInput,
   FinishRegistrationInput,
   RegistrationSession,
-  WebAuthnCredentialPayload,
 } from "@theagentforum/core";
-import type { VerifiedPasskeyRegistration } from "./auth-store";
+import type {
+  StoredPasskeyCredential,
+  VerifiedPasskeyAuthentication,
+  VerifiedPasskeyRegistration,
+} from "./auth-store";
 
 interface WebAuthnVerificationContext {
   registrationSession: RegistrationSession;
+  expectedOrigin: string;
+  expectedRpId: string;
+}
+
+interface WebAuthnAuthenticationVerificationContext {
+  authenticationSession: AuthenticationSession;
+  passkeyCredential: StoredPasskeyCredential;
   expectedOrigin: string;
   expectedRpId: string;
 }
@@ -18,6 +35,12 @@ interface AuthenticatorData {
   signCount: number;
   credentialId: Buffer;
   credentialPublicKey: Buffer;
+}
+
+interface AssertionAuthenticatorData {
+  rpIdHash: Buffer;
+  flags: number;
+  signCount: number;
 }
 
 export class WebAuthnVerificationError extends Error {
@@ -95,10 +118,98 @@ export function verifyPasskeyRegistration(
   };
 }
 
+export function verifyPasskeyAuthentication(
+  input: FinishAuthenticationInput,
+  context: WebAuthnAuthenticationVerificationContext,
+): VerifiedPasskeyAuthentication {
+  const credential = input.credential;
+
+  if (credential.type !== "public-key") {
+    throw new WebAuthnVerificationError("credential.type must be public-key.");
+  }
+
+  const rawIdBytes = decodeBase64Url(credential.rawId, "credential.rawId");
+  const credentialIdBytes = decodeBase64Url(credential.id, "credential.id");
+  const storedCredentialIdBytes = decodeBase64Url(
+    context.passkeyCredential.credentialId,
+    "stored credential ID",
+  );
+  assertBuffersEqual(rawIdBytes, credentialIdBytes, "credential.id must match credential.rawId.");
+  assertBuffersEqual(
+    storedCredentialIdBytes,
+    rawIdBytes,
+    "credential.rawId does not match the stored passkey credential.",
+  );
+
+  const clientData = parseClientData(credential.response.clientDataJSON);
+
+  if (clientData.type !== "webauthn.get") {
+    throw new WebAuthnVerificationError("clientDataJSON.type must be webauthn.get.");
+  }
+
+  if (clientData.challenge !== context.authenticationSession.challenge) {
+    throw new WebAuthnVerificationError("clientDataJSON.challenge does not match the pending authentication challenge.");
+  }
+
+  const expectedOrigin = normalizeOrigin(context.expectedOrigin);
+  const observedOrigin = normalizeOrigin(clientData.origin);
+
+  if (observedOrigin !== expectedOrigin) {
+    throw new WebAuthnVerificationError("clientDataJSON.origin does not match the browser origin that submitted this request.");
+  }
+
+  const authenticatorDataBytes = decodeBase64Url(
+    credential.response.authenticatorData,
+    "credential.response.authenticatorData",
+  );
+  const authenticatorData = parseAssertionAuthenticatorData(authenticatorDataBytes);
+
+  assertBuffersEqual(
+    authenticatorData.rpIdHash,
+    sha256(context.expectedRpId),
+    "authenticatorData.rpIdHash does not match the expected RP ID.",
+  );
+
+  if ((authenticatorData.flags & 0x01) === 0) {
+    throw new WebAuthnVerificationError("authenticatorData must indicate user presence.");
+  }
+
+  if ((authenticatorData.flags & 0x04) === 0) {
+    throw new WebAuthnVerificationError("authenticatorData must indicate user verification.");
+  }
+
+  if (
+    context.passkeyCredential.signCount > 0 &&
+    authenticatorData.signCount <= context.passkeyCredential.signCount
+  ) {
+    throw new WebAuthnVerificationError("authenticatorData.signCount did not increase from the stored passkey credential.");
+  }
+
+  const signature = decodeBase64Url(credential.response.signature, "credential.response.signature");
+  const signedPayload = Buffer.concat([
+    authenticatorDataBytes,
+    createHash("sha256").update(clientData.rawBytes).digest(),
+  ]);
+  const publicKey = parseStoredPublicKey(context.passkeyCredential.publicKey);
+
+  if (!verifySignature("sha256", signedPayload, publicKey, signature)) {
+    throw new WebAuthnVerificationError("credential.response.signature could not be verified with the stored passkey credential.");
+  }
+
+  return {
+    authenticationSessionId: input.authenticationSessionId,
+    credentialId: context.passkeyCredential.credentialId,
+    verificationMethod: "webauthn",
+    signCount: authenticatorData.signCount,
+    passkeyLabel: context.passkeyCredential.label,
+  };
+}
+
 function parseClientData(clientDataJsonBase64Url: string): {
   type: string;
   challenge: string;
   origin: string;
+  rawBytes: Buffer;
 } {
   const clientDataJsonBytes = decodeBase64Url(
     clientDataJsonBase64Url,
@@ -121,7 +232,7 @@ function parseClientData(clientDataJsonBase64Url: string): {
   const challenge = readRequiredString(clientData.challenge, "clientDataJSON.challenge");
   const origin = readRequiredString(clientData.origin, "clientDataJSON.origin");
 
-  return { type, challenge, origin };
+  return { type, challenge, origin, rawBytes: clientDataJsonBytes };
 }
 
 function parseAttestationObject(attestationObjectBase64Url: string): { authData: Buffer } {
@@ -182,6 +293,76 @@ function parseAuthenticatorData(authData: Buffer): AuthenticatorData {
     credentialId,
     credentialPublicKey,
   };
+}
+
+function parseAssertionAuthenticatorData(authData: Buffer): AssertionAuthenticatorData {
+  if (authData.length < 37) {
+    throw new WebAuthnVerificationError("authenticatorData is too short.");
+  }
+
+  return {
+    rpIdHash: authData.subarray(0, 32),
+    flags: authData[32] ?? 0,
+    signCount: authData.readUInt32BE(33),
+  };
+}
+
+function parseStoredPublicKey(publicKeyBase64Url: string) {
+  const publicKeyBytes = decodeBase64Url(publicKeyBase64Url, "stored passkey public key");
+
+  try {
+    return createPublicKey({
+      key: publicKeyBytes,
+      format: "der",
+      type: "spki",
+    });
+  } catch {
+    return createPublicKey({
+      key: parseCosePublicKeyToJwk(publicKeyBytes) as any,
+      format: "jwk",
+    });
+  }
+}
+
+function parseCosePublicKeyToJwk(publicKeyBytes: Buffer): JsonWebKey {
+  const decoded = decodeCbor(publicKeyBytes);
+
+  if (decoded.bytesRead !== publicKeyBytes.length) {
+    throw new WebAuthnVerificationError("Stored passkey public key contains trailing CBOR data.");
+  }
+
+  if (!decoded.value || typeof decoded.value !== "object" || Array.isArray(decoded.value)) {
+    throw new WebAuthnVerificationError("Stored passkey public key must decode to a CBOR map.");
+  }
+
+  const cose = decoded.value as Record<string, unknown>;
+  const keyType = readRequiredInteger(cose["1"], "stored passkey public key[1]");
+
+  if (keyType === 2) {
+    const curve = readRequiredInteger(cose["-1"], "stored passkey public key[-1]");
+    if (curve !== 1) {
+      throw new WebAuthnVerificationError("Only P-256 EC passkey public keys are supported.");
+    }
+
+    return {
+      kty: "EC",
+      crv: "P-256",
+      x: toBase64Url(readRequiredBuffer(cose["-2"], "stored passkey public key[-2]")),
+      y: toBase64Url(readRequiredBuffer(cose["-3"], "stored passkey public key[-3]")),
+      ext: true,
+    };
+  }
+
+  if (keyType === 3) {
+    return {
+      kty: "RSA",
+      n: toBase64Url(readRequiredBuffer(cose["-1"], "stored passkey public key[-1]")),
+      e: toBase64Url(readRequiredBuffer(cose["-2"], "stored passkey public key[-2]")),
+      ext: true,
+    };
+  }
+
+  throw new WebAuthnVerificationError("Unsupported stored passkey public key type.");
 }
 
 function decodeCbor(data: Buffer, offset = 0): { value: unknown; bytesRead: number } {
@@ -317,6 +498,22 @@ function readCborLength(
 function readRequiredString(value: unknown, fieldName: string): string {
   if (typeof value !== "string" || value.trim() === "") {
     throw new WebAuthnVerificationError(`${fieldName} must be a non-empty string.`);
+  }
+
+  return value;
+}
+
+function readRequiredInteger(value: unknown, fieldName: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    throw new WebAuthnVerificationError(`${fieldName} must be an integer.`);
+  }
+
+  return value;
+}
+
+function readRequiredBuffer(value: unknown, fieldName: string): Buffer {
+  if (!Buffer.isBuffer(value)) {
+    throw new WebAuthnVerificationError(`${fieldName} must be a binary buffer.`);
   }
 
   return value;

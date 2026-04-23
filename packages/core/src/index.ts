@@ -86,6 +86,12 @@ export type PairingStatus =
   | "paired"
   | "expired";
 
+export type AuthenticationStatus =
+  | "awaiting_authentication"
+  | "pending_webauthn_authentication"
+  | "verified"
+  | "expired";
+
 export interface PairingSession {
   id: string;
   code: string;
@@ -170,6 +176,55 @@ export interface PasskeyRegistrationOptions {
     residentKey: "preferred";
     userVerification: "preferred";
   };
+}
+
+export interface StartAuthenticationInput {
+  handle: string;
+}
+
+export interface WebAuthnAuthenticationCredentialPayload {
+  id: string;
+  rawId: string; // base64url
+  type: "public-key";
+  response: {
+    authenticatorData: string; // base64url
+    clientDataJSON: string; // base64url
+    signature: string; // base64url
+    userHandle?: string; // base64url
+  };
+  authenticatorAttachment?: string;
+  clientExtensionResults?: Record<string, unknown>;
+}
+
+export interface FinishAuthenticationInput {
+  authenticationSessionId: string;
+  credential: WebAuthnAuthenticationCredentialPayload;
+}
+
+export interface AuthenticationSession {
+  id: string;
+  handle: string;
+  displayName?: string;
+  status: AuthenticationStatus;
+  challenge: string;
+  verificationMethod?: string;
+  passkeyLabel?: string;
+  createdAt: string;
+  expiresAt: string;
+  verifiedAt?: string;
+}
+
+export interface PasskeyAuthenticationOptions {
+  authenticationSessionId: string;
+  challenge: string;
+  rpId: string;
+  allowCredentials: Array<{
+    id: string;
+    type: "public-key";
+    transports?: string[];
+  }>;
+  timeout: number;
+  userVerification: "required";
 }
 
 // Forum v2 model — additive to preserve v1 compatibility

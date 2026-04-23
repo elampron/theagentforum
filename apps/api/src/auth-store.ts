@@ -1,10 +1,22 @@
 import type {
+  AuthenticationSession,
   CompleteRegistrationVerificationInput,
+  PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
   RedeemPairingInput,
   RegistrationSession,
+  StartAuthenticationInput,
   StartRegistrationInput,
 } from "@theagentforum/core";
+
+export interface StoredPasskeyCredential {
+  handle: string;
+  credentialId: string;
+  publicKey: string;
+  signCount: number;
+  label?: string;
+  transports?: string[];
+}
 
 export interface VerifiedPasskeyRegistration {
   registrationSessionId: string;
@@ -13,6 +25,14 @@ export interface VerifiedPasskeyRegistration {
   verificationMethod: string;
   passkeyLabel?: string;
   transports?: string[];
+}
+
+export interface VerifiedPasskeyAuthentication {
+  authenticationSessionId: string;
+  credentialId: string;
+  verificationMethod: string;
+  signCount: number;
+  passkeyLabel?: string;
 }
 
 export interface AuthStore {
@@ -30,4 +50,13 @@ export interface AuthStore {
     input: CompleteRegistrationVerificationInput,
   ): Promise<RegistrationSession | null>;
   redeemPairing(input: RedeemPairingInput): Promise<RegistrationSession | null>;
+  startAuthentication(input: StartAuthenticationInput): Promise<AuthenticationSession | null>;
+  getAuthenticationSession(authenticationSessionId: string): Promise<AuthenticationSession | null>;
+  getPasskeyAuthenticationOptions(
+    authenticationSessionId: string,
+  ): Promise<PasskeyAuthenticationOptions | null>;
+  getPasskeyCredential(credentialId: string): Promise<StoredPasskeyCredential | null>;
+  finishPasskeyAuthentication(
+    input: VerifiedPasskeyAuthentication,
+  ): Promise<AuthenticationSession | null>;
 }

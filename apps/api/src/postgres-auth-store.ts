@@ -1,13 +1,21 @@
 import { randomBytes } from "node:crypto";
 import type {
+  AuthenticationSession,
   CompleteRegistrationVerificationInput,
+  PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
   RedeemPairingInput,
   RegistrationSession,
+  StartAuthenticationInput,
   StartRegistrationInput,
 } from "@theagentforum/core";
 import { runSql } from "./postgres";
-import type { AuthStore, VerifiedPasskeyRegistration } from "./auth-store";
+import type {
+  AuthStore,
+  StoredPasskeyCredential,
+  VerifiedPasskeyAuthentication,
+  VerifiedPasskeyRegistration,
+} from "./auth-store";
 
 export function createPostgresAuthStore(): AuthStore {
   return {
@@ -18,6 +26,11 @@ export function createPostgresAuthStore(): AuthStore {
     finishPasskeyRegistration,
     completeRegistrationVerification,
     redeemPairing,
+    startAuthentication,
+    getAuthenticationSession,
+    getPasskeyAuthenticationOptions,
+    getPasskeyCredential,
+    finishPasskeyAuthentication,
   };
 }
 
@@ -240,13 +253,57 @@ async function completeRegistrationVerification(
   registrationSessionId: string,
   input: CompleteRegistrationVerificationInput,
 ): Promise<RegistrationSession | null> {
-  return finishPasskeyRegistration({
-    registrationSessionId,
-    credentialId: `manual-${registrationSessionId}`,
-    publicKey: JSON.stringify({ source: "manual_internal" }),
-    verificationMethod: "manual_internal",
-    passkeyLabel: input.passkeyLabel,
-  });
+  await expireRegistrationSession(registrationSessionId);
+
+  const output = await runSql(
+    `
+      with updated_registration as (
+        update auth_registration_sessions
+        set
+          status = case
+            when expires_at <= now() then 'expired'
+            else 'verified'
+          end,
+          verification_method = case
+            when expires_at <= now() then verification_method
+            else 'manual_internal'
+          end,
+          passkey_label = case
+            when expires_at <= now() then passkey_label
+            else :'passkey_label'
+          end,
+          verified_at = case
+            when expires_at <= now() then verified_at
+            else now()
+          end,
+          updated_at = now()
+        where id = :'registration_session_id'
+        returning *
+      ),
+      updated_pairing as (
+        update auth_pairing_sessions
+        set
+          status = case
+            when status = 'paired' then status
+            when expires_at <= now() then 'expired'
+            when exists (select 1 from updated_registration where status = 'verified') then 'ready_to_pair'
+            else status
+          end,
+          updated_at = now()
+        where registration_session_id = :'registration_session_id'
+        returning *
+      )
+      select ${registrationSessionSelect("updated_registration", "updated_pairing")} :: text
+      from updated_registration
+      join updated_pairing on updated_pairing.registration_session_id = updated_registration.id;
+    `,
+    {
+      registration_session_id: registrationSessionId,
+      passkey_label: input.passkeyLabel,
+    },
+  );
+
+  return output ? (JSON.parse(output) as RegistrationSession) : null;
 }
 
 async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSession | null> {
@@ -296,6 +353,188 @@ async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSes
   );
 
   return output ? (JSON.parse(output) as RegistrationSession) : null;
+}
+
+async function startAuthentication(
+  input: StartAuthenticationInput,
+): Promise<AuthenticationSession | null> {
+  const output = await runSql(
+    `
+      with matched_account as (
+        select a.id, a.handle, a.display_name
+        from auth_accounts a
+        where a.handle = :'handle'
+          and exists (
+            select 1
+            from auth_passkey_credentials c
+            where c.account_id = a.id
+              and c.credential_id not like 'manual-%'
+          )
+      ),
+      created_authentication as (
+        insert into auth_authentication_sessions (
+          account_id,
+          handle,
+          display_name,
+          challenge
+        )
+        select
+          matched_account.id,
+          matched_account.handle,
+          matched_account.display_name,
+          :'challenge'
+        from matched_account
+        returning *
+      )
+      select ${authenticationSessionSelect("created_authentication")} :: text
+      from created_authentication;
+    `,
+    {
+      handle: input.handle,
+      challenge: createChallenge(),
+    },
+  );
+
+  return output ? (JSON.parse(output) as AuthenticationSession) : null;
+}
+
+async function getAuthenticationSession(
+  authenticationSessionId: string,
+): Promise<AuthenticationSession | null> {
+  await expireAuthenticationSession(authenticationSessionId);
+  const output = await selectAuthenticationSession(authenticationSessionId);
+  return output ? (JSON.parse(output) as AuthenticationSession) : null;
+}
+
+async function getPasskeyAuthenticationOptions(
+  authenticationSessionId: string,
+): Promise<PasskeyAuthenticationOptions | null> {
+  await expireAuthenticationSession(authenticationSessionId);
+
+  const output = await runSql(
+    `
+      with updated_authentication as (
+        update auth_authentication_sessions
+        set
+          status = case
+            when status = 'verified' then status
+            when expires_at <= now() then 'expired'
+            else 'pending_webauthn_authentication'
+          end,
+          updated_at = now()
+        where id = :'authentication_session_id'
+        returning *
+      )
+      select json_build_object(
+        'authenticationSessionId', updated_authentication.id,
+        'challenge', updated_authentication.challenge,
+        'rpId', 'theagentforum.local',
+        'allowCredentials', coalesce(
+          json_agg(
+            json_strip_nulls(json_build_object(
+              'id', c.credential_id,
+              'type', 'public-key',
+              'transports', c.transports
+            ))
+          ) filter (where c.id is not null),
+          '[]'::json
+        ),
+        'timeout', 60000,
+        'userVerification', 'required'
+      ) :: text
+      from updated_authentication
+      left join auth_passkey_credentials c
+        on c.account_id = updated_authentication.account_id
+       and c.credential_id not like 'manual-%'
+      where updated_authentication.status <> 'expired'
+      group by updated_authentication.id, updated_authentication.challenge;
+    `,
+    {
+      authentication_session_id: authenticationSessionId,
+    },
+  );
+
+  return output ? (JSON.parse(output) as PasskeyAuthenticationOptions) : null;
+}
+
+async function getPasskeyCredential(
+  credentialId: string,
+): Promise<StoredPasskeyCredential | null> {
+  const output = await runSql(
+    `
+      select json_build_object(
+        'handle', a.handle,
+        'credentialId', c.credential_id,
+        'publicKey', c.public_key,
+        'signCount', c.sign_count,
+        'label', c.label,
+        'transports', c.transports
+      ) :: text
+      from auth_passkey_credentials c
+      join auth_accounts a on a.id = c.account_id
+      where c.credential_id = :'credential_id'
+        and c.credential_id not like 'manual-%';
+    `,
+    {
+      credential_id: credentialId,
+    },
+  );
+
+  return output ? (JSON.parse(output) as StoredPasskeyCredential) : null;
+}
+
+async function finishPasskeyAuthentication(
+  input: VerifiedPasskeyAuthentication,
+): Promise<AuthenticationSession | null> {
+  await expireAuthenticationSession(input.authenticationSessionId);
+
+  const output = await runSql(
+    `
+      with updated_credential as (
+        update auth_passkey_credentials
+        set
+          sign_count = greatest(sign_count, :'sign_count'::bigint),
+          last_used_at = now()
+        where credential_id = :'credential_id'
+        returning id
+      ),
+      updated_authentication as (
+        update auth_authentication_sessions
+        set
+          status = case
+            when expires_at <= now() then 'expired'
+            else 'verified'
+          end,
+          verification_method = case
+            when expires_at <= now() then verification_method
+            else :'verification_method'
+          end,
+          passkey_label = case
+            when expires_at <= now() then passkey_label
+            else nullif(:'passkey_label', '')
+          end,
+          verified_at = case
+            when expires_at <= now() then verified_at
+            else now()
+          end,
+          updated_at = now()
+        where id = :'authentication_session_id'
+        returning *
+      )
+      select ${authenticationSessionSelect("updated_authentication")} :: text
+      from updated_authentication
+      where exists (select 1 from updated_credential);
+    `,
+    {
+      authentication_session_id: input.authenticationSessionId,
+      credential_id: input.credentialId,
+      sign_count: String(input.signCount),
+      verification_method: input.verificationMethod,
+      passkey_label: input.passkeyLabel ?? "",
+    },
+  );
+
+  return output ? (JSON.parse(output) as AuthenticationSession) : null;
 }
 
 async function expireRegistrationSession(registrationSessionId: string): Promise<void> {
@@ -353,6 +592,21 @@ async function expireRegistrationSessionByVerificationToken(
   );
 }
 
+async function expireAuthenticationSession(authenticationSessionId: string): Promise<void> {
+  await runSql(
+    `
+      update auth_authentication_sessions
+      set
+        status = 'expired',
+        updated_at = now()
+      where id = :'authentication_session_id'
+        and status <> 'verified'
+        and expires_at <= now();
+    `,
+    { authentication_session_id: authenticationSessionId },
+  );
+}
+
 async function selectRegistrationSession(registrationSessionId: string): Promise<string> {
   return runSql(
     `
@@ -363,6 +617,17 @@ async function selectRegistrationSession(registrationSessionId: string): Promise
       where r.id = :'registration_session_id';
     `,
     { registration_session_id: registrationSessionId },
+  );
+}
+
+async function selectAuthenticationSession(authenticationSessionId: string): Promise<string> {
+  return runSql(
+    `
+      select ${authenticationSessionSelect("a")} :: text
+      from auth_authentication_sessions a
+      where a.id = :'authentication_session_id';
+    `,
+    { authentication_session_id: authenticationSessionId },
   );
 }
 
@@ -403,6 +668,24 @@ function registrationSessionSelect(
   )`;
 }
 
+function authenticationSessionSelect(authenticationAlias: string): string {
+  return `json_build_object(
+    'id', ${authenticationAlias}.id,
+    'handle', ${authenticationAlias}.handle,
+    'displayName', ${authenticationAlias}.display_name,
+    'status', ${authenticationAlias}.status,
+    'challenge', ${authenticationAlias}.challenge,
+    'verificationMethod', ${authenticationAlias}.verification_method,
+    'passkeyLabel', ${authenticationAlias}.passkey_label,
+    'createdAt', to_char(${authenticationAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'expiresAt', to_char(${authenticationAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'verifiedAt', case
+      when ${authenticationAlias}.verified_at is null then null
+      else to_char(${authenticationAlias}.verified_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    end
+  )`;
+}
+
 async function queryJson<T>(sql: string, variables?: Record<string, string>): Promise<T> {
   const output = await runSql(sql, variables);
   return JSON.parse(output) as T;
@@ -419,4 +702,3 @@ function createPairingCode(): string {
 function createToken(): string {
   return `taf_${randomBytes(18).toString("base64url")}`;
 }
-
