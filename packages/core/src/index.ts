@@ -233,6 +233,14 @@ export interface WebSession {
   expiresAt: string;
 }
 
+export interface AuthPasskey {
+  credentialId: string;
+  label?: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  transports?: string[];
+}
+
 // Forum v2 model — additive to preserve v1 compatibility
 export type ContentType = "question" | "article";
 

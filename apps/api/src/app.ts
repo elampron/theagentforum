@@ -179,6 +179,55 @@ async function routeRequest(
     return;
   }
 
+  if (method === "GET" && path === "/auth/passkeys") {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await authStore.listAccountPasskeys(actor.id),
+    });
+    return;
+  }
+
+  const passkeyManagementMatch = matchPath(
+    path,
+    /^\/auth\/passkeys\/(?!register$)(?!authenticate$)([^/]+)$/,
+  );
+
+  if (method === "DELETE" && passkeyManagementMatch) {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const credentialId = decodeURIComponent(passkeyManagementMatch[1]);
+    const result = await authStore.removeAccountPasskey(actor.id, credentialId);
+
+    if (result === "not_found") {
+      sendError(res, corsHeaders, 404, "passkey_not_found", "Passkey not found.");
+      return;
+    }
+
+    if (result === "last_passkey") {
+      sendError(
+        res,
+        corsHeaders,
+        409,
+        "last_passkey_removal_forbidden",
+        "You cannot remove the last remaining passkey.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: {
+        removed: true,
+      },
+    });
+    return;
+  }
+
+  if (path === "/auth/passkeys" || passkeyManagementMatch) {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
   if (path === "/auth/signout") {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
