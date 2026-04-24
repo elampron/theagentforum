@@ -682,44 +682,129 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.equal(currentSession.body.ok, true);
     assert.equal(currentSession.body.data, null);
   });
+
+  it("lists registered passkeys for the signed-in actor and allows removing a non-final passkey", async () => {
+    const app = createTestApp();
+
+    const primaryFixture = createPasskeyFixture();
+    const backupFixture = createPasskeyFixture("backup");
+    await registerPasskey(app, {
+      handle: "passkey-owner",
+      displayName: "Passkey Owner",
+      passkeyLabel: "Primary Passkey",
+      fixture: primaryFixture,
+    });
+    await registerPasskey(app, {
+      handle: "passkey-owner",
+      displayName: "Passkey Owner",
+      passkeyLabel: "Backup Passkey",
+      fixture: backupFixture,
+    });
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "passkey-owner",
+      displayName: "Passkey Owner",
+      passkeyLabel: "Primary Passkey",
+    });
+
+    const listed = await requestJson(app, "/auth/passkeys", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.data.length, 2);
+    assert.equal(listed.body.data[0].label, "Primary Passkey");
+    assert.equal(listed.body.data[1].label, "Backup Passkey");
+
+    const removed = await requestJson(
+      app,
+      `/auth/passkeys/${encodeURIComponent(backupFixture.credentialId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          cookie: signedIn.cookieHeader,
+        },
+      },
+    );
+
+    assert.equal(removed.status, 200);
+    assert.equal(removed.body.data.removed, true);
+
+    const listedAfterRemoval = await requestJson(app, "/auth/passkeys", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(listedAfterRemoval.status, 200);
+    assert.equal(listedAfterRemoval.body.data.length, 1);
+    assert.equal(listedAfterRemoval.body.data[0].credentialId, primaryFixture.credentialId);
+  });
+
+  it("forbids removing the last remaining passkey", async () => {
+    const app = createTestApp();
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "single-passkey-user",
+      displayName: "Single Passkey User",
+    });
+
+    const listedBeforeRemoval = await requestJson(app, "/auth/passkeys", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    const onlyCredentialId = listedBeforeRemoval.body.data[0].credentialId as string;
+
+    const removed = await requestJson(
+      app,
+      `/auth/passkeys/${encodeURIComponent(onlyCredentialId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          cookie: signedIn.cookieHeader,
+        },
+      },
+    );
+
+    assert.equal(removed.status, 409);
+    assert.equal(removed.body.error.code, "last_passkey_removal_forbidden");
+
+    const listed = await requestJson(app, "/auth/passkeys", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.data.length, 1);
+    assert.equal(listed.body.data[0].credentialId, onlyCredentialId);
+  });
 });
 
 async function signInWithPasskey(
   app: ReturnType<typeof createTestApp>,
-  input: { handle: string; displayName: string },
+  input: {
+    handle: string;
+    displayName: string;
+    fixture?: ReturnType<typeof createPasskeyFixture>;
+    passkeyLabel?: string;
+  },
 ): Promise<{
   authenticated: { status: number; body: any; headers: Record<string, string> };
   setCookie: string;
   cookieHeader: string;
 }> {
-  const fixture = createPasskeyFixture();
+  const fixture = input.fixture ?? createPasskeyFixture();
 
-  const started = await requestJson(app, "/auth/registrations/start", {
-    method: "POST",
-    body: input,
-  });
-
-  const registrationId = started.body.data.id as string;
-  const registrationOptions = await requestJson(app, `/auth/registrations/${registrationId}/passkey/options`, {
-    headers: {
-      origin: "http://localhost:5173",
-    },
-  });
-
-  await requestJson(app, "/auth/passkeys/register", {
-    method: "POST",
-    headers: {
-      origin: "http://localhost:5173",
-    },
-    body: {
-      registrationSessionId: registrationId,
-      credential: fixture.createRegistrationCredential({
-        challenge: registrationOptions.body.data.challenge,
-        origin: "http://localhost:5173",
-        rpId: "localhost",
-      }),
-      passkeyLabel: `${input.displayName} Passkey`,
-    },
+  await registerPasskey(app, {
+    handle: input.handle,
+    displayName: input.displayName,
+    passkeyLabel: input.passkeyLabel ?? `${input.displayName} Passkey`,
+    fixture,
   });
 
   const startedAuthentication = await requestJson(app, "/auth/authentications/start", {
@@ -728,6 +813,10 @@ async function signInWithPasskey(
       handle: input.handle,
     },
   });
+
+  if (!startedAuthentication.body.data) {
+    throw new Error(`Expected authentication session, got: ${JSON.stringify(startedAuthentication.body)}`);
+  }
 
   const authenticationSessionId = startedAuthentication.body.data.id as string;
   const authenticationOptions = await requestJson(
@@ -768,8 +857,55 @@ async function signInWithPasskey(
   };
 }
 
-function createPasskeyFixture() {
-  const credentialId = Buffer.from("cred-felix-1", "utf8");
+async function registerPasskey(
+  app: ReturnType<typeof createTestApp>,
+  input: {
+    handle: string;
+    displayName: string;
+    passkeyLabel: string;
+    fixture: ReturnType<typeof createPasskeyFixture>;
+  },
+): Promise<void> {
+  const fixture = input.fixture;
+
+  const started = await requestJson(app, "/auth/registrations/start", {
+    method: "POST",
+    body: {
+      handle: input.handle,
+      displayName: input.displayName,
+    },
+  });
+
+  const registrationId = started.body.data.id as string;
+  const registrationOptions = await requestJson(app, `/auth/registrations/${registrationId}/passkey/options`, {
+    headers: {
+      origin: "http://localhost:5173",
+    },
+  });
+
+  const registered = await requestJson(app, "/auth/passkeys/register", {
+    method: "POST",
+    headers: {
+      origin: "http://localhost:5173",
+    },
+    body: {
+      registrationSessionId: registrationId,
+      credential: fixture.createRegistrationCredential({
+        challenge: registrationOptions.body.data.challenge,
+        origin: "http://localhost:5173",
+        rpId: "localhost",
+      }),
+      passkeyLabel: input.passkeyLabel,
+    },
+  });
+
+  if (!registered.body.ok) {
+    throw new Error(`Expected passkey registration success, got: ${JSON.stringify(registered.body)}`);
+  }
+}
+
+function createPasskeyFixture(seed = "felix-1") {
+  const credentialId = Buffer.from(`cred-${seed}`, "utf8");
   const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const publicJwk = publicKey.export({ format: "jwk" }) as JsonWebKey;
   const x = decodeBase64UrlSegment(publicJwk.x);

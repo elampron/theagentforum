@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type {
   Actor,
+  AuthPasskey,
   AuthenticationSession,
   CompleteRegistrationVerificationInput,
   PairingSession,
@@ -16,6 +17,7 @@ import type {
   AuthStore,
   ApiTokenSession,
   IssuedWebSession,
+  RemovePasskeyResult,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
   VerifiedPasskeyRegistration,
@@ -25,6 +27,8 @@ interface StoredCredential {
   credentialId: string;
   publicKey: string;
   signCount: number;
+  createdAt: string;
+  lastUsedAt?: string;
   label?: string;
   transports?: string[];
 }
@@ -213,6 +217,7 @@ export function createInMemoryAuthStore(): AuthStore {
         credentialId: input.credentialId,
         publicKey: input.publicKey,
         signCount: 0,
+        createdAt: verifiedAt,
         label,
         transports: input.transports,
       });
@@ -400,6 +405,7 @@ export function createInMemoryAuthStore(): AuthStore {
     }
 
     credential.signCount = input.signCount;
+    credential.lastUsedAt = new Date().toISOString();
     const verifiedAt = new Date().toISOString();
 
     session.status = "verified";
@@ -522,6 +528,53 @@ export function createInMemoryAuthStore(): AuthStore {
     }
   }
 
+  async function listAccountPasskeys(accountId: string): Promise<AuthPasskey[]> {
+    const account = Array.from(accountsByHandle.values()).find((candidate) => candidate.id === accountId);
+
+    if (!account) {
+      return [];
+    }
+
+    return (credentialsByHandle.get(account.handle) ?? [])
+      .filter(isAuthenticatablePasskey)
+      .map((credential) => ({
+        credentialId: credential.credentialId,
+        label: credential.label,
+        createdAt: credential.createdAt,
+        lastUsedAt: credential.lastUsedAt,
+        transports: credential.transports,
+      }));
+  }
+
+  async function removeAccountPasskey(
+    accountId: string,
+    credentialId: string,
+  ): Promise<RemovePasskeyResult> {
+    const account = Array.from(accountsByHandle.values()).find((candidate) => candidate.id === accountId);
+
+    if (!account) {
+      return "not_found";
+    }
+
+    const credentials = credentialsByHandle.get(account.handle) ?? [];
+    const credentialIndex = credentials.findIndex(
+      (candidate) => candidate.credentialId === credentialId && isAuthenticatablePasskey(candidate),
+    );
+
+    if (credentialIndex < 0) {
+      return "not_found";
+    }
+
+    const authenticatableCredentials = credentials.filter(isAuthenticatablePasskey);
+    if (authenticatableCredentials.length <= 1) {
+      return "last_passkey";
+    }
+
+    credentials.splice(credentialIndex, 1);
+    credentialsByHandle.set(account.handle, credentials);
+    return "removed";
+  }
+
   function ensureAccount(handle: string, displayName?: string): StoredAccount {
     const existing = accountsByHandle.get(handle);
 
@@ -560,6 +613,8 @@ export function createInMemoryAuthStore(): AuthStore {
     revokeWebSession,
     getApiTokenSession,
     revokeApiToken,
+    listAccountPasskeys,
+    removeAccountPasskey,
   };
 }
 

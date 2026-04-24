@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type {
   AuthenticationSession,
   Actor,
+  AuthPasskey,
   CompleteRegistrationVerificationInput,
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
@@ -16,6 +17,7 @@ import type {
   AuthStore,
   ApiTokenSession,
   IssuedWebSession,
+  RemovePasskeyResult,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
   VerifiedPasskeyRegistration,
@@ -40,6 +42,8 @@ export function createPostgresAuthStore(): AuthStore {
     revokeWebSession,
     getApiTokenSession,
     revokeApiToken,
+    listAccountPasskeys,
+    removeAccountPasskey,
   };
 }
 
@@ -631,6 +635,69 @@ async function revokeApiToken(token: string): Promise<void> {
     `,
     { token },
   );
+}
+
+async function listAccountPasskeys(accountId: string): Promise<AuthPasskey[]> {
+  return queryJson<AuthPasskey[]>(
+    `
+      select coalesce(json_agg(json_strip_nulls(json_build_object(
+        'credentialId', c.credential_id,
+        'label', c.label,
+        'createdAt', to_char(c.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'lastUsedAt', case
+          when c.last_used_at is null then null
+          else to_char(c.last_used_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        end,
+        'transports', c.transports
+      ) order by c.created_at asc), '[]'::json) :: text
+      from auth_passkey_credentials c
+      where c.account_id = :'account_id'
+        and c.credential_id not like 'manual-%';
+    `,
+    { account_id: accountId },
+  );
+}
+
+async function removeAccountPasskey(
+  accountId: string,
+  credentialId: string,
+): Promise<RemovePasskeyResult> {
+  const output = await runSql(
+    `
+      with matched_credential as (
+        select c.id
+        from auth_passkey_credentials c
+        where c.account_id = :'account_id'
+          and c.credential_id = :'credential_id'
+          and c.credential_id not like 'manual-%'
+      ),
+      credential_count as (
+        select count(*)::int as total
+        from auth_passkey_credentials c
+        where c.account_id = :'account_id'
+          and c.credential_id not like 'manual-%'
+      ),
+      deleted as (
+        delete from auth_passkey_credentials c
+        where c.account_id = :'account_id'
+          and c.credential_id = :'credential_id'
+          and c.credential_id not like 'manual-%'
+          and (select total from credential_count) > 1
+        returning c.id
+      )
+      select case
+        when exists (select 1 from deleted) then 'removed'
+        when not exists (select 1 from matched_credential) then 'not_found'
+        else 'last_passkey'
+      end :: text;
+    `,
+    {
+      account_id: accountId,
+      credential_id: credentialId,
+    },
+  );
+
+  return (output as RemovePasskeyResult | null) ?? "not_found";
 }
 
 async function expireRegistrationSession(registrationSessionId: string): Promise<void> {
