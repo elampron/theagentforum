@@ -8,10 +8,12 @@ import type {
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
+  WebSession,
 } from "@theagentforum/core";
 import { runSql } from "./postgres";
 import type {
   AuthStore,
+  IssuedWebSession,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
   VerifiedPasskeyRegistration,
@@ -31,6 +33,9 @@ export function createPostgresAuthStore(): AuthStore {
     getPasskeyAuthenticationOptions,
     getPasskeyCredential,
     finishPasskeyAuthentication,
+    createWebSession,
+    getWebSession,
+    revokeWebSession,
   };
 }
 
@@ -537,6 +542,60 @@ async function finishPasskeyAuthentication(
   return output ? (JSON.parse(output) as AuthenticationSession) : null;
 }
 
+async function createWebSession(authenticationSessionId: string): Promise<IssuedWebSession | null> {
+  await expireAuthenticationSession(authenticationSessionId);
+
+  const output = await runSql(
+    `
+      with created_web_session as (
+        insert into auth_web_sessions (account_id, authentication_session_id, token)
+        select a.account_id, a.id, :'token'
+        from auth_authentication_sessions a
+        where a.id = :'authentication_session_id'
+          and a.status = 'verified'
+          and a.expires_at > now()
+        returning *
+      )
+      select ${issuedWebSessionSelect("created_web_session", "acct")} :: text
+      from created_web_session
+      join auth_accounts acct on acct.id = created_web_session.account_id;
+    `,
+    {
+      authentication_session_id: authenticationSessionId,
+      token: createWebSessionToken(),
+    },
+  );
+
+  return output ? (JSON.parse(output) as IssuedWebSession) : null;
+}
+
+async function getWebSession(token: string): Promise<WebSession | null> {
+  const output = await runSql(
+    `
+      select ${webSessionSelect("ws", "acct")} :: text
+      from auth_web_sessions ws
+      join auth_accounts acct on acct.id = ws.account_id
+      where ws.token = :'token'
+        and ws.revoked_at is null
+        and ws.expires_at > now();
+    `,
+    { token },
+  );
+
+  return output ? (JSON.parse(output) as WebSession) : null;
+}
+
+async function revokeWebSession(token: string): Promise<void> {
+  await runSql(
+    `
+      update auth_web_sessions
+      set revoked_at = coalesce(revoked_at, now())
+      where token = :'token';
+    `,
+    { token },
+  );
+}
+
 async function expireRegistrationSession(registrationSessionId: string): Promise<void> {
   await runSql(
     `
@@ -686,6 +745,33 @@ function authenticationSessionSelect(authenticationAlias: string): string {
   )`;
 }
 
+function webSessionSelect(webSessionAlias: string, accountAlias: string): string {
+  return `json_build_object(
+    'actor', json_strip_nulls(json_build_object(
+      'id', ${accountAlias}.id,
+      'kind', 'human',
+      'handle', ${accountAlias}.handle,
+      'displayName', ${accountAlias}.display_name
+    )),
+    'createdAt', to_char(${webSessionAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'expiresAt', to_char(${webSessionAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+  )`;
+}
+
+function issuedWebSessionSelect(webSessionAlias: string, accountAlias: string): string {
+  return `json_build_object(
+    'token', ${webSessionAlias}.token,
+    'actor', json_strip_nulls(json_build_object(
+      'id', ${accountAlias}.id,
+      'kind', 'human',
+      'handle', ${accountAlias}.handle,
+      'displayName', ${accountAlias}.display_name
+    )),
+    'createdAt', to_char(${webSessionAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'expiresAt', to_char(${webSessionAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+  )`;
+}
+
 async function queryJson<T>(sql: string, variables?: Record<string, string>): Promise<T> {
   const output = await runSql(sql, variables);
   return JSON.parse(output) as T;
@@ -701,4 +787,8 @@ function createPairingCode(): string {
 
 function createToken(): string {
   return `taf_${randomBytes(18).toString("base64url")}`;
+}
+
+function createWebSessionToken(): string {
+  return `taf_ws_${randomBytes(24).toString("base64url")}`;
 }

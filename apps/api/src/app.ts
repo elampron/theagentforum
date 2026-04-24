@@ -29,24 +29,22 @@ interface CreateAppOptions {
   corsAllowOrigin?: string;
 }
 
+const SESSION_COOKIE_NAME = "taf_session";
+
 export function createApp(
   questionStore: QuestionStore,
   authStore: AuthStore,
   options: CreateAppOptions = {},
 ) {
   const corsAllowOrigin = options.corsAllowOrigin ?? "*";
-  const corsHeaders = {
-    "access-control-allow-origin": corsAllowOrigin,
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type",
-  };
-
   const forumStore: ForumStore = createForumAdapter(questionStore);
 
   return async function app(
     req: IncomingMessage,
     res: ServerResponse,
   ): Promise<void> {
+    const corsHeaders = buildCorsHeaders(corsAllowOrigin, req.headers.origin);
+
     try {
       await routeRequest(questionStore, authStore, forumStore, req, res, corsHeaders);
     } catch (error) {
@@ -83,6 +81,8 @@ async function routeRequest(
   const method = req.method ?? "GET";
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   const path = url.pathname;
+  const sessionToken = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
+  const webSession = sessionToken ? await authStore.getWebSession(sessionToken) : null;
 
   if (method === "OPTIONS") {
     sendNoContent(res, corsHeaders);
@@ -101,6 +101,46 @@ async function routeRequest(
   }
 
   if (path === "/health") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  if (method === "GET" && path === "/auth/session") {
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: webSession,
+    });
+    return;
+  }
+
+  if (path === "/auth/session") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/signout") {
+    if (sessionToken) {
+      await authStore.revokeWebSession(sessionToken);
+    }
+
+    sendJson(
+      res,
+      {
+        ...corsHeaders,
+        "set-cookie": serializeClearedSessionCookie(isSecureRequest(req, url)),
+      },
+      200,
+      {
+        ok: true,
+        data: {
+          signedOut: true,
+        },
+      },
+    );
+    return;
+  }
+
+  if (path === "/auth/signout") {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
@@ -304,7 +344,11 @@ async function routeRequest(
   if (method === "POST" && path === "/v2/contents") {
     const payload = await readJsonBody(req);
     const input = parseCreateContentInput(payload);
-    const content = await forumStore.createContent(input);
+    const actor = requireAuthenticatedActor(webSession);
+    const content = await forumStore.createContent({
+      ...input,
+      author: actor,
+    });
     sendJson(res, corsHeaders, 201, { ok: true, data: content });
     return;
   }
@@ -344,7 +388,11 @@ async function routeRequest(
   if (method === "POST" && commentsMatch) {
     const payload = await readJsonBody(req);
     const input = parseCreateCommentInput(payload);
-    const thread = await forumStore.createComment(commentsMatch[1], input);
+    const actor = requireAuthenticatedActor(webSession);
+    const thread = await forumStore.createComment(commentsMatch[1], {
+      ...input,
+      author: actor,
+    });
 
     if (!thread) {
       sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
@@ -361,6 +409,7 @@ async function routeRequest(
   );
 
   if (method === "POST" && acceptCommentMatch) {
+    requireAuthenticatedActor(webSession);
     const contentId = acceptCommentMatch[1];
     const commentId = acceptCommentMatch[2];
     const thread = await forumStore.acceptComment(contentId, commentId);
@@ -751,10 +800,35 @@ async function routeRequest(
       return;
     }
 
-    sendJson(res, corsHeaders, 200, {
-      ok: true,
-      data: session,
-    });
+    const issuedWebSession = await authStore.createWebSession(session.id);
+
+    if (!issuedWebSession) {
+      sendError(
+        res,
+        corsHeaders,
+        500,
+        "web_session_issue_failed",
+        "Web session could not be created after successful authentication.",
+      );
+      return;
+    }
+
+    sendJson(
+      res,
+      {
+        ...corsHeaders,
+        "set-cookie": serializeSessionCookie(
+          issuedWebSession.token,
+          issuedWebSession.expiresAt,
+          isSecureRequest(req, url),
+        ),
+      },
+      200,
+      {
+        ok: true,
+        data: session,
+      },
+    );
     return;
   }
 
@@ -803,6 +877,115 @@ function sendError(
       details,
     },
   });
+}
+
+function buildCorsHeaders(
+  configuredAllowOrigin: string,
+  requestOrigin: string | string[] | undefined,
+): Record<string, string> {
+  const origin = readFirstHeaderValue(requestOrigin);
+  const allowOrigin = configuredAllowOrigin === "*" && origin ? origin : configuredAllowOrigin;
+  const headers: Record<string, string> = {
+    "access-control-allow-origin": allowOrigin,
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "content-type,authorization",
+  };
+
+  if (origin) {
+    headers.vary = "Origin";
+  }
+
+  if (allowOrigin !== "*") {
+    headers["access-control-allow-credentials"] = "true";
+  }
+
+  return headers;
+}
+
+function requireAuthenticatedActor(webSession: { actor: Actor } | null): Actor {
+  if (!webSession) {
+    throw createHttpError(401, "authentication_required", "Authentication is required.");
+  }
+
+  return webSession.actor;
+}
+
+function readCookie(cookieHeader: string | string[] | undefined, name: string): string | undefined {
+  const rawCookieHeader = readFirstHeaderValue(cookieHeader);
+  if (!rawCookieHeader) {
+    return undefined;
+  }
+
+  for (const segment of rawCookieHeader.split(";")) {
+    const [cookieName, ...rest] = segment.trim().split("=");
+    if (cookieName === name) {
+      return rest.join("=");
+    }
+  }
+
+  return undefined;
+}
+
+function serializeSessionCookie(token: string, expiresAt: string, secure: boolean): string {
+  const maxAge = Math.max(0, Math.floor((Date.parse(expiresAt) - Date.now()) / 1000));
+  return [
+    `${SESSION_COOKIE_NAME}=${token}`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    `Max-Age=${maxAge}`,
+    ...(secure ? ["Secure"] : []),
+  ].join("; ");
+}
+
+function serializeClearedSessionCookie(secure: boolean): string {
+  return [
+    `${SESSION_COOKIE_NAME}=`,
+    "Path=/",
+    "HttpOnly",
+    "SameSite=Lax",
+    "Max-Age=0",
+    ...(secure ? ["Secure"] : []),
+  ].join("; ");
+}
+
+function isSecureRequest(req: IncomingMessage, url: URL): boolean {
+  const forwardedProto = readFirstHeaderValue(req.headers["x-forwarded-proto"]);
+  if (forwardedProto) {
+    return forwardedProto === "https";
+  }
+
+  const requestOrigin = readFirstHeaderValue(req.headers.origin);
+  if (requestOrigin) {
+    return requestOrigin.startsWith("https://");
+  }
+
+  const referer = readFirstHeaderValue(req.headers.referer);
+  if (referer) {
+    return referer.startsWith("https://");
+  }
+
+  return url.protocol === "https:";
+}
+
+function readFirstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const normalized = readFirstHeaderValue(item);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  const [first] = value.split(",", 1);
+  const normalized = first?.trim();
+  return normalized ? normalized : undefined;
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -1030,15 +1213,7 @@ function parseRedeemPairingInput(payload: unknown): RedeemPairingInput {
 
 function parseActor(value: unknown): Actor {
   const actor = asRecord(value, "author must be an object.");
-  const displayName = actor.displayName;
-
-  if (displayName !== undefined && typeof displayName !== "string") {
-    throw createHttpError(
-      400,
-      "validation_error",
-      "author.displayName must be a string.",
-    );
-  }
+  const displayName = readOptionalString(actor.displayName, "author.displayName");
 
   const kind = readRequiredString(actor.kind, "author.kind");
 
