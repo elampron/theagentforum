@@ -653,7 +653,7 @@ async function listAccountPasskeys(accountId: string): Promise<AuthPasskey[]> {
           else to_char(c.last_used_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
         end,
         'transports', c.transports
-      ) order by c.created_at asc), '[]'::json) :: text
+      )) order by c.created_at asc), '[]'::json) :: text
       from auth_passkey_credentials c
       where c.account_id = :'account_id'
         and c.credential_id not like 'manual-%';
@@ -717,7 +717,7 @@ async function listAccountDevices(accountId: string): Promise<AuthDevice[]> {
           when p.redeemed_at is null then null
           else to_char(p.redeemed_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
         end
-      ) order by p.created_at desc), '[]'::json) :: text
+      )) order by p.created_at desc), '[]'::json) :: text
       from auth_pairing_sessions p
       join auth_registration_sessions r on r.id = p.registration_session_id
       where r.account_id = :'account_id'
