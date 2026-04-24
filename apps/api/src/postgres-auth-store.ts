@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import type {
   AuthenticationSession,
   Actor,
+  AuthDevice,
   AuthPasskey,
   CompleteRegistrationVerificationInput,
   PasskeyAuthenticationOptions,
@@ -18,6 +19,7 @@ import type {
   ApiTokenSession,
   IssuedWebSession,
   RemovePasskeyResult,
+  RevokeDeviceResult,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
   VerifiedPasskeyRegistration,
@@ -44,6 +46,8 @@ export function createPostgresAuthStore(): AuthStore {
     revokeApiToken,
     listAccountPasskeys,
     removeAccountPasskey,
+    listAccountDevices,
+    revokeAccountDevice,
   };
 }
 
@@ -698,6 +702,64 @@ async function removeAccountPasskey(
   );
 
   return (output as RemovePasskeyResult | null) ?? "not_found";
+}
+
+async function listAccountDevices(accountId: string): Promise<AuthDevice[]> {
+  return queryJson<AuthDevice[]>(
+    `
+      select coalesce(json_agg(json_strip_nulls(json_build_object(
+        'id', p.id,
+        'deviceLabel', p.device_label,
+        'status', p.status,
+        'createdAt', to_char(p.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'expiresAt', to_char(p.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'redeemedAt', case
+          when p.redeemed_at is null then null
+          else to_char(p.redeemed_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+        end
+      ) order by p.created_at desc), '[]'::json) :: text
+      from auth_pairing_sessions p
+      join auth_registration_sessions r on r.id = p.registration_session_id
+      where r.account_id = :'account_id'
+        and p.device_label is not null;
+    `,
+    { account_id: accountId },
+  );
+}
+
+async function revokeAccountDevice(
+  accountId: string,
+  deviceId: string,
+): Promise<RevokeDeviceResult> {
+  const output = await runSql(
+    `
+      with updated_pairing as (
+        update auth_pairing_sessions p
+        set
+          token = null,
+          status = 'expired'
+        where p.id = :'device_id'
+          and exists (
+            select 1
+            from auth_registration_sessions r
+            where r.id = p.registration_session_id
+              and r.account_id = :'account_id'
+          )
+          and p.device_label is not null
+        returning p.id
+      )
+      select case
+        when exists (select 1 from updated_pairing) then 'revoked'
+        else 'not_found'
+      end :: text;
+    `,
+    {
+      account_id: accountId,
+      device_id: deviceId,
+    },
+  );
+
+  return (output as RevokeDeviceResult | null) ?? "not_found";
 }
 
 async function expireRegistrationSession(registrationSessionId: string): Promise<void> {

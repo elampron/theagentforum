@@ -228,6 +228,41 @@ async function routeRequest(
     return;
   }
 
+  if (method === "GET" && path === "/auth/devices") {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await authStore.listAccountDevices(actor.id),
+    });
+    return;
+  }
+
+  const deviceManagementMatch = matchPath(path, /^\/auth\/devices\/([^/]+)$/);
+
+  if (method === "DELETE" && deviceManagementMatch) {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const deviceId = decodeURIComponent(deviceManagementMatch[1]);
+    const result = await authStore.revokeAccountDevice(actor.id, deviceId);
+
+    if (result === "not_found") {
+      sendError(res, corsHeaders, 404, "device_not_found", "Device not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: {
+        revoked: true,
+      },
+    });
+    return;
+  }
+
+  if (path === "/auth/devices" || deviceManagementMatch) {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
   if (path === "/auth/signout") {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;

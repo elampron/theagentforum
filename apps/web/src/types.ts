@@ -229,3 +229,20 @@ export interface WebSession {
   createdAt: string;
   expiresAt: string;
 }
+
+export interface AuthPasskey {
+  credentialId: string;
+  label?: string;
+  createdAt: string;
+  lastUsedAt?: string;
+  transports?: string[];
+}
+
+export interface AuthDevice {
+  id: string;
+  deviceLabel: string;
+  status: PairingStatus;
+  createdAt: string;
+  expiresAt: string;
+  redeemedAt?: string;
+}

@@ -1,6 +1,8 @@
 import type {
   Answer,
   AnswerSkill,
+  AuthDevice,
+  AuthPasskey,
   AuthenticationSession,
   CompleteRegistrationVerificationInput,
   CreateAnswerInput,
@@ -265,12 +267,28 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     return request<WebSession | null>("GET", "/auth/session");
   }
 
+  async function listPasskeys(): Promise<AuthPasskey[]> {
+    return request<AuthPasskey[]>("GET", "/auth/passkeys");
+  }
+
+  async function removePasskey(credentialId: string): Promise<{ removed: boolean }> {
+    return request<{ removed: boolean }>("DELETE", `/auth/passkeys/${encodeURIComponent(credentialId)}`);
+  }
+
+  async function listDevices(): Promise<AuthDevice[]> {
+    return request<AuthDevice[]>("GET", "/auth/devices");
+  }
+
+  async function revokeDevice(deviceId: string): Promise<{ revoked: boolean }> {
+    return request<{ revoked: boolean }>("DELETE", `/auth/devices/${encodeURIComponent(deviceId)}`);
+  }
+
   async function signOut(): Promise<{ signedOut: boolean }> {
     return request<{ signedOut: boolean }>("POST", "/auth/signout");
   }
 
   async function request<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "DELETE",
     path: string,
     body?: unknown,
   ): Promise<T> {
@@ -320,6 +338,10 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     getPasskeyAuthenticationOptions,
     authenticatePasskey,
     getAuthSession,
+    listPasskeys,
+    removePasskey,
+    listDevices,
+    revokeDevice,
     signOut,
   };
 }
