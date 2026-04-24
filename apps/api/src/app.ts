@@ -83,6 +83,9 @@ async function routeRequest(
   const path = url.pathname;
   const sessionToken = readCookie(req.headers.cookie, SESSION_COOKIE_NAME);
   const webSession = sessionToken ? await authStore.getWebSession(sessionToken) : null;
+  const apiToken = readBearerToken(req.headers.authorization);
+  const apiTokenSession = apiToken ? await authStore.getApiTokenSession(apiToken) : null;
+  const authenticatedSession = webSession ?? apiTokenSession;
 
   if (method === "OPTIONS") {
     sendNoContent(res, corsHeaders);
@@ -108,7 +111,7 @@ async function routeRequest(
   if (method === "GET" && path === "/auth/session") {
     sendJson(res, corsHeaders, 200, {
       ok: true,
-      data: webSession,
+      data: authenticatedSession,
     });
     return;
   }
@@ -121,6 +124,10 @@ async function routeRequest(
   if (method === "POST" && path === "/auth/signout") {
     if (sessionToken) {
       await authStore.revokeWebSession(sessionToken);
+    }
+
+    if (apiToken) {
+      await authStore.revokeApiToken(apiToken);
     }
 
     sendJson(
@@ -137,6 +144,38 @@ async function routeRequest(
         },
       },
     );
+    return;
+  }
+
+  if (method === "GET" && path === "/auth/token") {
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: apiTokenSession,
+    });
+    return;
+  }
+
+  if (path === "/auth/token") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/token/revoke") {
+    if (apiToken) {
+      await authStore.revokeApiToken(apiToken);
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: {
+        revoked: Boolean(apiToken),
+      },
+    });
+    return;
+  }
+
+  if (path === "/auth/token/revoke") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
 
@@ -344,7 +383,7 @@ async function routeRequest(
   if (method === "POST" && path === "/v2/contents") {
     const payload = await readJsonBody(req);
     const input = parseCreateContentInput(payload);
-    const actor = requireAuthenticatedActor(webSession);
+    const actor = requireAuthenticatedActor(authenticatedSession);
     const content = await forumStore.createContent({
       ...input,
       author: actor,
@@ -388,7 +427,7 @@ async function routeRequest(
   if (method === "POST" && commentsMatch) {
     const payload = await readJsonBody(req);
     const input = parseCreateCommentInput(payload);
-    const actor = requireAuthenticatedActor(webSession);
+    const actor = requireAuthenticatedActor(authenticatedSession);
     const thread = await forumStore.createComment(commentsMatch[1], {
       ...input,
       author: actor,
@@ -409,7 +448,7 @@ async function routeRequest(
   );
 
   if (method === "POST" && acceptCommentMatch) {
-    requireAuthenticatedActor(webSession);
+    requireAuthenticatedActor(authenticatedSession);
     const contentId = acceptCommentMatch[1];
     const commentId = acceptCommentMatch[2];
     const thread = await forumStore.acceptComment(contentId, commentId);
@@ -908,6 +947,17 @@ function requireAuthenticatedActor(webSession: { actor: Actor } | null): Actor {
   }
 
   return webSession.actor;
+}
+
+function readBearerToken(header: string | string[] | undefined): string | undefined {
+  const value = readFirstHeaderValue(header);
+
+  if (!value) {
+    return undefined;
+  }
+
+  const match = /^Bearer\s+(.+)$/i.exec(value.trim());
+  return match?.[1]?.trim() || undefined;
 }
 
 function readCookie(cookieHeader: string | string[] | undefined, name: string): string | undefined {

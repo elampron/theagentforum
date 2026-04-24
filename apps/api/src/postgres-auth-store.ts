@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type {
   AuthenticationSession,
+  Actor,
   CompleteRegistrationVerificationInput,
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
@@ -13,6 +14,7 @@ import type {
 import { runSql } from "./postgres";
 import type {
   AuthStore,
+  ApiTokenSession,
   IssuedWebSession,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
@@ -36,6 +38,8 @@ export function createPostgresAuthStore(): AuthStore {
     createWebSession,
     getWebSession,
     revokeWebSession,
+    getApiTokenSession,
+    revokeApiToken,
   };
 }
 
@@ -596,6 +600,39 @@ async function revokeWebSession(token: string): Promise<void> {
   );
 }
 
+async function getApiTokenSession(token: string): Promise<ApiTokenSession | null> {
+  await expireApiTokenSession(token);
+
+  const output = await runSql(
+    `
+      select ${apiTokenSessionSelect("p", "acct")} :: text
+      from auth_pairing_sessions p
+      join auth_registration_sessions r on r.id = p.registration_session_id
+      join auth_accounts acct on acct.id = r.account_id
+      where p.token = :'token'
+        and p.status = 'paired'
+        and p.expires_at > now();
+    `,
+    { token },
+  );
+
+  return output ? (JSON.parse(output) as ApiTokenSession) : null;
+}
+
+async function revokeApiToken(token: string): Promise<void> {
+  await runSql(
+    `
+      update auth_pairing_sessions
+      set
+        token = null,
+        status = case when status = 'paired' then 'expired' else status end,
+        updated_at = now()
+      where token = :'token';
+    `,
+    { token },
+  );
+}
+
 async function expireRegistrationSession(registrationSessionId: string): Promise<void> {
   await runSql(
     `
@@ -631,6 +668,22 @@ async function expireRegistrationByPairingCode(pairingCode: string): Promise<voi
         and expires_at <= now();
     `,
     { pairing_code: pairingCode },
+  );
+}
+
+async function expireApiTokenSession(token: string): Promise<void> {
+  await runSql(
+    `
+      update auth_pairing_sessions
+      set
+        status = 'expired',
+        token = null,
+        updated_at = now()
+      where token = :'token'
+        and status = 'paired'
+        and expires_at <= now();
+    `,
+    { token },
   );
 }
 
@@ -755,6 +808,20 @@ function webSessionSelect(webSessionAlias: string, accountAlias: string): string
     )),
     'createdAt', to_char(${webSessionAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'expiresAt', to_char(${webSessionAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+  )`;
+}
+
+function apiTokenSessionSelect(pairingAlias: string, accountAlias: string): string {
+  return `json_build_object(
+    'actor', json_strip_nulls(json_build_object(
+      'id', ${accountAlias}.id,
+      'kind', 'human',
+      'handle', ${accountAlias}.handle,
+      'displayName', ${accountAlias}.display_name
+    )),
+    'deviceLabel', ${pairingAlias}.device_label,
+    'createdAt', to_char(${pairingAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'expiresAt', to_char(${pairingAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   )`;
 }
 

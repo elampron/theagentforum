@@ -182,6 +182,13 @@ export const PasskeyRegistrationOptionsSchema = z.object({
   }),
 });
 
+export const ApiTokenSessionSchema = z.object({
+  actor: ActorSchema,
+  deviceLabel: z.string().optional(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+});
+
 const OptionalAuthorSchema = ActorSchema.optional();
 
 function requireIdAlias(
@@ -357,6 +364,10 @@ export const PairToolInputSchema = z.object({
   pairingCode: z.string().min(1),
   deviceLabel: z.string().min(1),
 });
+
+export const AuthTokenInspectToolInputSchema = z.object({});
+
+export const AuthTokenRevokeToolInputSchema = z.object({});
 
 export const ErrorCategorySchema = z.enum([
   "validation_error",

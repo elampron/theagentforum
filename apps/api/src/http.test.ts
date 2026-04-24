@@ -148,6 +148,66 @@ describe("HTTP API", () => {
     assert.equal(resolved.body.data.id, started.body.data.id);
   });
 
+  it("inspects and revokes paired API tokens", async () => {
+    const app = createTestApp();
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "token-user",
+        displayName: "Token User",
+      },
+    });
+
+    const verified = await requestJson(app, `/auth/registrations/${started.body.data.id}/verify`, {
+      method: "POST",
+      body: {
+        passkeyLabel: "Token User Passkey",
+      },
+    });
+
+    const redeemed = await requestJson(app, "/auth/pairings/redeem", {
+      method: "POST",
+      body: {
+        pairingCode: started.body.data.pairing.code,
+        deviceLabel: "pixel-cli",
+      },
+    });
+
+    const token = redeemed.body.data.pairing.token;
+    assert.match(token, /^taf_/);
+    assert.equal(verified.body.data.pairing.status, "ready_to_pair");
+
+    const inspected = await requestJson(app, "/auth/token", {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    assert.equal(inspected.status, 200);
+    assert.equal(inspected.body.data.actor.handle, "token-user");
+    assert.equal(inspected.body.data.deviceLabel, "pixel-cli");
+
+    const revoked = await requestJson(app, "/auth/token/revoke", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.data.revoked, true);
+
+    const inspectedAfterRevoke = await requestJson(app, "/auth/token", {
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    assert.equal(inspectedAfterRevoke.status, 200);
+    assert.equal(inspectedAfterRevoke.body.data, null);
+  });
+
   it("returns validation errors for invalid auth payloads", async () => {
     const app = createTestApp();
 
@@ -175,6 +235,7 @@ async function requestJson(
   init?: {
     method?: string;
     body?: unknown;
+    headers?: Record<string, string>;
   },
 ): Promise<{ status: number; body: any }> {
   const request = Readable.from(
@@ -185,6 +246,7 @@ async function requestJson(
   request.headers = {
     host: "localhost",
     ...(init?.body ? { "content-type": "application/json" } : {}),
+    ...(init?.headers ?? {}),
   };
 
   const response = createMockResponse();

@@ -40,6 +40,8 @@ describe("createToolHandlers", () => {
         getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
         registerPasskey: async () => { throw new Error("not used"); },
         redeemPairing: async () => { throw new Error("not used"); },
+        inspectApiToken: async () => { throw new Error("not used"); },
+        revokeApiToken: async () => { throw new Error("not used"); },
       },
     });
 
@@ -79,6 +81,8 @@ describe("createToolHandlers", () => {
         getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
         registerPasskey: async () => { throw new Error("not used"); },
         redeemPairing: async () => { throw new Error("not used"); },
+        inspectApiToken: async () => { throw new Error("not used"); },
+        revokeApiToken: async () => { throw new Error("not used"); },
       },
     });
 
@@ -131,6 +135,8 @@ describe("createToolHandlers", () => {
           },
         }),
         redeemPairing: async () => { throw new Error("not used"); },
+        inspectApiToken: async () => { throw new Error("not used"); },
+        revokeApiToken: async () => { throw new Error("not used"); },
       },
     });
 
@@ -162,6 +168,8 @@ describe("createToolHandlers", () => {
         getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
         registerPasskey: async () => { throw new Error("not used"); },
         redeemPairing: async () => { throw new Error("not used"); },
+        inspectApiToken: async () => { throw new Error("not used"); },
+        revokeApiToken: async () => { throw new Error("not used"); },
       },
     });
 
@@ -229,6 +237,8 @@ describe("createToolHandlers", () => {
         getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
         registerPasskey: async () => { throw new Error("not used"); },
         redeemPairing: async () => { throw new Error("not used"); },
+        inspectApiToken: async () => { throw new Error("not used"); },
+        revokeApiToken: async () => { throw new Error("not used"); },
       },
     });
 
@@ -240,5 +250,51 @@ describe("createToolHandlers", () => {
     assert.equal(acceptResult.ok, true);
     assert.equal(observedQuestionId, "q-77");
     assert.equal(observedAnswerId, "a-12");
+  });
+
+  it("inspects and revokes the current API token session", async () => {
+    let revoked = false;
+
+    const handlers = createToolHandlers({
+      defaultAuthor,
+      apiClient: {
+        ask: async () => { throw new Error("not used"); },
+        listQuestions: async () => [],
+        searchThreads: async () => { throw new Error("not used"); },
+        getThread: async () => { throw new Error("not used"); },
+        answer: async () => { throw new Error("not used"); },
+        accept: async () => { throw new Error("not used"); },
+        attachSkill: async () => { throw new Error("not used"); },
+        startRegistration: async () => { throw new Error("not used"); },
+        getRegistrationSession: async () => { throw new Error("not used"); },
+        getPasskeyRegistrationOptions: async () => { throw new Error("not used"); },
+        registerPasskey: async () => { throw new Error("not used"); },
+        redeemPairing: async () => { throw new Error("not used"); },
+        inspectApiToken: async () => ({
+          actor: defaultAuthor,
+          deviceLabel: "taf-mcp",
+          createdAt: "2026-03-26T00:00:00.000Z",
+          expiresAt: "2026-03-26T01:00:00.000Z",
+        }),
+        revokeApiToken: async () => {
+          revoked = true;
+          return { revoked: true };
+        },
+      },
+    });
+
+    const whoami = await handlers.authWhoami({});
+    assert.equal(whoami.ok, true);
+    if (whoami.ok) {
+      assert.equal(whoami.data?.actor.handle, "taf-mcp");
+      assert.equal(whoami.data?.deviceLabel, "taf-mcp");
+    }
+
+    const logout = await handlers.authLogout({});
+    assert.equal(logout.ok, true);
+    assert.equal(revoked, true);
+    if (logout.ok) {
+      assert.equal(logout.data.revoked, true);
+    }
   });
 });
