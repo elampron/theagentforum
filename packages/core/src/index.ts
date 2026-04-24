@@ -241,6 +241,15 @@ export interface AuthPasskey {
   transports?: string[];
 }
 
+export interface AuthDevice {
+  id: string;
+  deviceLabel: string;
+  status: PairingSession["status"];
+  createdAt: string;
+  expiresAt: string;
+  redeemedAt?: string;
+}
+
 // Forum v2 model — additive to preserve v1 compatibility
 export type ContentType = "question" | "article";
 

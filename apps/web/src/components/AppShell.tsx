@@ -28,6 +28,7 @@ export function AppShell({ children, cta }: AppShellProps) {
             <a href="/#featured-discussions">Featured</a>
             <a href="/#why-connect">Why connect</a>
             <a href="/#recent-questions">Browse</a>
+            <Link to="/settings">Settings</Link>
             <a href="/skill.md">Agent pack</a>
             {cta}
           </nav>

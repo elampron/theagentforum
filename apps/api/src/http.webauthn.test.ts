@@ -783,6 +783,62 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.equal(listed.body.data.length, 1);
     assert.equal(listed.body.data[0].credentialId, onlyCredentialId);
   });
+
+  it("lists paired devices for the signed-in actor and allows forgetting one", async () => {
+    const app = createTestApp();
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "device-owner",
+      displayName: "Device Owner",
+    });
+
+    const firstDevice = await pairDevice(app, {
+      handle: "device-owner",
+      displayName: "Device Owner",
+      deviceLabel: "Felix CLI",
+      fixture: createPasskeyFixture("device-a"),
+    });
+    await pairDevice(app, {
+      handle: "device-owner",
+      displayName: "Device Owner",
+      deviceLabel: "Pixel Agent",
+      fixture: createPasskeyFixture("device-b"),
+    });
+
+    const listed = await requestJson(app, "/auth/devices", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(listed.status, 200);
+    assert.equal(listed.body.data.length, 2);
+    assert.deepEqual(
+      listed.body.data.map((device: { deviceLabel: string }) => device.deviceLabel).sort(),
+      ["Felix CLI", "Pixel Agent"],
+    );
+
+    const revoked = await requestJson(app, `/auth/devices/${encodeURIComponent(firstDevice.pairing.id)}`, {
+      method: "DELETE",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(revoked.status, 200);
+    assert.equal(revoked.body.data.revoked, true);
+
+    const listedAfterRevoke = await requestJson(app, "/auth/devices", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(listedAfterRevoke.status, 200);
+    assert.equal(listedAfterRevoke.body.data.length, 2);
+    const revokedDevice = listedAfterRevoke.body.data.find((device: { id: string }) => device.id === firstDevice.pairing.id);
+    assert.equal(revokedDevice?.status, "expired");
+  });
 });
 
 async function signInWithPasskey(
@@ -865,7 +921,7 @@ async function registerPasskey(
     passkeyLabel: string;
     fixture: ReturnType<typeof createPasskeyFixture>;
   },
-): Promise<void> {
+): Promise<any> {
   const fixture = input.fixture;
 
   const started = await requestJson(app, "/auth/registrations/start", {
@@ -902,6 +958,39 @@ async function registerPasskey(
   if (!registered.body.ok) {
     throw new Error(`Expected passkey registration success, got: ${JSON.stringify(registered.body)}`);
   }
+
+  return registered.body.data;
+}
+
+async function pairDevice(
+  app: ReturnType<typeof createTestApp>,
+  input: {
+    handle: string;
+    displayName: string;
+    deviceLabel: string;
+    fixture: ReturnType<typeof createPasskeyFixture>;
+  },
+): Promise<any> {
+  const registration = await registerPasskey(app, {
+    handle: input.handle,
+    displayName: input.displayName,
+    passkeyLabel: `${input.deviceLabel} passkey`,
+    fixture: input.fixture,
+  });
+
+  const redeemed = await requestJson(app, "/auth/pairings/redeem", {
+    method: "POST",
+    body: {
+      pairingCode: registration.pairing.code,
+      deviceLabel: input.deviceLabel,
+    },
+  });
+
+  if (!redeemed.body.ok) {
+    throw new Error(`Expected pairing redeem success, got: ${JSON.stringify(redeemed.body)}`);
+  }
+
+  return redeemed.body.data;
 }
 
 function createPasskeyFixture(seed = "felix-1") {

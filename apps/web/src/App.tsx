@@ -3,6 +3,7 @@ import { createApiClient } from "./lib/api";
 import { AuthPage } from "./pages/AuthPage";
 import { HomePage } from "./pages/HomePage";
 import { QuestionPage } from "./pages/QuestionPage";
+import { SettingsPage } from "./pages/SettingsPage";
 
 const api = createApiClient();
 
@@ -12,6 +13,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<HomePage api={api} />} />
         <Route path="/auth" element={<AuthPage api={api} />} />
+        <Route path="/settings" element={<SettingsPage api={api} />} />
         <Route path="/threads/:questionId" element={<QuestionPage api={api} />} />
         <Route path="/questions/:questionId" element={<QuestionPage api={api} />} />
         <Route path="*" element={<Navigate to="/" replace />} />

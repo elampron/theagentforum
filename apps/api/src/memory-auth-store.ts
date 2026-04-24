@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type {
   Actor,
+  AuthDevice,
   AuthPasskey,
   AuthenticationSession,
   CompleteRegistrationVerificationInput,
@@ -18,6 +19,7 @@ import type {
   ApiTokenSession,
   IssuedWebSession,
   RemovePasskeyResult,
+  RevokeDeviceResult,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
   VerifiedPasskeyRegistration,
@@ -575,6 +577,46 @@ export function createInMemoryAuthStore(): AuthStore {
     return "removed";
   }
 
+  async function listAccountDevices(accountId: string): Promise<AuthDevice[]> {
+    const account = Array.from(accountsByHandle.values()).find((candidate) => candidate.id === accountId);
+
+    if (!account) {
+      return [];
+    }
+
+    return Array.from(registrationSessions.values())
+      .filter((session) => session.handle === account.handle && Boolean(session.pairing.deviceLabel))
+      .map((session) => ({
+        id: session.pairing.id,
+        deviceLabel: session.pairing.deviceLabel ?? "Unnamed device",
+        status: session.pairing.status,
+        createdAt: session.pairing.createdAt,
+        expiresAt: session.pairing.expiresAt,
+        redeemedAt: session.pairing.redeemedAt,
+      }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  }
+
+  async function revokeAccountDevice(accountId: string, deviceId: string): Promise<RevokeDeviceResult> {
+    const account = Array.from(accountsByHandle.values()).find((candidate) => candidate.id === accountId);
+
+    if (!account) {
+      return "not_found";
+    }
+
+    const session = Array.from(registrationSessions.values()).find(
+      (candidate) => candidate.handle === account.handle && candidate.pairing.id === deviceId,
+    );
+
+    if (!session || !session.pairing.deviceLabel) {
+      return "not_found";
+    }
+
+    session.pairing.token = undefined;
+    session.pairing.status = "expired";
+    return "revoked";
+  }
+
   function ensureAccount(handle: string, displayName?: string): StoredAccount {
     const existing = accountsByHandle.get(handle);
 
@@ -615,6 +657,8 @@ export function createInMemoryAuthStore(): AuthStore {
     revokeApiToken,
     listAccountPasskeys,
     removeAccountPasskey,
+    listAccountDevices,
+    revokeAccountDevice,
   };
 }
 

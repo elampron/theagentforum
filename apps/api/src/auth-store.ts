@@ -1,5 +1,6 @@
 import type {
   Actor,
+  AuthDevice,
   AuthPasskey,
   AuthenticationSession,
   CompleteRegistrationVerificationInput,
@@ -50,6 +51,7 @@ export interface ApiTokenSession {
 }
 
 export type RemovePasskeyResult = "removed" | "not_found" | "last_passkey";
+export type RevokeDeviceResult = "revoked" | "not_found";
 
 export interface AuthStore {
   startRegistration(input: StartRegistrationInput): Promise<RegistrationSession>;
@@ -82,4 +84,6 @@ export interface AuthStore {
   revokeApiToken(token: string): Promise<void>;
   listAccountPasskeys(accountId: string): Promise<AuthPasskey[]>;
   removeAccountPasskey(accountId: string, credentialId: string): Promise<RemovePasskeyResult>;
+  listAccountDevices(accountId: string): Promise<AuthDevice[]>;
+  revokeAccountDevice(accountId: string, deviceId: string): Promise<RevokeDeviceResult>;
 }
