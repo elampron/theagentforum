@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type {
+  Actor,
   AuthenticationSession,
   CompleteRegistrationVerificationInput,
   PairingSession,
@@ -9,9 +10,11 @@ import type {
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
+  WebSession,
 } from "@theagentforum/core";
 import type {
   AuthStore,
+  IssuedWebSession,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
   VerifiedPasskeyRegistration,
@@ -54,15 +57,33 @@ interface StoredAuthenticationSession {
   verifiedAt?: string;
 }
 
+interface StoredAccount {
+  id: string;
+  handle: string;
+  displayName?: string;
+}
+
+interface StoredWebSession {
+  token: string;
+  actor: Actor;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt?: string;
+}
+
 export function createInMemoryAuthStore(): AuthStore {
   const registrationSessions = new Map<string, StoredRegistrationSession>();
   const authenticationSessions = new Map<string, StoredAuthenticationSession>();
   const credentialsByHandle = new Map<string, StoredCredential[]>();
+  const accountsByHandle = new Map<string, StoredAccount>();
+  const webSessionsByToken = new Map<string, StoredWebSession>();
+  let accountSequence = 1;
   let registrationSequence = 1;
   let pairingSequence = 1;
   let authenticationSequence = 1;
 
   async function startRegistration(input: StartRegistrationInput): Promise<RegistrationSession> {
+    ensureAccount(input.handle, input.displayName);
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const pairingExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
@@ -268,11 +289,12 @@ export function createInMemoryAuthStore(): AuthStore {
     const latestRegistration = Array.from(registrationSessions.values())
       .filter((candidate) => candidate.handle === input.handle)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+    const account = accountsByHandle.get(input.handle);
 
     const session: StoredAuthenticationSession = {
       id: `aas-${authenticationSequence++}`,
       handle: input.handle,
-      displayName: latestRegistration?.displayName,
+      displayName: latestRegistration?.displayName ?? account?.displayName,
       status: "awaiting_authentication",
       challenge: createChallenge(),
       createdAt,
@@ -387,6 +409,93 @@ export function createInMemoryAuthStore(): AuthStore {
     return cloneAuthenticationSession(session);
   }
 
+  async function createWebSession(authenticationSessionId: string): Promise<IssuedWebSession | null> {
+    const authenticationSession = authenticationSessions.get(authenticationSessionId);
+
+    if (!authenticationSession) {
+      return null;
+    }
+
+    expireAuthenticationSessionIfNeeded(authenticationSession);
+
+    if (authenticationSession.status !== "verified") {
+      return null;
+    }
+
+    const account = ensureAccount(authenticationSession.handle, authenticationSession.displayName);
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const token = createWebSessionToken();
+    const session: StoredWebSession = {
+      token,
+      actor: {
+        id: account.id,
+        kind: "human",
+        handle: account.handle,
+        displayName: account.displayName,
+      },
+      createdAt,
+      expiresAt,
+    };
+
+    webSessionsByToken.set(token, session);
+    return {
+      token,
+      actor: { ...session.actor },
+      createdAt,
+      expiresAt,
+    };
+  }
+
+  async function getWebSession(token: string): Promise<WebSession | null> {
+    const session = webSessionsByToken.get(token);
+
+    if (!session) {
+      return null;
+    }
+
+    if (session.revokedAt || Date.parse(session.expiresAt) <= Date.now()) {
+      webSessionsByToken.delete(token);
+      return null;
+    }
+
+    return {
+      actor: { ...session.actor },
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+    };
+  }
+
+  async function revokeWebSession(token: string): Promise<void> {
+    const session = webSessionsByToken.get(token);
+
+    if (!session) {
+      return;
+    }
+
+    session.revokedAt = new Date().toISOString();
+  }
+
+  function ensureAccount(handle: string, displayName?: string): StoredAccount {
+    const existing = accountsByHandle.get(handle);
+
+    if (existing) {
+      if (displayName && !existing.displayName) {
+        existing.displayName = displayName;
+      }
+
+      return existing;
+    }
+
+    const account: StoredAccount = {
+      id: `acct-${accountSequence++}`,
+      handle,
+      displayName,
+    };
+    accountsByHandle.set(handle, account);
+    return account;
+  }
+
   return {
     startRegistration,
     getRegistrationSession,
@@ -400,6 +509,9 @@ export function createInMemoryAuthStore(): AuthStore {
     getPasskeyAuthenticationOptions,
     getPasskeyCredential,
     finishPasskeyAuthentication,
+    createWebSession,
+    getWebSession,
+    revokeWebSession,
   };
 }
 
@@ -413,6 +525,10 @@ function createPairingCode(): string {
 
 function createToken(): string {
   return `taf_${randomBytes(18).toString("base64url")}`;
+}
+
+function createWebSessionToken(): string {
+  return `taf_ws_${randomBytes(24).toString("base64url")}`;
 }
 
 function expireRegistrationSessionIfNeeded(session: StoredRegistrationSession): void {

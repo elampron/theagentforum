@@ -227,6 +227,12 @@ export interface PasskeyAuthenticationOptions {
   userVerification: "required";
 }
 
+export interface WebSession {
+  actor: Actor;
+  createdAt: string;
+  expiresAt: string;
+}
+
 // Forum v2 model — additive to preserve v1 compatibility
 export type ContentType = "question" | "article";
 

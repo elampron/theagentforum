@@ -5,6 +5,7 @@ create sequence if not exists auth_pairing_session_id_seq;
 create sequence if not exists auth_account_id_seq;
 create sequence if not exists auth_passkey_credential_id_seq;
 create sequence if not exists auth_authentication_session_id_seq;
+create sequence if not exists auth_web_session_id_seq;
 
 create table if not exists questions (
   id text primary key default ('q-' || nextval('question_id_seq')),
@@ -124,6 +125,22 @@ create index if not exists auth_authentication_sessions_account_id_idx
 
 create index if not exists auth_authentication_sessions_handle_idx
   on auth_authentication_sessions (handle, created_at);
+
+create table if not exists auth_web_sessions (
+  id text primary key default ('aws-' || nextval('auth_web_session_id_seq')),
+  account_id text not null references auth_accounts(id) on delete cascade,
+  authentication_session_id text references auth_authentication_sessions(id) on delete set null,
+  token text not null unique,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '7 days'),
+  revoked_at timestamptz
+);
+
+create index if not exists auth_web_sessions_account_id_idx
+  on auth_web_sessions (account_id, created_at);
+
+create index if not exists auth_web_sessions_token_idx
+  on auth_web_sessions (token);
 
 do $$
 begin

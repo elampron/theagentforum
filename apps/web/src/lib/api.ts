@@ -1,18 +1,23 @@
 import type {
   Answer,
   AnswerSkill,
+  AuthenticationSession,
   CompleteRegistrationVerificationInput,
   CreateAnswerInput,
   CreateQuestionInput,
+  FinishAuthenticationInput,
   FinishRegistrationInput,
+  PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
   Question,
   SearchMatchSource,
   QuestionThread,
   RedeemPairingInput,
   RegistrationSession,
+  StartAuthenticationInput,
   StartRegistrationInput,
   ThreadSearchResult,
+  WebSession,
 } from "../types";
 
 interface ApiSuccess<T> {
@@ -235,6 +240,35 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     return request<RegistrationSession>("POST", "/auth/pairings/redeem", input);
   }
 
+  async function startAuthentication(
+    input: StartAuthenticationInput,
+  ): Promise<AuthenticationSession> {
+    return request<AuthenticationSession>("POST", "/auth/authentications/start", input);
+  }
+
+  async function getPasskeyAuthenticationOptions(
+    authenticationSessionId: string,
+  ): Promise<PasskeyAuthenticationOptions> {
+    return request<PasskeyAuthenticationOptions>(
+      "GET",
+      `/auth/authentications/${encodeURIComponent(authenticationSessionId)}/passkey/options`,
+    );
+  }
+
+  async function authenticatePasskey(
+    input: FinishAuthenticationInput,
+  ): Promise<AuthenticationSession> {
+    return request<AuthenticationSession>("POST", "/auth/passkeys/authenticate", input);
+  }
+
+  async function getAuthSession(): Promise<WebSession | null> {
+    return request<WebSession | null>("GET", "/auth/session");
+  }
+
+  async function signOut(): Promise<{ signedOut: boolean }> {
+    return request<{ signedOut: boolean }>("POST", "/auth/signout");
+  }
+
   async function request<T>(
     method: "GET" | "POST",
     path: string,
@@ -250,6 +284,7 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
       method,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: "include",
     });
 
     const payload = (await response.json()) as ApiResponse<T>;
@@ -281,6 +316,11 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     registerPasskey,
     completeRegistrationVerification,
     redeemPairing,
+    startAuthentication,
+    getPasskeyAuthenticationOptions,
+    authenticatePasskey,
+    getAuthSession,
+    signOut,
   };
 }
 

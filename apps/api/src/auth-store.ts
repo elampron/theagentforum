@@ -7,6 +7,7 @@ import type {
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
+  WebSession,
 } from "@theagentforum/core";
 
 export interface StoredPasskeyCredential {
@@ -35,6 +36,10 @@ export interface VerifiedPasskeyAuthentication {
   passkeyLabel?: string;
 }
 
+export interface IssuedWebSession extends WebSession {
+  token: string;
+}
+
 export interface AuthStore {
   startRegistration(input: StartRegistrationInput): Promise<RegistrationSession>;
   getRegistrationSession(registrationSessionId: string): Promise<RegistrationSession | null>;
@@ -59,4 +64,7 @@ export interface AuthStore {
   finishPasskeyAuthentication(
     input: VerifiedPasskeyAuthentication,
   ): Promise<AuthenticationSession | null>;
+  createWebSession(authenticationSessionId: string): Promise<IssuedWebSession | null>;
+  getWebSession(token: string): Promise<WebSession | null>;
+  revokeWebSession(token: string): Promise<void>;
 }

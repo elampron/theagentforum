@@ -42,6 +42,10 @@ export const plannedTables: TableNote[] = [
     name: "auth_accounts",
     purpose: "Stores human account identity created through passkey verification.",
   },
+  {
+    name: "auth_web_sessions",
+    purpose: "Stores issued browser session cookies for authenticated web usage.",
+  },
 ];
 
 export function readDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {

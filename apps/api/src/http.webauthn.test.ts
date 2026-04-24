@@ -518,7 +518,255 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.equal(reused.body.ok, false);
     assert.equal(reused.body.error.code, "authentication_session_not_pending");
   });
+
+  it("issues a web session cookie after successful passkey authentication and resolves the current session", async () => {
+    const app = createTestApp();
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "session-felix",
+      displayName: "Session Felix",
+    });
+
+    assert.equal(signedIn.authenticated.status, 200);
+    assert.ok(signedIn.setCookie);
+    assert.match(signedIn.setCookie, /taf_session=/);
+    assert.match(signedIn.setCookie, /HttpOnly/i);
+    assert.match(signedIn.setCookie, /Path=\//i);
+    assert.match(signedIn.setCookie, /SameSite=Lax/i);
+
+    const currentSession = await requestJson(app, "/auth/session", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(currentSession.status, 200);
+    assert.equal(currentSession.body.ok, true);
+    assert.equal(currentSession.body.data.actor.kind, "human");
+    assert.equal(currentSession.body.data.actor.handle, "session-felix");
+    assert.equal(currentSession.body.data.actor.displayName, "Session Felix");
+  });
+
+  it("requires a web session for protected v2 writes and attributes writes to the signed-in actor", async () => {
+    const app = createTestApp();
+
+    const anonymousCreate = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      body: {
+        type: "question",
+        title: "Anonymous title",
+        body: "Anonymous body",
+        author: {
+          id: "spoofed-user",
+          kind: "agent",
+          handle: "spoofed",
+        },
+      },
+    });
+
+    assert.equal(anonymousCreate.status, 401);
+    assert.equal(anonymousCreate.body.ok, false);
+    assert.equal(anonymousCreate.body.error.code, "authentication_required");
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "writer-felix",
+      displayName: "Writer Felix",
+    });
+
+    const created = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+      body: {
+        type: "question",
+        title: "Signed in title",
+        body: "Signed in body",
+        author: {
+          id: "spoofed-user",
+          kind: "agent",
+          handle: "spoofed",
+        },
+      },
+    });
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.data.author.kind, "human");
+    assert.equal(created.body.data.author.handle, "writer-felix");
+    assert.equal(created.body.data.author.displayName, "Writer Felix");
+
+    const contentId = created.body.data.id as string;
+
+    const anonymousComment = await requestJson(app, `/v2/contents/${contentId}/comments`, {
+      method: "POST",
+      body: {
+        body: "Anonymous comment",
+        author: {
+          id: "spoofed-commenter",
+          kind: "agent",
+          handle: "spoofed-commenter",
+        },
+      },
+    });
+
+    assert.equal(anonymousComment.status, 401);
+    assert.equal(anonymousComment.body.error.code, "authentication_required");
+
+    const commented = await requestJson(app, `/v2/contents/${contentId}/comments`, {
+      method: "POST",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+      body: {
+        body: "Authenticated comment",
+        author: {
+          id: "spoofed-commenter",
+          kind: "agent",
+          handle: "spoofed-commenter",
+        },
+      },
+    });
+
+    assert.equal(commented.status, 201);
+    assert.equal(commented.body.data.comments[0].author.kind, "human");
+    assert.equal(commented.body.data.comments[0].author.handle, "writer-felix");
+
+    const commentId = commented.body.data.comments[0].id as string;
+
+    const anonymousAccept = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
+      method: "POST",
+    });
+
+    assert.equal(anonymousAccept.status, 401);
+    assert.equal(anonymousAccept.body.error.code, "authentication_required");
+
+    const accepted = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
+      method: "POST",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.data.content.acceptedCommentId, commentId);
+  });
+
+  it("clears the active web session on sign-out", async () => {
+    const app = createTestApp();
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "signout-felix",
+      displayName: "Signout Felix",
+    });
+
+    const signedOut = await requestJson(app, "/auth/signout", {
+      method: "POST",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(signedOut.status, 200);
+    assert.equal(signedOut.body.ok, true);
+    assert.ok(signedOut.headers["set-cookie"]);
+    assert.match(signedOut.headers["set-cookie"], /taf_session=/);
+    assert.match(signedOut.headers["set-cookie"], /Max-Age=0/i);
+
+    const currentSession = await requestJson(app, "/auth/session", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(currentSession.status, 200);
+    assert.equal(currentSession.body.ok, true);
+    assert.equal(currentSession.body.data, null);
+  });
 });
+
+async function signInWithPasskey(
+  app: ReturnType<typeof createTestApp>,
+  input: { handle: string; displayName: string },
+): Promise<{
+  authenticated: { status: number; body: any; headers: Record<string, string> };
+  setCookie: string;
+  cookieHeader: string;
+}> {
+  const fixture = createPasskeyFixture();
+
+  const started = await requestJson(app, "/auth/registrations/start", {
+    method: "POST",
+    body: input,
+  });
+
+  const registrationId = started.body.data.id as string;
+  const registrationOptions = await requestJson(app, `/auth/registrations/${registrationId}/passkey/options`, {
+    headers: {
+      origin: "http://localhost:5173",
+    },
+  });
+
+  await requestJson(app, "/auth/passkeys/register", {
+    method: "POST",
+    headers: {
+      origin: "http://localhost:5173",
+    },
+    body: {
+      registrationSessionId: registrationId,
+      credential: fixture.createRegistrationCredential({
+        challenge: registrationOptions.body.data.challenge,
+        origin: "http://localhost:5173",
+        rpId: "localhost",
+      }),
+      passkeyLabel: `${input.displayName} Passkey`,
+    },
+  });
+
+  const startedAuthentication = await requestJson(app, "/auth/authentications/start", {
+    method: "POST",
+    body: {
+      handle: input.handle,
+    },
+  });
+
+  const authenticationSessionId = startedAuthentication.body.data.id as string;
+  const authenticationOptions = await requestJson(
+    app,
+    `/auth/authentications/${authenticationSessionId}/passkey/options`,
+    {
+      headers: {
+        origin: "http://localhost:5173",
+      },
+    },
+  );
+
+  const authenticated = await requestJson(app, "/auth/passkeys/authenticate", {
+    method: "POST",
+    headers: {
+      origin: "http://localhost:5173",
+    },
+    body: {
+      authenticationSessionId,
+      credential: fixture.createAuthenticationCredential({
+        challenge: authenticationOptions.body.data.challenge,
+        origin: "http://localhost:5173",
+        rpId: "localhost",
+        signCount: 1,
+      }),
+    },
+  });
+
+  const setCookie = authenticated.headers["set-cookie"];
+  if (!setCookie) {
+    throw new Error("Expected a Set-Cookie header after successful authentication.");
+  }
+
+  return {
+    authenticated,
+    setCookie,
+    cookieHeader: setCookie.split(";", 1)[0],
+  };
+}
 
 function createPasskeyFixture() {
   const credentialId = Buffer.from("cred-felix-1", "utf8");
@@ -784,7 +1032,7 @@ async function requestJson(
     body?: unknown;
     headers?: Record<string, string>;
   },
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; body: any; headers: Record<string, string> }> {
   const request = Readable.from(init?.body ? [JSON.stringify(init.body)] : []) as IncomingRequestLike;
   request.method = init?.method ?? "GET";
   request.url = path;
@@ -800,6 +1048,7 @@ async function requestJson(
   return {
     status: response.statusCode,
     body: JSON.parse(response.body),
+    headers: response.headers,
   };
 }
 

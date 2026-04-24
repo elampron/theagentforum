@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiClientError, type ApiClient } from "../lib/api";
 import type {
+  FinishAuthenticationInput,
   FinishRegistrationInput,
+  PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
   RegistrationSession,
 } from "../types";
 
 interface AuthPageProps {
   api: ApiClient;
+  onAuthStateChange?: () => Promise<void> | void;
 }
 
-export function AuthPage({ api }: AuthPageProps) {
+export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const registrationParam = searchParams.get("registration") ?? "";
   const [registrationSession, setRegistrationSession] = useState<RegistrationSession | null>(null);
@@ -20,6 +24,8 @@ export function AuthPage({ api }: AuthPageProps) {
   const [loadingSession, setLoadingSession] = useState(false);
   const [creatingPasskey, setCreatingPasskey] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
+  const [signInHandle, setSignInHandle] = useState("");
   const [passkeyLabel, setPasskeyLabel] = useState("This device passkey");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
@@ -137,6 +143,36 @@ export function AuthPage({ api }: AuthPageProps) {
     }
   }
 
+  async function handleSignIn(): Promise<void> {
+    const trimmedHandle = signInHandle.trim();
+    if (!trimmedHandle) {
+      setError("Handle is required for sign-in.");
+      return;
+    }
+
+    setSigningIn(true);
+    setError(null);
+
+    try {
+      const authenticationSession = await api.startAuthentication({
+        handle: trimmedHandle,
+      });
+      const options = await api.getPasskeyAuthenticationOptions(authenticationSession.id);
+      const credential = await createBrowserAuthenticationCredential(options);
+
+      await api.authenticatePasskey({
+        authenticationSessionId: authenticationSession.id,
+        credential,
+      });
+      await onAuthStateChange?.();
+      navigate("/");
+    } catch (cause) {
+      setError(readErrorMessage(cause));
+    } finally {
+      setSigningIn(false);
+    }
+  }
+
   async function handleRedeem(formData: FormData): Promise<void> {
     if (!registrationSession) {
       return;
@@ -190,6 +226,37 @@ export function AuthPage({ api }: AuthPageProps) {
 
       {error ? <p className="error">{error}</p> : null}
       {loadingSession ? <p className="muted">Loading registration session...</p> : null}
+
+      <section className="card stack">
+        <div>
+          <p className="eyebrow">Returning user</p>
+          <h2>Sign in with your passkey</h2>
+          <p className="muted">
+            Already registered a passkey? Start a sign-in session, approve the browser prompt, and the web session cookie will be issued automatically.
+          </p>
+        </div>
+
+        <form
+          className="stack"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSignIn();
+          }}
+        >
+          <label className="stack">
+            <span>Handle for sign-in</span>
+            <input
+              value={signInHandle}
+              onChange={(event) => setSignInHandle(event.target.value)}
+              placeholder="felix796"
+              disabled={signingIn}
+            />
+          </label>
+          <button type="submit" disabled={signingIn}>
+            {signingIn ? "Signing in..." : "Sign in with passkey"}
+          </button>
+        </form>
+      </section>
 
       <section className="card stack auth-guide-card">
         <div>
@@ -427,6 +494,19 @@ type BrowserCredentialWithAttestation = {
   getClientExtensionResults?: () => AuthenticationExtensionsClientOutputs;
 };
 
+type BrowserCredentialWithAssertion = {
+  id: string;
+  rawId: ArrayBuffer;
+  response: {
+    authenticatorData: ArrayBuffer;
+    clientDataJSON: ArrayBuffer;
+    signature: ArrayBuffer;
+    userHandle?: ArrayBuffer | null;
+  };
+  authenticatorAttachment?: string | null;
+  getClientExtensionResults?: () => AuthenticationExtensionsClientOutputs;
+};
+
 async function createBrowserCredential(
   options: PasskeyRegistrationOptions,
 ): Promise<FinishRegistrationInput["credential"]> {
@@ -477,6 +557,57 @@ async function createBrowserCredential(
       ...(publicKey ? { publicKey: toBase64Url(new Uint8Array(publicKey)) } : {}),
       ...(typeof publicKeyAlgorithm === "number" ? { publicKeyAlgorithm } : {}),
       ...(transports && transports.length > 0 ? { transports } : {}),
+    },
+    authenticatorAttachment: credential.authenticatorAttachment ?? undefined,
+    clientExtensionResults: credential.getClientExtensionResults?.() as Record<string, unknown> | undefined,
+  };
+}
+
+async function createBrowserAuthenticationCredential(
+  options: PasskeyAuthenticationOptions,
+): Promise<FinishAuthenticationInput["credential"]> {
+  const credentials = navigator.credentials;
+
+  if (!credentials?.get || typeof window.PublicKeyCredential === "undefined") {
+    throw new Error("This browser does not support WebAuthn passkey sign-in.");
+  }
+
+  const fetched = await credentials.get({
+    publicKey: {
+      challenge: toArrayBuffer(decodeMaybeBase64Url(options.challenge)),
+      rpId: options.rpId,
+      allowCredentials: options.allowCredentials.map((credential) => ({
+        id: toArrayBuffer(decodeMaybeBase64Url(credential.id)),
+        type: credential.type,
+        ...(credential.transports
+          ? { transports: credential.transports as AuthenticatorTransport[] }
+          : {}),
+      })),
+      timeout: options.timeout,
+      userVerification: options.userVerification,
+    },
+  });
+
+  if (!fetched || typeof fetched !== "object" || !("rawId" in fetched) || !("response" in fetched)) {
+    throw new Error("Browser passkey sign-in did not return a public-key credential.");
+  }
+
+  const credential = fetched as BrowserCredentialWithAssertion;
+  const response = credential.response;
+
+  if (!response || typeof response !== "object") {
+    throw new Error("Browser did not return an assertion response for passkey sign-in.");
+  }
+
+  return {
+    id: credential.id,
+    rawId: toBase64Url(new Uint8Array(credential.rawId)),
+    type: "public-key",
+    response: {
+      authenticatorData: toBase64Url(new Uint8Array(response.authenticatorData)),
+      clientDataJSON: toBase64Url(new Uint8Array(response.clientDataJSON)),
+      signature: toBase64Url(new Uint8Array(response.signature)),
+      ...(response.userHandle ? { userHandle: toBase64Url(new Uint8Array(response.userHandle)) } : {}),
     },
     authenticatorAttachment: credential.authenticatorAttachment ?? undefined,
     clientExtensionResults: credential.getClientExtensionResults?.() as Record<string, unknown> | undefined,
