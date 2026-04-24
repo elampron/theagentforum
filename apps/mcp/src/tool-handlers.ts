@@ -6,6 +6,9 @@ import {
   AcceptToolInputSchema,
   AnswerSkillSchema,
   AnswerToolInputSchema,
+  ApiTokenSessionSchema,
+  AuthTokenInspectToolInputSchema,
+  AuthTokenRevokeToolInputSchema,
   AskToolInputSchema,
   AttachSkillToolInputSchema,
   ErrorCategorySchema,
@@ -37,6 +40,8 @@ const SearchToolSuccessSchema = toolSuccessSchema(SearchResultSchema);
 const ListToolSuccessSchema = toolSuccessSchema(ListQuestionsResultDataSchema);
 const AnswerSkillToolSuccessSchema = toolSuccessSchema(AnswerSkillSchema);
 const RegistrationSessionToolSuccessSchema = toolSuccessSchema(RegistrationSessionSchema);
+const ApiTokenSessionToolSuccessSchema = toolSuccessSchema(ApiTokenSessionSchema.nullable());
+const ApiTokenRevokeToolSuccessSchema = toolSuccessSchema(z.object({ revoked: z.boolean() }));
 
 export type ToolPayload =
   | z.infer<typeof ToolErrorSchema>
@@ -45,7 +50,9 @@ export type ToolPayload =
   | z.infer<typeof SearchToolSuccessSchema>
   | z.infer<typeof ListToolSuccessSchema>
   | z.infer<typeof AnswerSkillToolSuccessSchema>
-  | z.infer<typeof RegistrationSessionToolSuccessSchema>;
+  | z.infer<typeof RegistrationSessionToolSuccessSchema>
+  | z.infer<typeof ApiTokenSessionToolSuccessSchema>
+  | z.infer<typeof ApiTokenRevokeToolSuccessSchema>;
 
 export interface ToolHandlers {
   ask(input: unknown): Promise<ToolPayload>;
@@ -59,6 +66,8 @@ export interface ToolHandlers {
   authStatus(input: unknown): Promise<ToolPayload>;
   authPasskeyRegister(input: unknown): Promise<ToolPayload>;
   authPair(input: unknown): Promise<ToolPayload>;
+  authWhoami(input: unknown): Promise<ToolPayload>;
+  authLogout(input: unknown): Promise<ToolPayload>;
 }
 
 interface ToolHandlerOptions {
@@ -76,6 +85,8 @@ interface ToolHandlerOptions {
     | "getPasskeyRegistrationOptions"
     | "registerPasskey"
     | "redeemPairing"
+    | "inspectApiToken"
+    | "revokeApiToken"
   >;
   defaultAuthor: Actor;
 }
@@ -273,6 +284,36 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
           ok: true,
           data: session,
           meta: { route: "POST /auth/pairings/redeem", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authWhoami(input: unknown): Promise<ToolPayload> {
+      try {
+        AuthTokenInspectToolInputSchema.parse(input ?? {});
+        const session = await apiClient.inspectApiToken();
+
+        return ApiTokenSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "GET /auth/token", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authLogout(input: unknown): Promise<ToolPayload> {
+      try {
+        AuthTokenRevokeToolInputSchema.parse(input ?? {});
+        const response = await apiClient.revokeApiToken();
+
+        return ApiTokenRevokeToolSuccessSchema.parse({
+          ok: true,
+          data: response,
+          meta: { route: "POST /auth/token/revoke", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);

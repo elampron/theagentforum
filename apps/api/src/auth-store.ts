@@ -1,4 +1,5 @@
 import type {
+  Actor,
   AuthenticationSession,
   CompleteRegistrationVerificationInput,
   PasskeyAuthenticationOptions,
@@ -40,6 +41,13 @@ export interface IssuedWebSession extends WebSession {
   token: string;
 }
 
+export interface ApiTokenSession {
+  actor: Actor;
+  createdAt: string;
+  expiresAt: string;
+  deviceLabel?: string;
+}
+
 export interface AuthStore {
   startRegistration(input: StartRegistrationInput): Promise<RegistrationSession>;
   getRegistrationSession(registrationSessionId: string): Promise<RegistrationSession | null>;
@@ -67,4 +75,6 @@ export interface AuthStore {
   createWebSession(authenticationSessionId: string): Promise<IssuedWebSession | null>;
   getWebSession(token: string): Promise<WebSession | null>;
   revokeWebSession(token: string): Promise<void>;
+  getApiTokenSession(token: string): Promise<ApiTokenSession | null>;
+  revokeApiToken(token: string): Promise<void>;
 }

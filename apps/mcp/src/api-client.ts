@@ -11,6 +11,7 @@ import {
   ContentSearchResultSchema,
   ContentThreadSchema,
   PasskeyRegistrationOptionsSchema,
+  ApiTokenSessionSchema,
   QuestionSchema,
   QuestionThreadSchema,
   RegistrationSessionSchema,
@@ -211,6 +212,18 @@ export class TafApiClient {
     deviceLabel: string;
   }): Promise<z.infer<typeof RegistrationSessionSchema>> {
     return this.request("POST", "/auth/pairings/redeem", RegistrationSessionSchema, input);
+  }
+
+  async inspectApiToken(): Promise<z.infer<typeof ApiTokenSessionSchema> | null> {
+    return this.request("GET", "/auth/token", ApiTokenSessionSchema.nullable());
+  }
+
+  async revokeApiToken(): Promise<{ revoked: boolean }> {
+    return this.request(
+      "POST",
+      "/auth/token/revoke",
+      z.object({ revoked: z.boolean() }),
+    );
   }
 
   private async request<TData>(

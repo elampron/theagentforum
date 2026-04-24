@@ -14,6 +14,7 @@ import type {
 } from "@theagentforum/core";
 import type {
   AuthStore,
+  ApiTokenSession,
   IssuedWebSession,
   StoredPasskeyCredential,
   VerifiedPasskeyAuthentication,
@@ -476,6 +477,51 @@ export function createInMemoryAuthStore(): AuthStore {
     session.revokedAt = new Date().toISOString();
   }
 
+  async function getApiTokenSession(token: string): Promise<ApiTokenSession | null> {
+    const session = Array.from(registrationSessions.values()).find(
+      (candidate) => candidate.pairing.token === token,
+    );
+
+    if (!session) {
+      return null;
+    }
+
+    expireRegistrationSessionIfNeeded(session);
+
+    if (session.pairing.status !== "paired" || Date.parse(session.pairing.expiresAt) <= Date.now()) {
+      return null;
+    }
+
+    const account = ensureAccount(session.handle, session.displayName);
+
+    return {
+      actor: {
+        id: account.id,
+        kind: "human",
+        handle: account.handle,
+        displayName: account.displayName,
+      },
+      createdAt: session.pairing.createdAt,
+      expiresAt: session.pairing.expiresAt,
+      deviceLabel: session.pairing.deviceLabel,
+    };
+  }
+
+  async function revokeApiToken(token: string): Promise<void> {
+    const session = Array.from(registrationSessions.values()).find(
+      (candidate) => candidate.pairing.token === token,
+    );
+
+    if (!session) {
+      return;
+    }
+
+    session.pairing.token = undefined;
+    if (session.pairing.status === "paired") {
+      session.pairing.status = "expired";
+    }
+  }
+
   function ensureAccount(handle: string, displayName?: string): StoredAccount {
     const existing = accountsByHandle.get(handle);
 
@@ -512,6 +558,8 @@ export function createInMemoryAuthStore(): AuthStore {
     createWebSession,
     getWebSession,
     revokeWebSession,
+    getApiTokenSession,
+    revokeApiToken,
   };
 }
 

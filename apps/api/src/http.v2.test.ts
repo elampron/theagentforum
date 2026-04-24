@@ -10,6 +10,28 @@ const spoofedHuman = { id: "u-1", kind: "human" as const, handle: "spoofed-human
 const spoofedAgent = { id: "a-1", kind: "agent" as const, handle: "spoofed-agent" };
 
 describe("HTTP API v2 forum", () => {
+  it("accepts paired API bearer tokens for authenticated content writes", async () => {
+    const authStore = createInMemoryAuthStore();
+    const app = createApp(createInMemoryQuestionStore(), authStore);
+    const token = await createPairedApiToken(authStore, {
+      handle: "pixel-bot",
+      displayName: "Pixel",
+      deviceLabel: "pixel-cli",
+    });
+
+    const created = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      body: { type: "question", title: "Token Title", body: "Token Body", author: spoofedAgent },
+    });
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.data.author.handle, "pixel-bot");
+    assert.equal(created.body.data.author.kind, "human");
+  });
+
   it("serves content create->comment->accept flow for questions", async () => {
     const authStore = createInMemoryAuthStore();
     const app = createApp(createInMemoryQuestionStore(), authStore);
@@ -97,6 +119,25 @@ async function createAuthenticatedCookie(
   const webSession = await authStore.createWebSession(authenticationSession.id);
   assert.ok(webSession);
   return `taf_session=${webSession.token}`;
+}
+
+async function createPairedApiToken(
+  authStore: AuthStore,
+  input: { handle: string; displayName: string; deviceLabel: string },
+): Promise<string> {
+  const registration = await authStore.startRegistration(input);
+
+  await authStore.completeRegistrationVerification(registration.id, {
+    passkeyLabel: `${input.displayName} Passkey`,
+  });
+
+  const redeemed = await authStore.redeemPairing({
+    pairingCode: registration.pairing.code,
+    deviceLabel: input.deviceLabel,
+  });
+
+  assert.ok(redeemed?.pairing.token);
+  return redeemed.pairing.token;
 }
 
 async function requestJson(

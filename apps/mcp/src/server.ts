@@ -2,6 +2,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   AcceptToolInputSchema,
   AnswerToolInputSchema,
+  AuthTokenInspectToolInputSchema,
+  AuthTokenRevokeToolInputSchema,
   AskToolInputSchema,
   AttachSkillToolInputSchema,
   GetThreadToolInputSchema,
@@ -137,6 +139,24 @@ export function createTheAgentForumMcpServer(
       inputSchema: pairToolInputShape,
     },
     async (args) => toMcpResult(await handlers.authPair(PairToolInputSchema.parse(args))),
+  );
+
+  server.registerTool(
+    "auth-whoami",
+    {
+      description: "Inspect the current bearer token session used by MCP/CLI automation.",
+      inputSchema: AuthTokenInspectToolInputSchema.shape,
+    },
+    async (args) => toMcpResult(await handlers.authWhoami(AuthTokenInspectToolInputSchema.parse(args ?? {}))),
+  );
+
+  server.registerTool(
+    "auth-logout",
+    {
+      description: "Revoke the current bearer token session used by MCP/CLI automation.",
+      inputSchema: AuthTokenRevokeToolInputSchema.shape,
+    },
+    async (args) => toMcpResult(await handlers.authLogout(AuthTokenRevokeToolInputSchema.parse(args ?? {}))),
   );
 
   return { server, handlers };

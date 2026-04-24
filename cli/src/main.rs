@@ -2,6 +2,8 @@ use clap::{Args, Parser, Subcommand};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use std::process::exit;
 
 #[derive(Parser, Debug)]
@@ -48,6 +50,18 @@ enum Commands {
         question_id: String,
         answer_id: String,
     },
+    AttachSkill {
+        question_id: String,
+        answer_id: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        content: Option<String>,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long)]
+        mime_type: Option<String>,
+    },
     Auth {
         #[command(subcommand)]
         command: AuthCommands,
@@ -60,6 +74,8 @@ enum AuthCommands {
     Status {
         registration_id: String,
     },
+    Whoami,
+    Logout,
     Pair {
         pairing_code: String,
         #[arg(long)]
@@ -140,6 +156,22 @@ struct SearchResult {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct AnswerSkill {
+    id: String,
+    #[serde(rename = "questionId")]
+    question_id: String,
+    #[serde(rename = "answerId")]
+    answer_id: String,
+    name: String,
+    content: Option<String>,
+    url: Option<String>,
+    #[serde(rename = "mimeType")]
+    mime_type: Option<String>,
+    #[serde(rename = "createdAt")]
+    created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct PairingSession {
     id: String,
     code: String,
@@ -154,6 +186,29 @@ struct PairingSession {
     expires_at: String,
     #[serde(rename = "redeemedAt", skip_serializing_if = "Option::is_none")]
     redeemed_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ApiTokenSession {
+    actor: Actor,
+    #[serde(rename = "deviceLabel", skip_serializing_if = "Option::is_none")]
+    device_label: Option<String>,
+    #[serde(rename = "createdAt")]
+    created_at: String,
+    #[serde(rename = "expiresAt")]
+    expires_at: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct LogoutResponse {
+    revoked: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct StoredAuth {
+    token: String,
+    #[serde(rename = "baseUrl")]
+    base_url: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -218,6 +273,17 @@ struct CreateAnswerInput {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct CreateAnswerSkillInput {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    content: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    url: Option<String>,
+    #[serde(rename = "mimeType", skip_serializing_if = "Option::is_none")]
+    mime_type: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct StartRegistrationInput {
     handle: String,
     #[serde(rename = "displayName", skip_serializing_if = "Option::is_none")]
@@ -275,6 +341,88 @@ fn passkey_label_from(args: &RegisterArgs) -> String {
     args.passkey_label
         .clone()
         .unwrap_or_else(|| format!("{} passkey", args.display_name.clone().unwrap_or_else(|| args.handle.clone())))
+}
+
+fn require_api_token() -> String {
+    env_api_token()
+        .or_else(load_saved_api_token)
+        .unwrap_or_else(|| {
+            eprintln!("TAF_API_TOKEN is required for this command, or sign in first with `taf auth pair` / `taf auth quickstart`.");
+            exit(1);
+        })
+}
+
+fn env_api_token() -> Option<String> {
+    env::var("TAF_API_TOKEN")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn auth_dir() -> PathBuf {
+    if let Ok(dir) = env::var("TAF_CONFIG_DIR") {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed);
+        }
+    }
+
+    let home = env::var("HOME").unwrap_or_else(|_| {
+        eprintln!("Unable to determine HOME for TAF auth storage.");
+        exit(1);
+    });
+
+    PathBuf::from(home).join(".taf")
+}
+
+fn auth_file_path() -> PathBuf {
+    auth_dir().join("auth.json")
+}
+
+fn save_api_token(token: &str, base_url: &str) {
+    let auth_dir = auth_dir();
+    if let Err(error) = fs::create_dir_all(&auth_dir) {
+        eprintln!("Failed to create auth directory {}: {}", auth_dir.display(), error);
+        exit(1);
+    }
+
+    let payload = StoredAuth {
+        token: token.to_string(),
+        base_url: base_url.to_string(),
+    };
+
+    let serialized = serde_json::to_string_pretty(&payload).unwrap_or_else(|error| {
+        eprintln!("Failed to serialize auth state: {}", error);
+        exit(1);
+    });
+
+    let path = auth_file_path();
+    if let Err(error) = fs::write(&path, serialized) {
+        eprintln!("Failed to write auth state {}: {}", path.display(), error);
+        exit(1);
+    }
+}
+
+fn load_saved_auth() -> Option<StoredAuth> {
+    let path = auth_file_path();
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str::<StoredAuth>(&content).ok()
+}
+
+fn load_saved_api_token() -> Option<String> {
+    load_saved_auth()
+        .map(|auth| auth.token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+fn clear_saved_api_token() {
+    let path = auth_file_path();
+    if path.exists() {
+        if let Err(error) = fs::remove_file(&path) {
+            eprintln!("Failed to remove saved auth state {}: {}", path.display(), error);
+            exit(1);
+        }
+    }
 }
 
 async fn handle_response<T>(res: reqwest::Response, json_output: bool) -> T
@@ -399,8 +547,9 @@ async fn main() {
                 if search.matches.is_empty() {
                     println!("No matching threads found.");
                 } else {
+                    println!("{} matches for '{}':", search.returned, search.query);
                     for item in search.matches {
-                        println!("- {} [{}] score={} via {}", item.question.title, item.question.id, item.score, item.match_sources.join(", "));
+                        println!("- {} [{}] score={} matched in {}", item.question.title, item.question.id, item.score, item.match_sources.join(", "));
                     }
                 }
             }
@@ -454,6 +603,33 @@ async fn main() {
                 println!("Answer {} accepted for question {}!", answer_id, thread.question.id);
             }
         }
+        Commands::AttachSkill {
+            question_id,
+            answer_id,
+            name,
+            content,
+            url,
+            mime_type,
+        } => {
+            if content.is_none() && url.is_none() {
+                eprintln!("Either --content or --url is required.");
+                exit(1);
+            }
+
+            let url_path = format!("{}/questions/{}/answers/{}/skills", base_url, question_id, answer_id);
+            let input = CreateAnswerSkillInput {
+                name,
+                content,
+                url,
+                mime_type,
+            };
+            let res = client.post(&url_path).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let skill: AnswerSkill = handle_response(res, cli.json).await;
+
+            if !cli.json {
+                println!("Skill {} attached to answer {} on question {}!", skill.id, skill.answer_id, skill.question_id);
+            }
+        }
         Commands::Auth { command } => match command {
             AuthCommands::Register(args) => {
                 let url = format!("{}/auth/registrations/start", base_url);
@@ -476,6 +652,53 @@ async fn main() {
                     print_registration_summary(&session);
                 }
             }
+            AuthCommands::Whoami => {
+                let token = require_api_token();
+                let url = format!("{}/auth/token", base_url);
+                let res = client.get(&url)
+                    .bearer_auth(token)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let session: Option<ApiTokenSession> = handle_response(res, cli.json).await;
+                if !cli.json {
+                    match session {
+                        Some(session) => {
+                            println!("Authenticated as: {}", session.actor.handle);
+                            println!("Actor kind: {}", session.actor.kind);
+                            if let Some(display_name) = session.actor.display_name {
+                                println!("Display name: {}", display_name);
+                            }
+                            if let Some(device_label) = session.device_label {
+                                println!("Device label: {}", device_label);
+                            }
+                            println!("Issued at: {}", session.created_at);
+                            println!("Expires at: {}", session.expires_at);
+                        }
+                        None => println!("No active API token session found."),
+                    }
+                }
+            }
+            AuthCommands::Logout => {
+                let token = require_api_token();
+                let url = format!("{}/auth/token/revoke", base_url);
+                let res = client.post(&url)
+                    .bearer_auth(token)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let response: LogoutResponse = handle_response(res, cli.json).await;
+                if response.revoked {
+                    clear_saved_api_token();
+                }
+                if !cli.json {
+                    if response.revoked {
+                        println!("API token revoked.");
+                    } else {
+                        println!("No active API token was revoked.");
+                    }
+                }
+            }
             AuthCommands::Pair { pairing_code, device_label } => {
                 let url = format!("{}/auth/pairings/redeem", base_url);
                 let input = RedeemPairingInput {
@@ -484,9 +707,15 @@ async fn main() {
                 };
                 let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
                 let session: RegistrationSession = handle_response(res, cli.json).await;
+                if let Some(token) = session.pairing.token.as_deref() {
+                    save_api_token(token, &base_url);
+                }
                 if !cli.json {
                     println!("Pairing redeemed.");
                     print_registration_summary(&session);
+                    if session.pairing.token.is_some() {
+                        println!("Saved token to {}", auth_file_path().display());
+                    }
                 }
             }
             AuthCommands::Quickstart(args) => {
@@ -512,10 +741,16 @@ async fn main() {
                 };
                 let res = client.post(&pair_url).json(&pair).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
                 let paired: RegistrationSession = handle_response(res, cli.json).await;
+                if let Some(token) = paired.pairing.token.as_deref() {
+                    save_api_token(token, &base_url);
+                }
 
                 if !cli.json {
                     println!("Auth quickstart complete.");
                     print_registration_summary(&paired);
+                    if paired.pairing.token.is_some() {
+                        println!("Saved token to {}", auth_file_path().display());
+                    }
                     println!("Export this for MCP or other clients:");
                     if let Some(token) = paired.pairing.token {
                         println!("export TAF_API_TOKEN={}", token);
