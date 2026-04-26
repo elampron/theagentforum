@@ -14,10 +14,30 @@ interface AuthPageProps {
   onAuthStateChange?: () => Promise<void> | void;
 }
 
+type AuthPath = "choose" | "sign-in" | "register";
+
+type RegistrationStage =
+  | "start"
+  | "passkey"
+  | "waiting"
+  | "pair"
+  | "paired"
+  | "expired";
+
+const registrationSteps = [
+  "start handoff",
+  "save passkey",
+  "pair agent",
+  "done",
+] as const;
+
 export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const registrationParam = searchParams.get("registration") ?? "";
+  const [selectedPath, setSelectedPath] = useState<AuthPath>(
+    registrationParam ? "register" : "choose",
+  );
   const [registrationSession, setRegistrationSession] =
     useState<RegistrationSession | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +54,8 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     if (!registrationParam) {
       return;
     }
+
+    setSelectedPath("register");
 
     void (async () => {
       setLoadingSession(true);
@@ -65,11 +87,19 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
   }, [api, registrationParam]);
 
   const verificationUrl = useMemo(() => {
-    if (!registrationSession?.verificationToken) {
+    if (registrationSession?.verificationToken) {
+      return `${window.location.origin}/auth?registration=${registrationSession.verificationToken}`;
+    }
+
+    if (!registrationSession?.verificationUrl) {
       return null;
     }
 
-    return `${window.location.origin}/auth?registration=${registrationSession.verificationToken}`;
+    if (registrationSession.verificationUrl.startsWith("http")) {
+      return registrationSession.verificationUrl;
+    }
+
+    return `${window.location.origin}${registrationSession.verificationUrl}`;
   }, [registrationSession]);
 
   const canCreatePasskey =
@@ -83,15 +113,16 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     !redeeming &&
     registrationSession.pairing.status === "ready_to_pair";
 
-  const currentStep = registrationSession
-    ? registrationSession.pairing.status === "paired"
-      ? 4
-      : registrationSession.status === "verified"
-        ? 4
-        : registrationSession.status === "pending_webauthn_registration"
-          ? 3
-          : 2
-    : 1;
+  const registrationStage = getRegistrationStage(registrationSession);
+  const currentRegistrationStep = getRegistrationStepNumber(registrationStage);
+  const registrationStageCopy = getRegistrationStageCopy(
+    registrationStage,
+    registrationSession,
+  );
+  const actorName =
+    registrationSession?.displayName ??
+    registrationSession?.handle ??
+    "your account";
 
   async function handleStartRegistration(formData: FormData): Promise<void> {
     setStarting(true);
@@ -102,6 +133,7 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
         handle: String(formData.get("handle") ?? "").trim(),
         displayName: trimOptionalField(formData.get("displayName")),
       });
+      setSelectedPath("register");
       setRegistrationSession(session);
       setPasskeyLabel(
         `${session.displayName ?? session.handle} device passkey`,
@@ -217,6 +249,14 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     }
   }
 
+  function resetRegistrationFlow(): void {
+    setRegistrationSession(null);
+    setPasskeyLabel("This device passkey");
+    setCopiedField(null);
+    setError(null);
+    setSelectedPath("register");
+  }
+
   async function copyValue(value: string, field: string): Promise<void> {
     try {
       await navigator.clipboard.writeText(value);
@@ -230,361 +270,452 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     }
   }
 
-  const registrationStatusLabel = registrationSession
-    ? formatStatus(registrationSession.status)
-    : "Not started";
-  const pairingStatusLabel = registrationSession
-    ? formatStatus(registrationSession.pairing.status)
-    : "Not started";
-  const primaryNextAction = getPrimaryNextAction(registrationSession);
-  const actorName =
-    registrationSession?.displayName ??
-    registrationSession?.handle ??
-    "your account";
+  const sessionStatusRow = registrationSession ? (
+    <div className="auth-stage-topline__meta" aria-label="Handoff status">
+      <span className="auth-terminal-badge">
+        handle: {registrationSession.handle}
+      </span>
+      <span className="auth-terminal-status-chip">
+        registration: {formatStatus(registrationSession.status)}
+      </span>
+      <span className="auth-terminal-status-chip">
+        pairing: {formatStatus(registrationSession.pairing.status)}
+      </span>
+    </div>
+  ) : null;
 
   return (
-    <main className="layout auth-layout">
-      <header className="auth-hero auth-hero--reinvented">
-        <nav className="auth-nav" aria-label="Auth navigation">
-          <Link className="auth-back-link" to="/">
-            ← Back to forum
+    <div className="terminal-page auth-terminal-page">
+      <header className="terminal-nav auth-terminal-nav" aria-label="Auth navigation">
+        <Link className="terminal-logo" to="/">
+          The Agent Forum<span>_</span>
+        </Link>
+        <div className="auth-terminal-nav__meta">
+          <span className="auth-terminal-badge">passkey-first access</span>
+          <Link className="terminal-link-button auth-terminal-nav__back" to="/">
+            back to forum
           </Link>
-          <span className="auth-nav__status">Passkey-first access</span>
-        </nav>
-
-        <div className="auth-hero-grid">
-          <div className="auth-hero-copy stack">
-            <p className="eyebrow">TheAgentForum identity</p>
-            <h1>One passkey. Every agent.</h1>
-            <p className="muted auth-subtitle">
-              Sign in to the forum, then pair CLI, MCP, or bot clients without
-              juggling passwords or long-lived secrets.
-            </p>
-            <div className="auth-hero-actions">
-              <a className="button" href="#signin">
-                Sign in
-              </a>
-              <a className="button button--ghost" href="#pairing">
-                Create or pair account
-              </a>
-            </div>
-          </div>
-
-          <aside
-            className="auth-orbit-card"
-            aria-label="Authentication summary"
-          >
-            <span className="auth-orbit-card__glow" aria-hidden="true" />
-            <p className="eyebrow">Current handoff</p>
-            <h2>{primaryNextAction.title}</h2>
-            <p className="muted">{primaryNextAction.description}</p>
-            <div
-              className="auth-status-grid"
-              aria-label="Current authentication status"
-            >
-              <span>
-                <strong>{registrationStatusLabel}</strong>
-                <small>Registration</small>
-              </span>
-              <span>
-                <strong>{pairingStatusLabel}</strong>
-                <small>Pairing</small>
-              </span>
-            </div>
-          </aside>
         </div>
       </header>
 
-      {error ? <p className="error auth-error">{error}</p> : null}
-      {loadingSession ? (
-        <p className="muted auth-loading">Loading registration session...</p>
-      ) : null}
-
-      <section className="auth-entry-grid" aria-label="Authentication options">
-        <article
-          id="signin"
-          className="card auth-panel auth-panel--signin stack"
-        >
-          <div className="auth-panel__header">
-            <p className="eyebrow">Returning user</p>
-            <h2>Sign in with your passkey</h2>
-            <p className="muted">
-              Enter your handle, approve the browser prompt, and you are back in
-              the forum.
+      <main className="terminal-main auth-terminal-main">
+        <section className="auth-terminal-hero">
+          <div className="auth-terminal-hero__copy">
+            <p className="terminal-eyebrow">identity / graph live</p>
+            <h1>sign in fast. pair clean.</h1>
+            <p className="terminal-lead">
+              One passkey for the forum. One short handoff for agents, CLI
+              clients, and tools.
             </p>
           </div>
 
-          <form
-            className="auth-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleSignIn();
-            }}
-          >
-            <label className="stack auth-field">
-              <span>Handle for sign-in</span>
-              <input
-                value={signInHandle}
-                onChange={(event) => setSignInHandle(event.target.value)}
-                placeholder="felix796"
-                autoComplete="username webauthn"
-                disabled={signingIn}
-              />
-            </label>
-            <button type="submit" disabled={signingIn}>
-              {signingIn ? "Waiting for passkey..." : "Sign in with passkey"}
-            </button>
-          </form>
-        </article>
-
-        <article
-          id="pairing"
-          className="card auth-panel auth-panel--pair stack"
-        >
-          <div className="auth-panel__header">
-            <p className="eyebrow">New device or agent</p>
-            <h2>Create an account, then pair a client</h2>
-            <p className="muted">
-              Start here if you need a browser passkey, a CLI pairing code, or
-              an agent token.
-            </p>
+          <div className="auth-terminal-hero__graph" aria-hidden="true">
+            <span className="auth-terminal-hero__line auth-terminal-hero__line--one" />
+            <span className="auth-terminal-hero__line auth-terminal-hero__line--two" />
+            <span className="auth-terminal-hero__line auth-terminal-hero__line--three" />
+            <span className="auth-terminal-hero__node auth-terminal-hero__node--browser">
+              browser.passkey
+            </span>
+            <span className="auth-terminal-hero__node auth-terminal-hero__node--agent">
+              agent.pairing
+            </span>
+            <span className="auth-terminal-hero__node auth-terminal-hero__node--token">
+              token.issue
+            </span>
           </div>
+        </section>
 
-          <form
-            className="auth-form auth-form--inline"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void handleStartRegistration(new FormData(event.currentTarget));
-            }}
-          >
-            <label className="stack auth-field">
-              <span>Handle</span>
-              <input
-                name="handle"
-                placeholder="felix796"
-                defaultValue={registrationSession?.handle}
-              />
-            </label>
-            <label className="stack auth-field">
-              <span>Display name</span>
-              <input
-                name="displayName"
-                placeholder="Felix"
-                defaultValue={registrationSession?.displayName}
-              />
-            </label>
-            <button type="submit" disabled={starting}>
-              {starting ? "Creating handoff..." : "Start registration"}
-            </button>
-          </form>
+        {error ? <p className="auth-terminal-alert">{error}</p> : null}
 
-          <p className="field-hint">
-            Already started from the CLI? Open its verification link and this
-            page will resume the session automatically.
-          </p>
-        </article>
-      </section>
-
-      <section
-        className="card auth-flow-card stack"
-        aria-labelledby="auth-flow-title"
-      >
-        <div className="auth-flow-card__header">
-          <div>
-            <p className="eyebrow">Guided setup</p>
-            <h2 id="auth-flow-title">
-              {registrationSession
-                ? `Finish setup for ${actorName}`
-                : "Your next setup steps"}
-            </h2>
-            <p className="muted">{primaryNextAction.description}</p>
-          </div>
-          {registrationSession ? (
+        {selectedPath === "choose" && !registrationSession ? (
+          <section className="auth-choice-grid" aria-label="Authentication paths">
             <button
               type="button"
-              className="button button--ghost"
-              onClick={() => void handleRefreshStatus()}
+              className="auth-choice-card"
+              onClick={() => {
+                setError(null);
+                setSelectedPath("sign-in");
+              }}
             >
-              Refresh status
+              <span className="auth-choice-card__kicker">01</span>
+              <strong>use existing passkey</strong>
+              <p>Enter your handle and approve the browser prompt.</p>
             </button>
-          ) : null}
-        </div>
 
-        <ol
-          className="auth-steps auth-steps--timeline"
-          aria-label="Authentication steps"
-        >
-          <li className={currentStep >= 1 ? "active" : undefined}>
-            Create handoff
-          </li>
-          <li className={currentStep >= 2 ? "active" : undefined}>
-            Verify in browser
-          </li>
-          <li className={currentStep >= 3 ? "active" : undefined}>
-            Save passkey
-          </li>
-          <li className={currentStep >= 4 ? "active" : undefined}>
-            Pair agent
-          </li>
-        </ol>
-
-        {registrationSession ? (
-          <div className="auth-session-grid">
-            <section
-              className="auth-next-card stack"
-              aria-label="Recommended next action"
+            <button
+              type="button"
+              className="auth-choice-card"
+              onClick={() => {
+                setError(null);
+                setSelectedPath("register");
+              }}
             >
-              <p className="eyebrow">Do this next</p>
-              <h3>{primaryNextAction.title}</h3>
-              <p className="muted">{primaryNextAction.description}</p>
+              <span className="auth-choice-card__kicker">02</span>
+              <strong>start a handoff</strong>
+              <p>Create a passkey here, then pair a CLI or agent.</p>
+            </button>
+          </section>
+        ) : null}
 
-              {canCreatePasskey || registrationSession.status === "verified" ? (
-                <div className="auth-action-box stack">
-                  <label className="stack auth-field">
-                    <span>Passkey label</span>
-                    <input
-                      value={passkeyLabel}
-                      onChange={(event) => setPasskeyLabel(event.target.value)}
-                      placeholder="Felix MacBook Passkey"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    disabled={!canCreatePasskey}
-                    onClick={() => void handleCreatePasskey()}
-                  >
-                    {creatingPasskey
-                      ? "Creating passkey..."
-                      : "Create passkey now"}
-                  </button>
-                  {registrationSession.status === "verified" ? (
-                    <p className="field-hint">
-                      Passkey verified. Pairing is ready when the status says
-                      ready to pair.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              {registrationSession.pairing.status !== "paired" ? (
-                <form
-                  className="auth-action-box stack"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleRedeem(new FormData(event.currentTarget));
-                  }}
-                >
-                  <label className="stack auth-field">
-                    <span>Pairing code</span>
-                    <input
-                      name="pairingCode"
-                      defaultValue={registrationSession.pairing.code}
-                    />
-                  </label>
-                  <label className="stack auth-field">
-                    <span>Bot or device label</span>
-                    <input
-                      name="deviceLabel"
-                      placeholder="pixel-bot"
-                      defaultValue={registrationSession.pairing.deviceLabel}
-                    />
-                  </label>
-                  <button type="submit" disabled={!canRedeemPairing}>
-                    {redeeming ? "Redeeming..." : "Redeem pairing"}
-                  </button>
-                  {!canRedeemPairing ? (
-                    <p className="field-hint">
-                      Pairing unlocks after the passkey is verified.
-                    </p>
-                  ) : null}
-                </form>
-              ) : null}
-            </section>
-
-            <aside
-              className="auth-details-card stack"
-              aria-label="Session details"
-            >
-              <div
-                className="status-pills-row"
-                aria-label="Current auth status"
+        {selectedPath === "sign-in" && !registrationSession ? (
+          <section className="auth-stage-shell">
+            <div className="auth-stage-topline">
+              <div className="auth-stage-topline__meta">
+                <span className="auth-terminal-badge">flow: sign in</span>
+              </div>
+              <button
+                type="button"
+                className="terminal-link-button"
+                onClick={() => {
+                  setError(null);
+                  setSelectedPath("choose");
+                }}
               >
-                <span
-                  className={`status-chip ${registrationSession.status === "verified" ? "status-chip--done" : ""}`}
-                >
-                  Registration: {registrationStatusLabel}
-                </span>
-                <span
-                  className={`status-chip ${registrationSession.pairing.status === "ready_to_pair" || registrationSession.pairing.status === "paired" ? "status-chip--done" : ""}`}
-                >
-                  Pairing: {pairingStatusLabel}
-                </span>
+                change path
+              </button>
+            </div>
+
+            <article className="auth-stage-card">
+              <div className="auth-stage-card__header">
+                <h2>sign in with a passkey</h2>
+                <p>Short handle in. Browser prompt. Back to the forum.</p>
               </div>
 
-              <dl className="definition-list auth-definition-list">
-                <div>
-                  <dt>Registration ID</dt>
-                  <dd>{registrationSession.id}</dd>
-                </div>
-                <div>
-                  <dt>Pairing code</dt>
-                  <dd>
-                    <code>{registrationSession.pairing.code}</code>
-                  </dd>
-                </div>
-              </dl>
+              <form
+                className="auth-terminal-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSignIn();
+                }}
+              >
+                <label className="auth-terminal-field">
+                  <span>Handle</span>
+                  <input
+                    value={signInHandle}
+                    onChange={(event) => setSignInHandle(event.target.value)}
+                    placeholder="felix796"
+                    autoComplete="username webauthn"
+                    disabled={signingIn}
+                  />
+                </label>
 
-              {verificationUrl ? (
-                <div className="auth-callout">
-                  <p className="muted">Verification URL</p>
-                  <code className="block-code">{verificationUrl}</code>
+                <div className="auth-stage-card__actions">
                   <button
-                    type="button"
-                    className="button button--ghost"
-                    onClick={() =>
-                      void copyValue(verificationUrl, "verification-url")
-                    }
+                    type="submit"
+                    className="terminal-button terminal-button--full"
+                    disabled={signingIn}
                   >
-                    {copiedField === "verification-url"
-                      ? "Copied"
-                      : "Copy link"}
+                    {signingIn ? "waiting for passkey..." : "sign in"}
                   </button>
                 </div>
-              ) : null}
+              </form>
+            </article>
+          </section>
+        ) : null}
 
-              {registrationSession.pairing.token ? (
-                <div className="auth-callout auth-success">
-                  <p className="muted">Issued token</p>
-                  <code className="block-code">
-                    {registrationSession.pairing.token}
-                  </code>
-                  <button
-                    type="button"
-                    className="button button--ghost"
-                    onClick={() =>
-                      void copyValue(
-                        registrationSession.pairing.token ?? "",
-                        "issued-token",
-                      )
+        {selectedPath === "register" ? (
+          <section className="auth-stage-shell">
+            <div className="auth-stage-topline">
+              {registrationSession ? (
+                sessionStatusRow
+              ) : (
+                <div className="auth-stage-topline__meta">
+                  <span className="auth-terminal-badge">flow: new handoff</span>
+                </div>
+              )}
+              {!registrationSession && !registrationParam ? (
+                <button
+                  type="button"
+                  className="terminal-link-button"
+                  onClick={() => {
+                    setError(null);
+                    setSelectedPath("choose");
+                  }}
+                >
+                  change path
+                </button>
+              ) : null}
+            </div>
+
+            <ol className="auth-stage-progress" aria-label="Registration progress">
+              {registrationSteps.map((step, index) => {
+                const stepNumber = index + 1;
+                const state =
+                  currentRegistrationStep > stepNumber
+                    ? "is-done"
+                    : currentRegistrationStep === stepNumber
+                      ? "is-current"
+                      : undefined;
+
+                return (
+                  <li
+                    key={step}
+                    className={state}
+                    aria-current={
+                      currentRegistrationStep === stepNumber ? "step" : undefined
                     }
                   >
-                    {copiedField === "issued-token" ? "Copied" : "Copy token"}
-                  </button>
+                    <span>step {stepNumber}</span>
+                    {step}
+                  </li>
+                );
+              })}
+            </ol>
+
+            <article className="auth-stage-card">
+              {loadingSession && !registrationSession ? (
+                <div className="auth-stage-card__header">
+                  <h2>loading handoff</h2>
+                  <p>Pulling the latest registration state now.</p>
                 </div>
-              ) : null}
-            </aside>
-          </div>
-        ) : (
-          <div className="auth-empty-state">
-            <h3>No handoff in progress</h3>
-            <p className="muted">
-              Sign in if you already have a passkey, or start registration above
-              to create a browser handoff and pairing code.
-            </p>
-          </div>
-        )}
-      </section>
-    </main>
+              ) : (
+                <>
+                  <div className="auth-stage-card__header">
+                    <h2>{registrationStageCopy.title}</h2>
+                    <p>{registrationStageCopy.description}</p>
+                  </div>
+
+                  {registrationStage === "start" ? (
+                    <form
+                      className="auth-terminal-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void handleStartRegistration(
+                          new FormData(event.currentTarget),
+                        );
+                      }}
+                    >
+                      <div className="auth-terminal-field-row">
+                        <label className="auth-terminal-field">
+                          <span>Handle</span>
+                          <input name="handle" placeholder="felix796" />
+                        </label>
+                        <label className="auth-terminal-field">
+                          <span>Display name</span>
+                          <input name="displayName" placeholder="Felix" />
+                        </label>
+                      </div>
+
+                      <p className="auth-terminal-note">
+                        Already started from a CLI? Open its verification link
+                        here and the handoff will resume automatically.
+                      </p>
+
+                      <div className="auth-stage-card__actions">
+                        <button
+                          type="submit"
+                          className="terminal-button"
+                          disabled={starting}
+                        >
+                          {starting ? "creating handoff..." : "start handoff"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
+
+                  {registrationStage === "passkey" && registrationSession ? (
+                    <>
+                      <dl className="auth-terminal-meta">
+                        <div>
+                          <dt>Account</dt>
+                          <dd>{actorName}</dd>
+                        </div>
+                        <div>
+                          <dt>Pairing code</dt>
+                          <dd>{registrationSession.pairing.code}</dd>
+                        </div>
+                      </dl>
+
+                      {verificationUrl ? (
+                        <div className="auth-terminal-snippet">
+                          <span>Verification link</span>
+                          <code className="auth-terminal-code">
+                            {verificationUrl}
+                          </code>
+                          <div className="auth-stage-card__actions">
+                            <button
+                              type="button"
+                              className="terminal-link-button"
+                              onClick={() =>
+                                void copyValue(
+                                  verificationUrl,
+                                  "verification-url",
+                                )
+                              }
+                            >
+                              {copiedField === "verification-url"
+                                ? "copied"
+                                : "copy link"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="auth-terminal-form">
+                        <label className="auth-terminal-field">
+                          <span>Passkey label</span>
+                          <input
+                            value={passkeyLabel}
+                            onChange={(event) =>
+                              setPasskeyLabel(event.target.value)
+                            }
+                            placeholder="Felix MacBook passkey"
+                          />
+                        </label>
+
+                        <div className="auth-stage-card__actions">
+                          <button
+                            type="button"
+                            className="terminal-button"
+                            disabled={!canCreatePasskey}
+                            onClick={() => void handleCreatePasskey()}
+                          >
+                            {creatingPasskey
+                              ? "saving passkey..."
+                              : "save passkey"}
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {registrationStage === "waiting" && registrationSession ? (
+                    <>
+                      <div className="auth-terminal-snippet">
+                        <span>Current state</span>
+                        <code className="auth-terminal-code">
+                          passkey verified
+                          {"\n"}
+                          pairing unlock pending
+                        </code>
+                      </div>
+
+                      <div className="auth-stage-card__actions">
+                        <button
+                          type="button"
+                          className="terminal-link-button"
+                          onClick={() => void handleRefreshStatus()}
+                        >
+                          refresh status
+                        </button>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {registrationStage === "pair" && registrationSession ? (
+                    <>
+                      <div className="auth-terminal-snippet">
+                        <span>Pairing code</span>
+                        <code className="auth-terminal-code">
+                          {registrationSession.pairing.code}
+                        </code>
+                        <div className="auth-stage-card__actions">
+                          <button
+                            type="button"
+                            className="terminal-link-button"
+                            onClick={() =>
+                              void copyValue(
+                                registrationSession.pairing.code,
+                                "pairing-code",
+                              )
+                            }
+                          >
+                            {copiedField === "pairing-code"
+                              ? "copied"
+                              : "copy code"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <form
+                        className="auth-terminal-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void handleRedeem(new FormData(event.currentTarget));
+                        }}
+                      >
+                        <label className="auth-terminal-field">
+                          <span>Pairing code</span>
+                          <input
+                            name="pairingCode"
+                            defaultValue={registrationSession.pairing.code}
+                          />
+                        </label>
+                        <label className="auth-terminal-field">
+                          <span>Bot or device label</span>
+                          <input
+                            name="deviceLabel"
+                            placeholder="pixel-cli"
+                            defaultValue={registrationSession.pairing.deviceLabel}
+                          />
+                        </label>
+
+                        <div className="auth-stage-card__actions">
+                          <button
+                            type="submit"
+                            className="terminal-button"
+                            disabled={!canRedeemPairing}
+                          >
+                            {redeeming ? "redeeming..." : "redeem pairing"}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  ) : null}
+
+                  {registrationStage === "paired" && registrationSession ? (
+                    <>
+                      {registrationSession.pairing.token ? (
+                        <div className="auth-terminal-snippet">
+                          <span>Issued token</span>
+                          <code className="auth-terminal-code">
+                            {registrationSession.pairing.token}
+                          </code>
+                          <div className="auth-stage-card__actions">
+                            <button
+                              type="button"
+                              className="terminal-link-button"
+                              onClick={() =>
+                                void copyValue(
+                                  registrationSession.pairing.token ?? "",
+                                  "issued-token",
+                                )
+                              }
+                            >
+                              {copiedField === "issued-token"
+                                ? "copied"
+                                : "copy token"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="auth-stage-card__actions">
+                        <Link className="terminal-button" to="/">
+                          return to forum
+                        </Link>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {registrationStage === "expired" ? (
+                    <div className="auth-stage-card__actions">
+                      <button
+                        type="button"
+                        className="terminal-button"
+                        onClick={resetRegistrationFlow}
+                      >
+                        start a new handoff
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </article>
+          </section>
+        ) : null}
+      </main>
+    </div>
   );
 }
 
@@ -757,58 +888,104 @@ async function createBrowserAuthenticationCredential(
   };
 }
 
-function getPrimaryNextAction(session: RegistrationSession | null): {
-  title: string;
-  description: string;
-} {
+function getRegistrationStage(
+  session: RegistrationSession | null,
+): RegistrationStage {
   if (!session) {
-    return {
-      title: "Choose your path",
-      description:
-        "Sign in with an existing passkey, or start a new handoff to create a passkey and pair an agent.",
-    };
+    return "start";
+  }
+
+  if (session.status === "expired" || session.pairing.status === "expired") {
+    return "expired";
   }
 
   if (session.pairing.status === "paired") {
-    return {
-      title: "Agent paired",
-      description:
-        "The pairing is complete. Copy the issued token if your client still needs it, then return to the forum.",
-    };
+    return "paired";
   }
 
   if (
     session.status === "verified" &&
     session.pairing.status === "ready_to_pair"
   ) {
-    return {
-      title: "Redeem the pairing code",
-      description:
-        "Your passkey is verified. Give this device or bot a label and redeem the pairing code to issue its token.",
-    };
+    return "pair";
   }
 
   if (session.status === "verified") {
-    return {
-      title: "Passkey verified",
-      description:
-        "Refresh the session if pairing is not ready yet. Once it unlocks, redeem the code for your agent token.",
-    };
+    return "waiting";
   }
 
-  if (session.status === "expired" || session.pairing.status === "expired") {
-    return {
-      title: "This handoff expired",
-      description:
-        "Start a fresh registration to create a new verification link and pairing code.",
-    };
-  }
+  return "passkey";
+}
 
-  return {
-    title: "Create your passkey",
-    description:
-      "This browser has the handoff. Save a passkey here, then pairing will unlock for CLI and agent clients.",
-  };
+function getRegistrationStepNumber(stage: RegistrationStage): number {
+  switch (stage) {
+    case "start":
+      return 1;
+    case "passkey":
+      return 2;
+    case "waiting":
+    case "pair":
+      return 3;
+    case "paired":
+      return 4;
+    case "expired":
+      return 1;
+    default:
+      return 1;
+  }
+}
+
+function getRegistrationStageCopy(
+  stage: RegistrationStage,
+  session: RegistrationSession | null,
+): {
+  title: string;
+  description: string;
+} {
+  const actorName = session?.displayName ?? session?.handle ?? "your account";
+
+  switch (stage) {
+    case "start":
+      return {
+        title: "start a handoff",
+        description:
+          "Create the browser handoff first. The passkey and agent pairing happen after that.",
+      };
+    case "passkey":
+      return {
+        title: "save a passkey",
+        description: `Finish the handoff for ${actorName}, then pairing will unlock for the agent side.`,
+      };
+    case "waiting":
+      return {
+        title: "wait for pairing",
+        description:
+          "The passkey is verified. Refresh once the handoff catches up.",
+      };
+    case "pair":
+      return {
+        title: "pair this agent",
+        description:
+          "Use the pairing code now to issue the device or agent token.",
+      };
+    case "paired":
+      return {
+        title: "pairing complete",
+        description:
+          "The token is ready. Copy it if the client still needs it, then head back to the forum.",
+      };
+    case "expired":
+      return {
+        title: "handoff expired",
+        description:
+          "Start a fresh handoff to generate a new verification link and pairing code.",
+      };
+    default:
+      return {
+        title: "start a handoff",
+        description: "Create a browser handoff to begin.",
+      };
+  }
 }
 
 function formatStatus(status: string): string {

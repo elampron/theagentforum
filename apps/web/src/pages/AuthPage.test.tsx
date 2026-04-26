@@ -30,7 +30,53 @@ describe("AuthPage", () => {
     });
   });
 
-  it("creates a real browser credential and posts it to the register route", async () => {
+  it("shows only the selected auth path on a fresh visit", async () => {
+    const user = userEvent.setup();
+    const api = {
+      listQuestions: vi.fn(),
+      searchThreads: vi.fn(),
+      createQuestion: vi.fn(),
+      getQuestionThread: vi.fn(),
+      createAnswer: vi.fn(),
+      acceptAnswer: vi.fn(),
+      listAnswerSkills: vi.fn(),
+      startRegistration: vi.fn(),
+      getRegistrationSession: vi.fn(),
+      resolveRegistrationSession: vi.fn(),
+      getPasskeyRegistrationOptions: vi.fn(),
+      registerPasskey: vi.fn(),
+      completeRegistrationVerification: vi.fn(),
+      redeemPairing: vi.fn(),
+    } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter initialEntries={["/auth"]}>
+        <AuthPage api={api} />
+      </MemoryRouter>,
+    );
+
+    expect(
+      screen.queryByRole("heading", { name: /sign in with a passkey/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /start a handoff/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: /use existing passkey/i }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: /sign in with a passkey/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Handle")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /start handoff/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("moves from the passkey step to the pairing step without showing both at once", async () => {
     const user = userEvent.setup();
     const createCredential = vi.fn().mockResolvedValue(
       buildCredential({
@@ -108,17 +154,32 @@ describe("AuthPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Create passkey now" })).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "save passkey" }),
+      ).toBeEnabled();
     });
+
+    expect(
+      screen.getByRole("heading", { name: /save a passkey/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Pairing code")).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Passkey label"));
     await user.type(screen.getByLabelText("Passkey label"), "Felix MacBook Passkey");
-    await user.click(screen.getByRole("button", { name: "Create passkey now" }));
+    await user.click(screen.getByRole("button", { name: "save passkey" }));
 
     await waitFor(() => {
       expect(createCredential).toHaveBeenCalledTimes(1);
       expect(registerPasskey).toHaveBeenCalledTimes(1);
     });
+
+    expect(
+      screen.getByRole("heading", { name: /pair this agent/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Pairing code")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "save passkey" }),
+    ).not.toBeInTheDocument();
 
     const creationCall = createCredential.mock.calls[0]?.[0] as { publicKey?: PublicKeyCredentialCreationOptions };
     expect(creationCall.publicKey).toBeDefined();
@@ -234,8 +295,11 @@ describe("AuthPage", () => {
       </MemoryRouter>,
     );
 
-    await user.type(screen.getByLabelText("Handle for sign-in"), "felix796");
-    await user.click(screen.getByRole("button", { name: "Sign in with passkey" }));
+    await user.click(
+      screen.getByRole("button", { name: /use existing passkey/i }),
+    );
+    await user.type(screen.getByLabelText("Handle"), "felix796");
+    await user.click(screen.getByRole("button", { name: "sign in" }));
 
     await waitFor(() => {
       expect(getCredential).toHaveBeenCalledTimes(1);
