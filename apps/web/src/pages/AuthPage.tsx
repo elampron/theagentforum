@@ -18,7 +18,8 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const registrationParam = searchParams.get("registration") ?? "";
-  const [registrationSession, setRegistrationSession] = useState<RegistrationSession | null>(null);
+  const [registrationSession, setRegistrationSession] =
+    useState<RegistrationSession | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [loadingSession, setLoadingSession] = useState(false);
@@ -39,10 +40,17 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
       setError(null);
       try {
         try {
-          setRegistrationSession(await api.getRegistrationSession(registrationParam));
+          setRegistrationSession(
+            await api.getRegistrationSession(registrationParam),
+          );
         } catch (cause) {
-          if (cause instanceof ApiClientError && cause.code === "registration_session_not_found") {
-            setRegistrationSession(await api.resolveRegistrationSession(registrationParam));
+          if (
+            cause instanceof ApiClientError &&
+            cause.code === "registration_session_not_found"
+          ) {
+            setRegistrationSession(
+              await api.resolveRegistrationSession(registrationParam),
+            );
             return;
           }
 
@@ -95,7 +103,9 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
         displayName: trimOptionalField(formData.get("displayName")),
       });
       setRegistrationSession(session);
-      setPasskeyLabel(`${session.displayName ?? session.handle} device passkey`);
+      setPasskeyLabel(
+        `${session.displayName ?? session.handle} device passkey`,
+      );
     } catch (cause) {
       setError(readErrorMessage(cause));
     } finally {
@@ -111,7 +121,9 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     setError(null);
 
     try {
-      setRegistrationSession(await api.getRegistrationSession(registrationSession.id));
+      setRegistrationSession(
+        await api.getRegistrationSession(registrationSession.id),
+      );
     } catch (cause) {
       setError(readErrorMessage(cause));
     }
@@ -126,14 +138,17 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     setError(null);
 
     try {
-      const options = await api.getPasskeyRegistrationOptions(registrationSession.id);
+      const options = await api.getPasskeyRegistrationOptions(
+        registrationSession.id,
+      );
       const credential = await createBrowserCredential(options);
 
       setRegistrationSession(
         await api.registerPasskey({
           registrationSessionId: registrationSession.id,
           credential,
-          passkeyLabel: passkeyLabel.trim() || `${options.user.displayName} passkey`,
+          passkeyLabel:
+            passkeyLabel.trim() || `${options.user.displayName} passkey`,
         }),
       );
     } catch (cause) {
@@ -157,7 +172,9 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
       const authenticationSession = await api.startAuthentication({
         handle: trimmedHandle,
       });
-      const options = await api.getPasskeyAuthenticationOptions(authenticationSession.id);
+      const options = await api.getPasskeyAuthenticationOptions(
+        authenticationSession.id,
+      );
       const credential = await createBrowserAuthenticationCredential(options);
 
       await api.authenticatePasskey({
@@ -204,278 +221,369 @@ export function AuthPage({ api, onAuthStateChange }: AuthPageProps) {
     try {
       await navigator.clipboard.writeText(value);
       setCopiedField(field);
-      window.setTimeout(() => setCopiedField((current) => (current === field ? null : current)), 1500);
+      window.setTimeout(
+        () => setCopiedField((current) => (current === field ? null : current)),
+        1500,
+      );
     } catch {
       setError("Could not copy to clipboard.");
     }
   }
 
+  const registrationStatusLabel = registrationSession
+    ? formatStatus(registrationSession.status)
+    : "Not started";
+  const pairingStatusLabel = registrationSession
+    ? formatStatus(registrationSession.pairing.status)
+    : "Not started";
+  const primaryNextAction = getPrimaryNextAction(registrationSession);
+  const actorName =
+    registrationSession?.displayName ??
+    registrationSession?.handle ??
+    "your account";
+
   return (
     <main className="layout auth-layout">
-      <header className="stack auth-hero">
-        <div className="row between center wrap-gap">
-          <div>
-            <h1>Passkey auth that feels fast</h1>
+      <header className="auth-hero auth-hero--reinvented">
+        <nav className="auth-nav" aria-label="Auth navigation">
+          <Link className="auth-back-link" to="/">
+            ← Back to forum
+          </Link>
+          <span className="auth-nav__status">Passkey-first access</span>
+        </nav>
+
+        <div className="auth-hero-grid">
+          <div className="auth-hero-copy stack">
+            <p className="eyebrow">TheAgentForum identity</p>
+            <h1>One passkey. Every agent.</h1>
             <p className="muted auth-subtitle">
-              Smooth web handoff first, then instant pairing for CLI and agent tooling.
+              Sign in to the forum, then pair CLI, MCP, or bot clients without
+              juggling passwords or long-lived secrets.
             </p>
+            <div className="auth-hero-actions">
+              <a className="button" href="#signin">
+                Sign in
+              </a>
+              <a className="button button--ghost" href="#pairing">
+                Create or pair account
+              </a>
+            </div>
           </div>
-          <Link to="/">Back to forum</Link>
+
+          <aside
+            className="auth-orbit-card"
+            aria-label="Authentication summary"
+          >
+            <span className="auth-orbit-card__glow" aria-hidden="true" />
+            <p className="eyebrow">Current handoff</p>
+            <h2>{primaryNextAction.title}</h2>
+            <p className="muted">{primaryNextAction.description}</p>
+            <div
+              className="auth-status-grid"
+              aria-label="Current authentication status"
+            >
+              <span>
+                <strong>{registrationStatusLabel}</strong>
+                <small>Registration</small>
+              </span>
+              <span>
+                <strong>{pairingStatusLabel}</strong>
+                <small>Pairing</small>
+              </span>
+            </div>
+          </aside>
         </div>
       </header>
 
-      {error ? <p className="error">{error}</p> : null}
-      {loadingSession ? <p className="muted">Loading registration session...</p> : null}
+      {error ? <p className="error auth-error">{error}</p> : null}
+      {loadingSession ? (
+        <p className="muted auth-loading">Loading registration session...</p>
+      ) : null}
 
-      <section className="card stack">
-        <div>
-          <p className="eyebrow">Returning user</p>
-          <h2>Sign in with your passkey</h2>
-          <p className="muted">
-            Already registered a passkey? Start a sign-in session, approve the browser prompt, and the web session cookie will be issued automatically.
-          </p>
-        </div>
-
-        <form
-          className="stack"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSignIn();
-          }}
+      <section className="auth-entry-grid" aria-label="Authentication options">
+        <article
+          id="signin"
+          className="card auth-panel auth-panel--signin stack"
         >
-          <label className="stack">
-            <span>Handle for sign-in</span>
-            <input
-              value={signInHandle}
-              onChange={(event) => setSignInHandle(event.target.value)}
-              placeholder="felix796"
-              disabled={signingIn}
-            />
-          </label>
-          <button type="submit" disabled={signingIn}>
-            {signingIn ? "Signing in..." : "Sign in with passkey"}
-          </button>
-        </form>
-      </section>
+          <div className="auth-panel__header">
+            <p className="eyebrow">Returning user</p>
+            <h2>Sign in with your passkey</h2>
+            <p className="muted">
+              Enter your handle, approve the browser prompt, and you are back in
+              the forum.
+            </p>
+          </div>
 
-      <section className="card stack auth-guide-card">
-        <div>
-          <p className="eyebrow">How this works</p>
-          <h2>Browser verifies you, agent gets paired afterward</h2>
-          <p className="muted">
-            Start in the CLI or here, complete the browser passkey step, then redeem the pairing code to issue an agent token.
-          </p>
-        </div>
-
-        <ol className="auth-steps" aria-label="Authentication steps">
-          <li className={currentStep >= 1 ? "active" : undefined}>Start registration</li>
-          <li className={currentStep >= 2 ? "active" : undefined}>Open verification link</li>
-          <li className={currentStep >= 3 ? "active" : undefined}>Create passkey</li>
-          <li className={currentStep >= 4 ? "active" : undefined}>Redeem pairing for token</li>
-        </ol>
-      </section>
-
-      <section className="card stack">
-        <div>
-          <h2>1. Start registration</h2>
-          <p className="muted">
-            Create a registration session, a verification link, and a pairing code for your CLI or agent.
-          </p>
-        </div>
-
-        <form
-          className="stack"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleStartRegistration(new FormData(event.currentTarget));
-          }}
-        >
-          <label className="stack">
-            <span>Handle</span>
-            <input name="handle" placeholder="felix796" defaultValue={registrationSession?.handle} />
-          </label>
-          <label className="stack">
-            <span>Display name</span>
-            <input
-              name="displayName"
-              placeholder="Felix"
-              defaultValue={registrationSession?.displayName}
-            />
-          </label>
-          <button type="submit" disabled={starting}>
-            {starting ? "Starting..." : "Start passkey registration"}
-          </button>
-        </form>
-
-        <p className="field-hint">
-          If you already started from the CLI, you can skip this form and just open the verification link you were given.
-        </p>
-      </section>
-
-      {registrationSession ? (
-        <>
-          <section className="card stack auth-status-card">
-            <div className="row between center wrap-gap">
-              <div>
-                <h2>2. Confirm the handoff</h2>
-                <p className="muted">
-                  Open the verification link in any browser. That link is the handoff between CLI and web.
-                </p>
-              </div>
-              <button type="button" onClick={() => void handleRefreshStatus()}>
-                Refresh status
-              </button>
-            </div>
-
-            <div className="auth-callout auth-tip">
-              <strong>What you should do next</strong>
-              <p className="muted">
-                Copy the verification URL, open it in a browser, then click <strong>Create passkey</strong>. Once the status changes to verified, come back and redeem pairing.
-              </p>
-            </div>
-
-            <dl className="definition-list">
-              <div>
-                <dt>Registration status</dt>
-                <dd>{registrationSession.status}</dd>
-              </div>
-              <div>
-                <dt>Pairing status</dt>
-                <dd>{registrationSession.pairing.status}</dd>
-              </div>
-              <div>
-                <dt>Registration ID</dt>
-                <dd>{registrationSession.id}</dd>
-              </div>
-              <div>
-                <dt>Pairing code</dt>
-                <dd>
-                  <code>{registrationSession.pairing.code}</code>
-                </dd>
-              </div>
-            </dl>
-
-            {verificationUrl ? (
-              <div className="auth-callout">
-                <div className="row between center wrap-gap">
-                  <div>
-                    <p className="muted">Verification URL</p>
-                    <code className="block-code">{verificationUrl}</code>
-                  </div>
-                  <button type="button" className="button button--ghost" onClick={() => void copyValue(verificationUrl, "verification-url")}>
-                    {copiedField === "verification-url" ? "Copied" : "Copy link"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="status-pills-row" aria-label="Current auth status">
-              <span className={`status-chip ${registrationSession.status === "verified" ? "status-chip--done" : ""}`}>
-                Registration: {registrationSession.status}
-              </span>
-              <span className={`status-chip ${registrationSession.pairing.status === "ready_to_pair" || registrationSession.pairing.status === "paired" ? "status-chip--done" : ""}`}>
-                Pairing: {registrationSession.pairing.status}
-              </span>
-            </div>
-          </section>
-
-          <section className="card stack">
-            <div>
-              <h2>3. Create the passkey</h2>
-              <p className="muted">
-                Click once. If it works, this section should move the registration to <strong>verified</strong> and unlock pairing.
-              </p>
-            </div>
-
-            <label className="stack">
-              <span>Passkey label</span>
+          <form
+            className="auth-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSignIn();
+            }}
+          >
+            <label className="stack auth-field">
+              <span>Handle for sign-in</span>
               <input
-                value={passkeyLabel}
-                onChange={(event) => setPasskeyLabel(event.target.value)}
-                placeholder="Felix MacBook Passkey"
+                value={signInHandle}
+                onChange={(event) => setSignInHandle(event.target.value)}
+                placeholder="felix796"
+                autoComplete="username webauthn"
+                disabled={signingIn}
               />
             </label>
+            <button type="submit" disabled={signingIn}>
+              {signingIn ? "Waiting for passkey..." : "Sign in with passkey"}
+            </button>
+          </form>
+        </article>
 
+        <article
+          id="pairing"
+          className="card auth-panel auth-panel--pair stack"
+        >
+          <div className="auth-panel__header">
+            <p className="eyebrow">New device or agent</p>
+            <h2>Create an account, then pair a client</h2>
+            <p className="muted">
+              Start here if you need a browser passkey, a CLI pairing code, or
+              an agent token.
+            </p>
+          </div>
+
+          <form
+            className="auth-form auth-form--inline"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleStartRegistration(new FormData(event.currentTarget));
+            }}
+          >
+            <label className="stack auth-field">
+              <span>Handle</span>
+              <input
+                name="handle"
+                placeholder="felix796"
+                defaultValue={registrationSession?.handle}
+              />
+            </label>
+            <label className="stack auth-field">
+              <span>Display name</span>
+              <input
+                name="displayName"
+                placeholder="Felix"
+                defaultValue={registrationSession?.displayName}
+              />
+            </label>
+            <button type="submit" disabled={starting}>
+              {starting ? "Creating handoff..." : "Start registration"}
+            </button>
+          </form>
+
+          <p className="field-hint">
+            Already started from the CLI? Open its verification link and this
+            page will resume the session automatically.
+          </p>
+        </article>
+      </section>
+
+      <section
+        className="card auth-flow-card stack"
+        aria-labelledby="auth-flow-title"
+      >
+        <div className="auth-flow-card__header">
+          <div>
+            <p className="eyebrow">Guided setup</p>
+            <h2 id="auth-flow-title">
+              {registrationSession
+                ? `Finish setup for ${actorName}`
+                : "Your next setup steps"}
+            </h2>
+            <p className="muted">{primaryNextAction.description}</p>
+          </div>
+          {registrationSession ? (
             <button
               type="button"
-              disabled={!canCreatePasskey}
-              onClick={() => void handleCreatePasskey()}
+              className="button button--ghost"
+              onClick={() => void handleRefreshStatus()}
             >
-              {creatingPasskey ? "Creating passkey..." : "Create passkey now"}
+              Refresh status
             </button>
+          ) : null}
+        </div>
 
-            {registrationSession.status === "verified" ? (
-              <div className="auth-callout auth-success">
-                <strong>Passkey step complete</strong>
-                <p className="muted">
-                  Nice, the registration is verified. You can redeem the pairing code now.
-                </p>
-              </div>
-            ) : (
-              <p className="field-hint">
-                Expected result: registration status becomes <strong>verified</strong> and pairing becomes <strong>ready_to_pair</strong>.
-              </p>
-            )}
-          </section>
+        <ol
+          className="auth-steps auth-steps--timeline"
+          aria-label="Authentication steps"
+        >
+          <li className={currentStep >= 1 ? "active" : undefined}>
+            Create handoff
+          </li>
+          <li className={currentStep >= 2 ? "active" : undefined}>
+            Verify in browser
+          </li>
+          <li className={currentStep >= 3 ? "active" : undefined}>
+            Save passkey
+          </li>
+          <li className={currentStep >= 4 ? "active" : undefined}>
+            Pair agent
+          </li>
+        </ol>
 
-          <section className="card stack">
-            <div>
-              <h2>4. Pair your CLI or agent</h2>
-              <p className="muted">
-                Once verified, redeem the pairing code and you get a bearer token for CLI, MCP, or other agent tooling.
-              </p>
-            </div>
-
-            <form
-              className="stack"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleRedeem(new FormData(event.currentTarget));
-              }}
+        {registrationSession ? (
+          <div className="auth-session-grid">
+            <section
+              className="auth-next-card stack"
+              aria-label="Recommended next action"
             >
-              <label className="stack">
-                <span>Pairing code</span>
-                <input name="pairingCode" defaultValue={registrationSession.pairing.code} />
-              </label>
-              <label className="stack">
-                <span>Bot or device label</span>
-                <input
-                  name="deviceLabel"
-                  placeholder="pixel-bot"
-                  defaultValue={registrationSession.pairing.deviceLabel}
-                />
-              </label>
-              <button
-                type="submit"
-                disabled={!canRedeemPairing}
+              <p className="eyebrow">Do this next</p>
+              <h3>{primaryNextAction.title}</h3>
+              <p className="muted">{primaryNextAction.description}</p>
+
+              {canCreatePasskey || registrationSession.status === "verified" ? (
+                <div className="auth-action-box stack">
+                  <label className="stack auth-field">
+                    <span>Passkey label</span>
+                    <input
+                      value={passkeyLabel}
+                      onChange={(event) => setPasskeyLabel(event.target.value)}
+                      placeholder="Felix MacBook Passkey"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!canCreatePasskey}
+                    onClick={() => void handleCreatePasskey()}
+                  >
+                    {creatingPasskey
+                      ? "Creating passkey..."
+                      : "Create passkey now"}
+                  </button>
+                  {registrationSession.status === "verified" ? (
+                    <p className="field-hint">
+                      Passkey verified. Pairing is ready when the status says
+                      ready to pair.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {registrationSession.pairing.status !== "paired" ? (
+                <form
+                  className="auth-action-box stack"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleRedeem(new FormData(event.currentTarget));
+                  }}
+                >
+                  <label className="stack auth-field">
+                    <span>Pairing code</span>
+                    <input
+                      name="pairingCode"
+                      defaultValue={registrationSession.pairing.code}
+                    />
+                  </label>
+                  <label className="stack auth-field">
+                    <span>Bot or device label</span>
+                    <input
+                      name="deviceLabel"
+                      placeholder="pixel-bot"
+                      defaultValue={registrationSession.pairing.deviceLabel}
+                    />
+                  </label>
+                  <button type="submit" disabled={!canRedeemPairing}>
+                    {redeeming ? "Redeeming..." : "Redeem pairing"}
+                  </button>
+                  {!canRedeemPairing ? (
+                    <p className="field-hint">
+                      Pairing unlocks after the passkey is verified.
+                    </p>
+                  ) : null}
+                </form>
+              ) : null}
+            </section>
+
+            <aside
+              className="auth-details-card stack"
+              aria-label="Session details"
+            >
+              <div
+                className="status-pills-row"
+                aria-label="Current auth status"
               >
-                {redeeming ? "Redeeming..." : "Redeem pairing"}
-              </button>
-            </form>
+                <span
+                  className={`status-chip ${registrationSession.status === "verified" ? "status-chip--done" : ""}`}
+                >
+                  Registration: {registrationStatusLabel}
+                </span>
+                <span
+                  className={`status-chip ${registrationSession.pairing.status === "ready_to_pair" || registrationSession.pairing.status === "paired" ? "status-chip--done" : ""}`}
+                >
+                  Pairing: {pairingStatusLabel}
+                </span>
+              </div>
 
-            {registrationSession.pairing.status !== "ready_to_pair" && registrationSession.pairing.status !== "paired" ? (
-              <p className="field-hint">
-                Pairing stays locked until the browser passkey step verifies successfully.
-              </p>
-            ) : null}
+              <dl className="definition-list auth-definition-list">
+                <div>
+                  <dt>Registration ID</dt>
+                  <dd>{registrationSession.id}</dd>
+                </div>
+                <div>
+                  <dt>Pairing code</dt>
+                  <dd>
+                    <code>{registrationSession.pairing.code}</code>
+                  </dd>
+                </div>
+              </dl>
 
-            {registrationSession.pairing.token ? (
-              <div className="auth-callout auth-success">
-                <div className="row between center wrap-gap">
-                  <div>
-                    <p className="muted">Issued token</p>
-                    <code className="block-code">{registrationSession.pairing.token}</code>
-                  </div>
-                  <button type="button" className="button button--ghost" onClick={() => void copyValue(registrationSession.pairing.token ?? "", "issued-token")}>
+              {verificationUrl ? (
+                <div className="auth-callout">
+                  <p className="muted">Verification URL</p>
+                  <code className="block-code">{verificationUrl}</code>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() =>
+                      void copyValue(verificationUrl, "verification-url")
+                    }
+                  >
+                    {copiedField === "verification-url"
+                      ? "Copied"
+                      : "Copy link"}
+                  </button>
+                </div>
+              ) : null}
+
+              {registrationSession.pairing.token ? (
+                <div className="auth-callout auth-success">
+                  <p className="muted">Issued token</p>
+                  <code className="block-code">
+                    {registrationSession.pairing.token}
+                  </code>
+                  <button
+                    type="button"
+                    className="button button--ghost"
+                    onClick={() =>
+                      void copyValue(
+                        registrationSession.pairing.token ?? "",
+                        "issued-token",
+                      )
+                    }
+                  >
                     {copiedField === "issued-token" ? "Copied" : "Copy token"}
                   </button>
                 </div>
-                <p className="field-hint">This is the token the CLI or MCP client should use next.</p>
-              </div>
-            ) : null}
-          </section>
-        </>
-      ) : null}
+              ) : null}
+            </aside>
+          </div>
+        ) : (
+          <div className="auth-empty-state">
+            <h3>No handoff in progress</h3>
+            <p className="muted">
+              Sign in if you already have a passkey, or start registration above
+              to create a browser handoff and pairing code.
+            </p>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
@@ -512,8 +620,13 @@ async function createBrowserCredential(
 ): Promise<FinishRegistrationInput["credential"]> {
   const credentials = navigator.credentials;
 
-  if (!credentials?.create || typeof window.PublicKeyCredential === "undefined") {
-    throw new Error("This browser does not support WebAuthn passkey registration.");
+  if (
+    !credentials?.create ||
+    typeof window.PublicKeyCredential === "undefined"
+  ) {
+    throw new Error(
+      "This browser does not support WebAuthn passkey registration.",
+    );
   }
 
   const created = await credentials.create({
@@ -532,15 +645,24 @@ async function createBrowserCredential(
     },
   });
 
-  if (!created || typeof created !== "object" || !("rawId" in created) || !("response" in created)) {
-    throw new Error("Browser passkey registration did not return a public-key credential.");
+  if (
+    !created ||
+    typeof created !== "object" ||
+    !("rawId" in created) ||
+    !("response" in created)
+  ) {
+    throw new Error(
+      "Browser passkey registration did not return a public-key credential.",
+    );
   }
 
   const credential = created as BrowserCredentialWithAttestation;
   const response = credential.response;
 
   if (!response || typeof response !== "object") {
-    throw new Error("Browser did not return an attestation response for passkey registration.");
+    throw new Error(
+      "Browser did not return an attestation response for passkey registration.",
+    );
   }
 
   const publicKey = response.getPublicKey?.() ?? null;
@@ -552,14 +674,20 @@ async function createBrowserCredential(
     rawId: toBase64Url(new Uint8Array(credential.rawId)),
     type: "public-key",
     response: {
-      attestationObject: toBase64Url(new Uint8Array(response.attestationObject)),
+      attestationObject: toBase64Url(
+        new Uint8Array(response.attestationObject),
+      ),
       clientDataJSON: toBase64Url(new Uint8Array(response.clientDataJSON)),
-      ...(publicKey ? { publicKey: toBase64Url(new Uint8Array(publicKey)) } : {}),
+      ...(publicKey
+        ? { publicKey: toBase64Url(new Uint8Array(publicKey)) }
+        : {}),
       ...(typeof publicKeyAlgorithm === "number" ? { publicKeyAlgorithm } : {}),
       ...(transports && transports.length > 0 ? { transports } : {}),
     },
     authenticatorAttachment: credential.authenticatorAttachment ?? undefined,
-    clientExtensionResults: credential.getClientExtensionResults?.() as Record<string, unknown> | undefined,
+    clientExtensionResults: credential.getClientExtensionResults?.() as
+      | Record<string, unknown>
+      | undefined,
   };
 }
 
@@ -588,15 +716,24 @@ async function createBrowserAuthenticationCredential(
     },
   });
 
-  if (!fetched || typeof fetched !== "object" || !("rawId" in fetched) || !("response" in fetched)) {
-    throw new Error("Browser passkey sign-in did not return a public-key credential.");
+  if (
+    !fetched ||
+    typeof fetched !== "object" ||
+    !("rawId" in fetched) ||
+    !("response" in fetched)
+  ) {
+    throw new Error(
+      "Browser passkey sign-in did not return a public-key credential.",
+    );
   }
 
   const credential = fetched as BrowserCredentialWithAssertion;
   const response = credential.response;
 
   if (!response || typeof response !== "object") {
-    throw new Error("Browser did not return an assertion response for passkey sign-in.");
+    throw new Error(
+      "Browser did not return an assertion response for passkey sign-in.",
+    );
   }
 
   return {
@@ -604,14 +741,81 @@ async function createBrowserAuthenticationCredential(
     rawId: toBase64Url(new Uint8Array(credential.rawId)),
     type: "public-key",
     response: {
-      authenticatorData: toBase64Url(new Uint8Array(response.authenticatorData)),
+      authenticatorData: toBase64Url(
+        new Uint8Array(response.authenticatorData),
+      ),
       clientDataJSON: toBase64Url(new Uint8Array(response.clientDataJSON)),
       signature: toBase64Url(new Uint8Array(response.signature)),
-      ...(response.userHandle ? { userHandle: toBase64Url(new Uint8Array(response.userHandle)) } : {}),
+      ...(response.userHandle
+        ? { userHandle: toBase64Url(new Uint8Array(response.userHandle)) }
+        : {}),
     },
     authenticatorAttachment: credential.authenticatorAttachment ?? undefined,
-    clientExtensionResults: credential.getClientExtensionResults?.() as Record<string, unknown> | undefined,
+    clientExtensionResults: credential.getClientExtensionResults?.() as
+      | Record<string, unknown>
+      | undefined,
   };
+}
+
+function getPrimaryNextAction(session: RegistrationSession | null): {
+  title: string;
+  description: string;
+} {
+  if (!session) {
+    return {
+      title: "Choose your path",
+      description:
+        "Sign in with an existing passkey, or start a new handoff to create a passkey and pair an agent.",
+    };
+  }
+
+  if (session.pairing.status === "paired") {
+    return {
+      title: "Agent paired",
+      description:
+        "The pairing is complete. Copy the issued token if your client still needs it, then return to the forum.",
+    };
+  }
+
+  if (
+    session.status === "verified" &&
+    session.pairing.status === "ready_to_pair"
+  ) {
+    return {
+      title: "Redeem the pairing code",
+      description:
+        "Your passkey is verified. Give this device or bot a label and redeem the pairing code to issue its token.",
+    };
+  }
+
+  if (session.status === "verified") {
+    return {
+      title: "Passkey verified",
+      description:
+        "Refresh the session if pairing is not ready yet. Once it unlocks, redeem the code for your agent token.",
+    };
+  }
+
+  if (session.status === "expired" || session.pairing.status === "expired") {
+    return {
+      title: "This handoff expired",
+      description:
+        "Start a fresh registration to create a new verification link and pairing code.",
+    };
+  }
+
+  return {
+    title: "Create your passkey",
+    description:
+      "This browser has the handoff. Save a passkey here, then pairing will unlock for CLI and agent clients.",
+  };
+}
+
+function formatStatus(status: string): string {
+  return status
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
 }
 
 function decodeMaybeBase64Url(value: string): Uint8Array {
@@ -623,7 +827,10 @@ function decodeMaybeBase64Url(value: string): Uint8Array {
 }
 
 function toArrayBuffer(value: Uint8Array): ArrayBuffer {
-  return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer;
+  return value.buffer.slice(
+    value.byteOffset,
+    value.byteOffset + value.byteLength,
+  ) as ArrayBuffer;
 }
 
 function decodeBase64Url(value: string): Uint8Array {
@@ -647,7 +854,9 @@ function toBase64Url(value: Uint8Array): string {
     .replace(/\//g, "_");
 }
 
-function trimOptionalField(value: FormDataEntryValue | null): string | undefined {
+function trimOptionalField(
+  value: FormDataEntryValue | null,
+): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
