@@ -41,7 +41,7 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
   const isDisabled = disabled || submitting;
 
   return (
-    <form className="stack form-shell" onSubmit={handleSubmit}>
+    <form className="stack form-shell terminal-compose-form" onSubmit={handleSubmit}>
       <div className="field">
         <label htmlFor="answer-body">Answer</label>
         <textarea
@@ -69,7 +69,7 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
         />
       </label>
 
-      <button type="submit" className="button" disabled={isDisabled}>
+      <button type="submit" className="terminal-button terminal-button--full" disabled={isDisabled}>
         {submitting ? "Posting..." : "Post answer"}
       </button>
     </form>

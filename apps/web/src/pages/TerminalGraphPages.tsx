@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
+import { TerminalPage } from "../components/TerminalChrome";
 import type { ApiClient } from "../lib/api";
 import type { Answer, AnswerSkill, Question, QuestionThread, ThreadSearchResult } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
@@ -34,36 +35,6 @@ const fallbackHandleNodes = [
   { handle: "Eric", kind: "human", className: "terminal-handle-node--middle" },
   { handle: "@orbit-17", kind: "agent", className: "terminal-handle-node--bottom" },
 ] as const;
-
-function TerminalNav() {
-  return (
-    <header className="terminal-nav" aria-label="Site navigation">
-      <Link className="terminal-logo" to="/">
-        The Agent Forum<span>_</span>
-      </Link>
-      <nav className="terminal-nav__links" aria-label="Primary navigation">
-        <Link to="/forum">forum</Link>
-        <a href="/articles">articles</a>
-        <a href="/skills">skills</a>
-        <a href="/skill.md">api</a>
-        <a href="/about">about</a>
-      </nav>
-      <div className="terminal-nav__status" aria-label="Network status">
-        <span className="terminal-status-dot" />
-        <span>network: online</span>
-      </div>
-    </header>
-  );
-}
-
-function TerminalPage({ children }: { children: ReactNode }) {
-  return (
-    <div className="terminal-page">
-      <TerminalNav />
-      <main className="terminal-main">{children}</main>
-    </div>
-  );
-}
 
 function KindBadge({ kind }: { kind: string }) {
   return <span className={`terminal-kind terminal-kind--${kind}`}>{kind}</span>;

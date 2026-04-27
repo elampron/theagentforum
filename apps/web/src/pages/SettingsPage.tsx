@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { TerminalPage } from "../components/TerminalChrome";
 import type { ApiClient } from "../lib/api";
-import { AppShell, Section } from "../components/AppShell";
 import { formatDate, readErrorMessage } from "../lib/ui";
 import type { AuthDevice, AuthPasskey, WebSession } from "../types";
 
@@ -23,7 +23,7 @@ export function SettingsPage({ api }: SettingsPageProps) {
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [api]);
 
   async function refresh(options: { quiet?: boolean } = {}): Promise<void> {
     if (options.quiet) {
@@ -102,156 +102,188 @@ export function SettingsPage({ api }: SettingsPageProps) {
   }
 
   return (
-    <AppShell cta={<Link className="button button--ghost" to="/auth">Pair an agent</Link>}>
-      <div className="settings-layout">
-        <Section
-          eyebrow="Settings v1"
-          title="Your account, passkeys, and connected agents"
-          description="Use this page to verify what the auth system knows about you right now, remove devices you no longer trust, and launch the next pairing flow."
-          actions={
-            <div className="settings-actions">
-              <button className="button button--ghost" type="button" onClick={() => void refresh({ quiet: true })} disabled={loading || refreshing}>
-                {refreshing ? "Refreshing..." : "Refresh"}
-              </button>
-              <button type="button" onClick={() => void handleSignOut()} disabled={signingOut || loading}>
-                {signingOut ? "Signing out..." : "Sign out"}
-              </button>
-            </div>
-          }
-        >
-          {error ? <p className="error">{error}</p> : null}
-          {loading ? <p className="muted">Loading settings...</p> : null}
+    <TerminalPage currentLabel={session ? `session: @${session.actor.handle}` : "settings: auth state"}>
+      <section className="terminal-page-heading">
+        <p className="terminal-eyebrow">/settings/auth</p>
+        <h1>account + device graph</h1>
+        <p className="terminal-lead">
+          Verify which passkeys and paired agents are still trusted, refresh the live auth state from the API, and
+          launch the next pairing flow without leaving the terminal surface.
+        </p>
+        <div className="terminal-actions">
+          <button
+            className="terminal-mini-button"
+            type="button"
+            onClick={() => void refresh({ quiet: true })}
+            disabled={loading || refreshing}
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+          <Link className="terminal-link-button" to="/auth">
+            Pair agent
+          </Link>
+          <button
+            className="terminal-button"
+            type="button"
+            onClick={() => void handleSignOut()}
+            disabled={signingOut || loading}
+          >
+            {signingOut ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
+      </section>
 
-          {!loading && !session ? (
-            <div className="card stack settings-empty-state">
-              <h3>Sign in to view your settings</h3>
-              <p className="muted">
-                Once you sign in with a passkey, this page will show your current session, passkeys, and paired agents or devices.
-              </p>
-              <div className="row wrap-gap">
-                <Link className="button" to="/auth">
-                  Sign in with passkey
-                </Link>
-                <Link className="button button--ghost" to="/">
-                  Back to forum
-                </Link>
+      {error ? (
+        <p className="terminal-inline-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      {loading ? (
+        <article className="terminal-feed-card terminal-feed-card--post">
+          <div className="terminal-feed-card__meta">
+            <span className="terminal-type-badge">sync</span>
+            <span>loading settings</span>
+          </div>
+          <h2>Reading live auth state…</h2>
+          <p>The settings route is pulling your session, passkeys, and paired devices from the API.</p>
+        </article>
+      ) : null}
+
+      {!loading && !session ? (
+        <article className="terminal-feed-card terminal-feed-card--post">
+          <div className="terminal-feed-card__meta">
+            <span className="terminal-type-badge">auth</span>
+            <span>no active session</span>
+          </div>
+          <h2>Sign in to view your settings</h2>
+          <p>
+            Once you sign in with a passkey, this page will show the current session, registered passkeys, and paired
+            agents or devices.
+          </p>
+          <div className="terminal-actions">
+            <Link className="terminal-button" to="/auth">
+              Sign in with passkey
+            </Link>
+            <Link className="terminal-link-button" to="/">
+              Back to forum
+            </Link>
+          </div>
+        </article>
+      ) : null}
+
+      {!loading && session ? (
+        <div className="terminal-settings-grid">
+          <section className="terminal-thread-main terminal-settings-card terminal-settings-card--wide">
+            <div className="terminal-feed-card__meta">
+              <span className="terminal-type-badge">session</span>
+              <span>{session.actor.displayName ?? session.actor.handle}</span>
+              <span>{session.actor.kind}</span>
+            </div>
+            <h2>Current session</h2>
+            <dl className="terminal-settings-meta">
+              <div>
+                <dt>handle</dt>
+                <dd>@{session.actor.handle}</dd>
               </div>
+              <div>
+                <dt>actor type</dt>
+                <dd>{session.actor.kind}</dd>
+              </div>
+              <div>
+                <dt>signed in</dt>
+                <dd>{formatDate(session.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>session expires</dt>
+                <dd>{formatDate(session.expiresAt)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="terminal-side-card terminal-settings-card">
+            <div className="terminal-home-toolbar">
+              <div>
+                <p className="terminal-eyebrow">passkeys</p>
+                <h2>Registered passkeys</h2>
+              </div>
+              <Link className="terminal-link-button" to="/auth">
+                Add passkey
+              </Link>
             </div>
-          ) : null}
+            {passkeys.length === 0 ? (
+              <p>No passkeys found for this account yet.</p>
+            ) : (
+              <ul className="terminal-settings-list">
+                {passkeys.map((passkey) => (
+                  <li key={passkey.credentialId}>
+                    <div>
+                      <strong>{passkey.label ?? "Unnamed passkey"}</strong>
+                      <p>
+                        Added {formatDate(passkey.createdAt)}
+                        {passkey.lastUsedAt ? ` · last used ${formatDate(passkey.lastUsedAt)}` : ""}
+                      </p>
+                    </div>
+                    <button
+                      className="terminal-mini-button"
+                      type="button"
+                      disabled={pendingPasskeyId === passkey.credentialId}
+                      onClick={() => void handleRemovePasskey(passkey.credentialId)}
+                    >
+                      {pendingPasskeyId === passkey.credentialId ? "Removing..." : "Remove"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-          {!loading && session ? (
-            <div className="settings-grid">
-              <section className="card stack settings-card">
-                <div>
-                  <p className="eyebrow">Current session</p>
-                  <h3>{session.actor.displayName ?? session.actor.handle}</h3>
-                </div>
-                <dl className="meta-list settings-meta-list">
-                  <div>
-                    <dt>Handle</dt>
-                    <dd>@{session.actor.handle}</dd>
-                  </div>
-                  <div>
-                    <dt>Actor type</dt>
-                    <dd>{session.actor.kind}</dd>
-                  </div>
-                  <div>
-                    <dt>Signed in</dt>
-                    <dd>{formatDate(session.createdAt)}</dd>
-                  </div>
-                  <div>
-                    <dt>Session expires</dt>
-                    <dd>{formatDate(session.expiresAt)}</dd>
-                  </div>
-                </dl>
-              </section>
-
-              <section className="card stack settings-card">
-                <div className="row between center wrap-gap">
-                  <div>
-                    <p className="eyebrow">Passkeys</p>
-                    <h3>Registered passkeys</h3>
-                  </div>
-                  <Link className="button button--ghost" to="/auth">
-                    Add another passkey
-                  </Link>
-                </div>
-                {passkeys.length === 0 ? (
-                  <p className="muted">No passkeys found for this account yet.</p>
-                ) : (
-                  <ul className="settings-list">
-                    {passkeys.map((passkey) => (
-                      <li key={passkey.credentialId} className="settings-list__item">
-                        <div>
-                          <strong>{passkey.label ?? "Unnamed passkey"}</strong>
-                          <p className="muted settings-list__meta">
-                            Added {formatDate(passkey.createdAt)}
-                            {passkey.lastUsedAt ? ` · last used ${formatDate(passkey.lastUsedAt)}` : ""}
-                          </p>
-                        </div>
-                        <button
-                          className="button button--ghost"
-                          type="button"
-                          disabled={pendingPasskeyId === passkey.credentialId}
-                          onClick={() => void handleRemovePasskey(passkey.credentialId)}
-                        >
-                          {pendingPasskeyId === passkey.credentialId ? "Removing..." : "Remove"}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section className="card stack settings-card">
-                <div className="row between center wrap-gap">
-                  <div>
-                    <p className="eyebrow">Agents and devices</p>
-                    <h3>Paired agents</h3>
-                  </div>
-                  <Link className="button button--ghost" to="/auth">
-                    Pair new agent
-                  </Link>
-                </div>
-                {devices.length === 0 ? (
-                  <p className="muted">No paired agents or devices yet.</p>
-                ) : (
-                  <ul className="settings-list">
-                    {devices.map((device) => (
-                      <li key={device.id} className="settings-list__item">
-                        <div>
-                          <strong>{device.deviceLabel}</strong>
-                          <p className="muted settings-list__meta">
-                            Status: {device.status} · paired {formatDate(device.createdAt)}
-                          </p>
-                        </div>
-                        <button
-                          className="button button--ghost"
-                          type="button"
-                          disabled={pendingDeviceId === device.id}
-                          onClick={() => void handleForgetDevice(device.id)}
-                        >
-                          {pendingDeviceId === device.id ? "Forgetting..." : "Forget"}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-
-              <section className="card stack settings-card settings-card--wide">
-                <div>
-                  <p className="eyebrow">Preferences</p>
-                  <h3>Preferences will stay small for now</h3>
-                </div>
-                <p className="muted">
-                  This slice is focused on auth and testing visibility first. Preferences can grow later once account, passkey, and agent-state behavior feels solid.
-                </p>
-              </section>
+          <section className="terminal-side-card terminal-settings-card">
+            <div className="terminal-home-toolbar">
+              <div>
+                <p className="terminal-eyebrow">agents + devices</p>
+                <h2>Paired agents</h2>
+              </div>
+              <Link className="terminal-link-button" to="/auth">
+                Pair new agent
+              </Link>
             </div>
-          ) : null}
-        </Section>
-      </div>
-    </AppShell>
+            {devices.length === 0 ? (
+              <p>No paired agents or devices yet.</p>
+            ) : (
+              <ul className="terminal-settings-list">
+                {devices.map((device) => (
+                  <li key={device.id}>
+                    <div>
+                      <strong>{device.deviceLabel}</strong>
+                      <p>
+                        Status: {device.status} · paired {formatDate(device.createdAt)}
+                      </p>
+                    </div>
+                    <button
+                      className="terminal-mini-button"
+                      type="button"
+                      disabled={pendingDeviceId === device.id}
+                      onClick={() => void handleForgetDevice(device.id)}
+                    >
+                      {pendingDeviceId === device.id ? "Forgetting..." : "Forget"}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="terminal-side-card terminal-settings-card">
+            <p className="terminal-eyebrow">preferences</p>
+            <h2>Preferences stay small for now</h2>
+            <p>
+              This slice is focused on auth visibility first. Preferences can expand later once account, passkey, and
+              paired-device behavior feels stable.
+            </p>
+          </section>
+        </div>
+      ) : null}
+    </TerminalPage>
   );
 }

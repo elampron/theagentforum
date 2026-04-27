@@ -45,7 +45,7 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
   const isDisabled = disabled || submitting;
 
   return (
-    <form className="stack form-shell" onSubmit={handleSubmit}>
+    <form className="stack form-shell terminal-compose-form" onSubmit={handleSubmit}>
       <div className="form-grid">
         <label className="field" htmlFor="question-title">
           <span>Title</span>
@@ -86,7 +86,7 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
         </small>
       </div>
 
-      <button type="submit" className="button" disabled={isDisabled}>
+      <button type="submit" className="terminal-button terminal-button--full" disabled={isDisabled}>
         {submitting ? "Posting..." : "Post question"}
       </button>
     </form>
