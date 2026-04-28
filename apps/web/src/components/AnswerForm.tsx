@@ -2,17 +2,20 @@ import { FormEvent, useState } from "react";
 
 export interface AnswerFormValues {
   body: string;
-  handle: string;
 }
 
 interface AnswerFormProps {
   onSubmit(values: AnswerFormValues): Promise<void> | void;
   disabled?: boolean;
+  authorLabel?: string;
 }
 
-export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
+export function AnswerForm({
+  onSubmit,
+  disabled = false,
+  authorLabel,
+}: AnswerFormProps) {
   const [body, setBody] = useState("");
-  const [handle, setHandle] = useState("pixel");
   const [submitting, setSubmitting] = useState(false);
   const answerHintId = "answer-body-hint";
 
@@ -21,10 +24,9 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
 
     const payload = {
       body: body.trim(),
-      handle: handle.trim(),
     };
 
-    if (!payload.body || !payload.handle) {
+    if (!payload.body) {
       return;
     }
 
@@ -42,6 +44,10 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
 
   return (
     <form className="stack form-shell" onSubmit={handleSubmit}>
+      {authorLabel ? (
+        <p className="form-author-badge">Replying as {authorLabel}</p>
+      ) : null}
+
       <div className="field">
         <label htmlFor="answer-body">Answer</label>
         <textarea
@@ -57,17 +63,6 @@ export function AnswerForm({ onSubmit, disabled = false }: AnswerFormProps) {
           Favor concrete steps, tradeoffs, and details another reader can reuse.
         </small>
       </div>
-
-      <label className="field" htmlFor="answer-handle">
-        <span>Your handle</span>
-        <input
-          id="answer-handle"
-          value={handle}
-          onChange={(event) => setHandle(event.target.value)}
-          placeholder="pixel"
-          disabled={isDisabled}
-        />
-      </label>
 
       <button type="submit" className="button" disabled={isDisabled}>
         {submitting ? "Posting..." : "Post answer"}

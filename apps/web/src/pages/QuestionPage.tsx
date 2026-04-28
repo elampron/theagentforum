@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
 import type { ApiClient } from "../lib/api";
 import type { AnswerSkill, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { AppShell, Section } from "../components/AppShell";
 import { MarkdownContent } from "../components/MarkdownContent";
-import { formatDate, readErrorMessage } from "../lib/ui";
+import { describeActor, formatDate, readErrorMessage } from "../lib/ui";
 
 function formatSkillType(skill: AnswerSkill): string {
   if (skill.mimeType) {
@@ -24,6 +26,7 @@ interface QuestionPageProps {
 }
 
 export function QuestionPage({ api }: QuestionPageProps) {
+  const auth = useAuth();
   const { questionId } = useParams<{ questionId: string }>();
   const [thread, setThread] = useState<QuestionThread | null>(null);
   const [answerSkills, setAnswerSkills] = useState<Record<string, AnswerSkill[]>>({});
@@ -69,7 +72,7 @@ export function QuestionPage({ api }: QuestionPageProps) {
   }
 
   async function handleCreateAnswer(values: AnswerFormValues): Promise<void> {
-    if (!questionId) {
+    if (!questionId || !auth.session) {
       return;
     }
 
@@ -78,12 +81,7 @@ export function QuestionPage({ api }: QuestionPageProps) {
     try {
       const updatedThread = await api.createAnswer(questionId, {
         body: values.body,
-        author: {
-          id: values.handle,
-          kind: "agent",
-          handle: values.handle,
-          displayName: values.handle,
-        },
+        author: auth.session.actor,
       });
 
       setThread(updatedThread);
@@ -93,7 +91,7 @@ export function QuestionPage({ api }: QuestionPageProps) {
   }
 
   async function handleAcceptAnswer(answerId: string): Promise<void> {
-    if (!questionId) {
+    if (!questionId || !auth.session) {
       return;
     }
 
@@ -208,11 +206,13 @@ export function QuestionPage({ api }: QuestionPageProps) {
                         <button
                           type="button"
                           className={isAccepted ? "button button--secondary" : "button"}
-                          disabled={Boolean(acceptingAnswerId) || isAccepted}
+                          disabled={!auth.session || Boolean(acceptingAnswerId) || isAccepted}
                           onClick={() => void handleAcceptAnswer(answer.id)}
                         >
                           {isAccepted
                             ? "Accepted"
+                            : !auth.session
+                              ? "Sign in to accept"
                             : acceptingAnswerId === answer.id
                               ? "Accepting..."
                               : "Accept answer"}
@@ -229,7 +229,19 @@ export function QuestionPage({ api }: QuestionPageProps) {
             title="Post an answer"
             description="Share a concrete solution with enough detail that the next reader can apply it."
           >
-            <AnswerForm onSubmit={handleCreateAnswer} disabled={loading} />
+            {auth.ready && auth.session ? (
+              <AnswerForm
+                onSubmit={handleCreateAnswer}
+                disabled={loading}
+                authorLabel={describeActor(auth.session.actor)}
+              />
+            ) : (
+              <AuthRequiredPanel
+                title="Sign in to post an answer"
+                description="Replies are locked until you authenticate, so we do not open the form for anonymous visitors."
+                loading={!auth.ready}
+              />
+            )}
           </Section>
         </div>
       ) : null}

@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
 import type { ApiClient } from "../lib/api";
 import { AppShell, Section } from "../components/AppShell";
+import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
+import { buildAuthPath, buildPairingAuthPath } from "../lib/auth-routing";
 import { formatDate, readErrorMessage } from "../lib/ui";
-import type { AuthDevice, AuthPasskey, WebSession } from "../types";
+import type { AuthDevice, AuthPasskey } from "../types";
 
 interface SettingsPageProps {
   api: ApiClient;
 }
 
 export function SettingsPage({ api }: SettingsPageProps) {
-  const navigate = useNavigate();
-  const [session, setSession] = useState<WebSession | null>(null);
+  const auth = useAuth();
   const [passkeys, setPasskeys] = useState<AuthPasskey[]>([]);
   const [devices, setDevices] = useState<AuthDevice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,10 +24,21 @@ export function SettingsPage({ api }: SettingsPageProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    void refresh();
-  }, []);
+    if (!auth.ready) {
+      return;
+    }
 
-  async function refresh(options: { quiet?: boolean } = {}): Promise<void> {
+    if (!auth.session) {
+      setPasskeys([]);
+      setDevices([]);
+      setLoading(false);
+      return;
+    }
+
+    void loadAccountData();
+  }, [auth.ready, auth.session?.actor.id]);
+
+  async function loadAccountData(options: { quiet?: boolean } = {}): Promise<void> {
     if (options.quiet) {
       setRefreshing(true);
     } else {
@@ -35,15 +48,6 @@ export function SettingsPage({ api }: SettingsPageProps) {
     setError(null);
 
     try {
-      const nextSession = await api.getAuthSession();
-      setSession(nextSession);
-
-      if (!nextSession) {
-        setPasskeys([]);
-        setDevices([]);
-        return;
-      }
-
       const [nextPasskeys, nextDevices] = await Promise.all([
         api.listPasskeys(),
         api.listDevices(),
@@ -57,6 +61,20 @@ export function SettingsPage({ api }: SettingsPageProps) {
       setLoading(false);
       setRefreshing(false);
     }
+  }
+
+  async function refresh(options: { quiet?: boolean } = {}): Promise<void> {
+    const nextSession = await auth.refreshSession();
+
+    if (!nextSession) {
+      setPasskeys([]);
+      setDevices([]);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
+
+    await loadAccountData(options);
   }
 
   async function handleRemovePasskey(credentialId: string): Promise<void> {
@@ -92,8 +110,9 @@ export function SettingsPage({ api }: SettingsPageProps) {
     setError(null);
 
     try {
-      await api.signOut();
-      navigate("/auth");
+      await auth.signOut();
+      setPasskeys([]);
+      setDevices([]);
     } catch (cause) {
       setError(readErrorMessage(cause));
     } finally {
@@ -102,7 +121,7 @@ export function SettingsPage({ api }: SettingsPageProps) {
   }
 
   return (
-    <AppShell cta={<Link className="button button--ghost" to="/auth">Pair an agent</Link>}>
+    <AppShell cta={<Link className="button button--ghost" to="/my-agents">My Agents</Link>}>
       <div className="settings-layout">
         <Section
           eyebrow="Settings v1"
@@ -113,55 +132,45 @@ export function SettingsPage({ api }: SettingsPageProps) {
               <button className="button button--ghost" type="button" onClick={() => void refresh({ quiet: true })} disabled={loading || refreshing}>
                 {refreshing ? "Refreshing..." : "Refresh"}
               </button>
-              <button type="button" onClick={() => void handleSignOut()} disabled={signingOut || loading}>
-                {signingOut ? "Signing out..." : "Sign out"}
+              <button type="button" onClick={() => void handleSignOut()} disabled={signingOut || loading || !auth.session}>
+                {signingOut ? "Signing out..." : auth.session ? "Sign out" : "Signed out"}
               </button>
             </div>
           }
         >
           {error ? <p className="error">{error}</p> : null}
-          {loading ? <p className="muted">Loading settings...</p> : null}
+          {!auth.ready || loading ? <p className="muted">Loading settings...</p> : null}
 
-          {!loading && !session ? (
-            <div className="card stack settings-empty-state">
-              <h3>Sign in to view your settings</h3>
-              <p className="muted">
-                Once you sign in with a passkey, this page will show your current session, passkeys, and paired agents or devices.
-              </p>
-              <div className="row wrap-gap">
-                <Link className="button" to="/auth">
-                  Sign in with passkey
-                </Link>
-                <Link className="button button--ghost" to="/">
-                  Back to forum
-                </Link>
-              </div>
-            </div>
+          {auth.ready && !loading && !auth.session ? (
+            <AuthRequiredPanel
+              title="Sign in to view your settings"
+              description="Passkeys, account settings, and paired agents only unlock after you authenticate."
+            />
           ) : null}
 
-          {!loading && session ? (
+          {!loading && auth.session ? (
             <div className="settings-grid">
               <section className="card stack settings-card">
                 <div>
                   <p className="eyebrow">Current session</p>
-                  <h3>{session.actor.displayName ?? session.actor.handle}</h3>
+                  <h3>{auth.session.actor.displayName ?? auth.session.actor.handle}</h3>
                 </div>
                 <dl className="meta-list settings-meta-list">
                   <div>
                     <dt>Handle</dt>
-                    <dd>@{session.actor.handle}</dd>
+                    <dd>{auth.session.actor.handle}</dd>
                   </div>
                   <div>
                     <dt>Actor type</dt>
-                    <dd>{session.actor.kind}</dd>
+                    <dd>{auth.session.actor.kind}</dd>
                   </div>
                   <div>
                     <dt>Signed in</dt>
-                    <dd>{formatDate(session.createdAt)}</dd>
+                    <dd>{formatDate(auth.session.createdAt)}</dd>
                   </div>
                   <div>
                     <dt>Session expires</dt>
-                    <dd>{formatDate(session.expiresAt)}</dd>
+                    <dd>{formatDate(auth.session.expiresAt)}</dd>
                   </div>
                 </dl>
               </section>
@@ -172,7 +181,7 @@ export function SettingsPage({ api }: SettingsPageProps) {
                     <p className="eyebrow">Passkeys</p>
                     <h3>Registered passkeys</h3>
                   </div>
-                  <Link className="button button--ghost" to="/auth">
+                  <Link className="button button--ghost" to={buildAuthPath("/settings", { mode: "signup" })}>
                     Add another passkey
                   </Link>
                 </div>
@@ -209,7 +218,7 @@ export function SettingsPage({ api }: SettingsPageProps) {
                     <p className="eyebrow">Agents and devices</p>
                     <h3>Paired agents</h3>
                   </div>
-                  <Link className="button button--ghost" to="/auth">
+                  <Link className="button button--ghost" to={buildPairingAuthPath("/settings")}>
                     Pair new agent
                   </Link>
                 </div>
@@ -247,6 +256,14 @@ export function SettingsPage({ api }: SettingsPageProps) {
                 <p className="muted">
                   This slice is focused on auth and testing visibility first. Preferences can grow later once account, passkey, and agent-state behavior feels solid.
                 </p>
+                <div className="row wrap-gap">
+                  <Link className="button button--ghost" to="/profile">
+                    My Profile
+                  </Link>
+                  <Link className="button button--ghost" to="/my-agents">
+                    My Agents
+                  </Link>
+                </div>
               </section>
             </div>
           ) : null}

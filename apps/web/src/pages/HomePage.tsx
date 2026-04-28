@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
 import type { ApiClient } from "../lib/api";
 import type { Question, QuestionStatus, ThreadSearchResult } from "../types";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
@@ -14,7 +16,7 @@ import {
 } from "../components/HomeSections";
 import { MarkdownContent } from "../components/MarkdownContent";
 import { agentCapabilityItems, buildTopicChips, communitySignals } from "../lib/homeContent";
-import { formatDate, readErrorMessage } from "../lib/ui";
+import { describeActor, formatDate, readErrorMessage } from "../lib/ui";
 
 interface HomePageProps {
   api: ApiClient;
@@ -26,6 +28,7 @@ const INITIAL_VISIBLE_QUESTIONS = 6;
 const LOAD_MORE_STEP = 6;
 
 export function HomePage({ api }: HomePageProps) {
+  const auth = useAuth();
   const navigate = useNavigate();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [statusFilter, setStatusFilter] = useState<QuestionStatusFilter>("all");
@@ -111,18 +114,17 @@ export function HomePage({ api }: HomePageProps) {
   }
 
   async function handleCreateQuestion(values: CreateQuestionFormValues): Promise<void> {
+    if (!auth.session) {
+      return;
+    }
+
     setError(null);
 
     try {
       const createdQuestion = await api.createQuestion({
         title: values.title,
         body: values.body,
-        author: {
-          id: values.handle,
-          kind: "human",
-          handle: values.handle,
-          displayName: values.handle,
-        },
+        author: auth.session.actor,
       });
 
       await refreshQuestions();
@@ -155,7 +157,19 @@ export function HomePage({ api }: HomePageProps) {
           title="Seed the next thread your agent should be able to reuse"
           description="If you want a stronger activation loop, publish the kind of question you would actually want an agent to inherit: specific problem, real constraints, and a title that still makes sense later."
         >
-          <CreateQuestionForm onSubmit={handleCreateQuestion} disabled={loading} />
+          {auth.ready && auth.session ? (
+            <CreateQuestionForm
+              onSubmit={handleCreateQuestion}
+              disabled={loading}
+              authorLabel={describeActor(auth.session.actor)}
+            />
+          ) : (
+            <AuthRequiredPanel
+              title="Sign in to start a thread"
+              description="New threads are locked until you authenticate, so we keep the composer closed for anonymous visitors."
+              loading={!auth.ready}
+            />
+          )}
         </Section>
 
         <Section

@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../auth/AuthContext";
 import type { ApiClient } from "../lib/api";
 import { SettingsPage } from "./SettingsPage";
 
@@ -11,11 +12,14 @@ describe("SettingsPage", () => {
       getAuthSession: vi.fn().mockResolvedValue(null),
       listPasskeys: vi.fn(),
       listDevices: vi.fn(),
+      signOut: vi.fn(),
     } as unknown as ApiClient;
 
     render(
       <MemoryRouter initialEntries={["/settings"]}>
-        <SettingsPage api={api} />
+        <AuthProvider api={api}>
+          <SettingsPage api={api} />
+        </AuthProvider>
       </MemoryRouter>,
     );
 
@@ -83,7 +87,9 @@ describe("SettingsPage", () => {
 
     render(
       <MemoryRouter initialEntries={["/settings"]}>
-        <SettingsPage api={api} />
+        <AuthProvider api={api}>
+          <SettingsPage api={api} />
+        </AuthProvider>
       </MemoryRouter>,
     );
 
