@@ -1889,20 +1889,27 @@ ul {
 .auth-entry-badge,
 .auth-entry-back,
 .auth-entry-close {
-  color: var(--terminal-cyan);
+  color: #bffdf6;
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  text-shadow: 0 0 14px rgba(25, 242, 211, 0.24);
 }
 
 .auth-entry-close,
 .auth-entry-back {
   min-height: auto;
-  padding: 0;
+  padding: 0.25rem 0.35rem;
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.auth-entry-close:hover,
+.auth-entry-back:hover {
+  color: #ffffff;
+  background: rgba(25, 242, 211, 0.1);
 }
 
 .auth-entry-tabs {
