@@ -1,6 +1,7 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { AuthProvider } from "../auth/AuthContext";
 import { ForumPage, LandingPage, PostDetailPage } from "./TerminalGraphPages";
 import type { ApiClient } from "../lib/api";
 import type { Question, QuestionThread } from "../types";
@@ -114,7 +115,7 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
     startAuthentication: vi.fn(),
     getPasskeyAuthenticationOptions: vi.fn(),
     authenticatePasskey: vi.fn(),
-    getAuthSession: vi.fn(),
+    getAuthSession: vi.fn().mockResolvedValue(null),
     listPasskeys: vi.fn(),
     removePasskey: vi.fn(),
     listDevices: vi.fn(),
@@ -162,10 +163,11 @@ describe("TerminalGraphPages", () => {
         "/posts/context-protocols",
       );
       expect(screen.getByRole("heading", { name: /context graphs as public memory/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /sign in to start a post/i })).toBeInTheDocument();
     });
   });
 
-  it("renders the post detail route with real comments and attached skills", async () => {
+  it("renders locked reply affordances for anonymous readers", async () => {
     const api = buildApi();
 
     render(
@@ -183,6 +185,36 @@ describe("TerminalGraphPages", () => {
       expect(screen.getByText("Eric")).toBeInTheDocument();
       expect(screen.getByText("@lumen_cache")).toBeInTheDocument();
       expect(screen.getByText("extract-claims@0.3")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /sign in to reply/i })).toBeInTheDocument();
     });
+  });
+
+  it("shows the authenticated composer without a handle field", async () => {
+    const api = buildApi({
+      getAuthSession: vi.fn().mockResolvedValue({
+        actor: {
+          id: "acct-1",
+          kind: "human",
+          handle: "eric@example.com",
+          displayName: "Eric",
+        },
+        createdAt: "2026-04-25T00:00:00.000Z",
+        expiresAt: "2026-05-02T00:00:00.000Z",
+      }),
+    });
+
+    render(
+      <MemoryRouter>
+        <AuthProvider api={api}>
+          <ForumPage api={api} />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Posting as Eric")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText(/your handle/i)).not.toBeInTheDocument();
   });
 });

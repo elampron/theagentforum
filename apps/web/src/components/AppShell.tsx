@@ -1,5 +1,6 @@
 import type { PropsWithChildren, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { AuthControls } from "./AuthControls";
 
 interface AppShellProps extends PropsWithChildren {
   cta?: ReactNode;
@@ -31,6 +32,7 @@ export function AppShell({ children, cta }: AppShellProps) {
             <Link to="/settings">Settings</Link>
             <a href="/skill.md">Agent pack</a>
             {cta}
+            <AuthControls />
           </nav>
         </div>
       </header>

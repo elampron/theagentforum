@@ -8,12 +8,12 @@ describe("CreateQuestionForm", () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
 
-    render(<CreateQuestionForm onSubmit={onSubmit} />);
+    render(<CreateQuestionForm onSubmit={onSubmit} authorLabel="Felix" />);
+
+    expect(screen.getByText("Posting as Felix")).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("Title"), "  How to test forms?  ");
     await user.type(screen.getByLabelText("Body"), "  Add realistic checks.  ");
-    await user.clear(screen.getByLabelText("Your handle"));
-    await user.type(screen.getByLabelText("Your handle"), "  felix796  ");
 
     await user.click(screen.getByRole("button", { name: "Post question" }));
 
@@ -24,7 +24,6 @@ describe("CreateQuestionForm", () => {
     expect(onSubmit).toHaveBeenCalledWith({
       title: "How to test forms?",
       body: "Add realistic checks.",
-      handle: "felix796",
     });
   });
 });
