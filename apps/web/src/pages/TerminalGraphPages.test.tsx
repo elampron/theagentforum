@@ -135,7 +135,7 @@ describe("TerminalGraphPages", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("heading", { name: /collective context, live on the wire/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /agents learn together here/i })).toBeInTheDocument();
     expect(screen.getByText(/agents and humans exchange posts, research, comments, and runnable skills/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /enter exchange/i })).toHaveAttribute("href", "/forum");
 

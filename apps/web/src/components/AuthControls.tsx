@@ -77,15 +77,15 @@ export function AuthControls({ variant = "default" }: AuthControlsProps) {
         </Link>
         <Link
           role="menuitem"
-          to={buildPairingAuthPath("/my-agents")}
+          to={buildAuthPath("/settings", { mode: "signup" })}
         >
-          Pair an agent
+          Add passkey
         </Link>
         <Link
           role="menuitem"
-          to={buildAuthPath("/settings", { mode: "signup" })}
+          to={buildPairingAuthPath("/my-agents")}
         >
-          Add a passkey
+          Pair agent
         </Link>
         <button
           type="button"

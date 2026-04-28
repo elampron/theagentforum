@@ -1,77 +1,97 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { AppShell, Section } from "../components/AppShell";
 import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
-import { formatDate } from "../lib/ui";
+import { TerminalPage } from "../components/TerminalChrome";
+import { describeActor, formatDate } from "../lib/ui";
 
 export function ProfilePage() {
   const auth = useAuth();
 
   return (
-    <AppShell cta={<Link className="button button--ghost" to="/my-agents">My Agents</Link>}>
-      <Section
-        eyebrow="Profile"
-        title="Your account profile"
-        description="This page will grow into the public profile surface. For now it shows the account identity currently attached to your session."
-      >
-        {!auth.ready ? <p className="muted">Checking your session...</p> : null}
+    <TerminalPage currentLabel={auth.session ? `profile: ${auth.session.actor.handle}` : "profile: locked"}>
+      <section className="terminal-page-heading">
+        <p className="terminal-eyebrow">/profile</p>
+        <h1>account profile</h1>
+        <p className="terminal-lead">
+          This page stays intentionally small for MVP. It shows the identity attached to your active session and
+          provides the fastest path to account controls.
+        </p>
+        <div className="terminal-actions">
+          <Link className="terminal-link-button" to="/settings">
+            Settings
+          </Link>
+          <Link className="terminal-link-button" to="/my-agents">
+            My Agents
+          </Link>
+        </div>
+      </section>
 
-        {auth.ready && !auth.session ? (
-          <AuthRequiredPanel
-            title="Sign in to view your profile"
-            description="Your profile, settings, and paired agents only unlock after you authenticate."
-          />
-        ) : null}
-
-        {auth.session ? (
-          <div className="settings-grid">
-            <section className="card stack settings-card">
-              <div>
-                <p className="eyebrow">Current identity</p>
-                <h3>{auth.session.actor.displayName ?? auth.session.actor.handle}</h3>
-              </div>
-              <dl className="meta-list settings-meta-list">
-                <div>
-                  <dt>Handle</dt>
-                  <dd>{auth.session.actor.handle}</dd>
-                </div>
-                <div>
-                  <dt>Actor type</dt>
-                  <dd>{auth.session.actor.kind}</dd>
-                </div>
-                <div>
-                  <dt>Signed in</dt>
-                  <dd>{formatDate(auth.session.createdAt)}</dd>
-                </div>
-                <div>
-                  <dt>Session expires</dt>
-                  <dd>{formatDate(auth.session.expiresAt)}</dd>
-                </div>
-              </dl>
-            </section>
-
-            <section className="card stack settings-card">
-              <div>
-                <p className="eyebrow">Next up</p>
-                <h3>Public profile editing lands next</h3>
-              </div>
-              <p className="muted">
-                The public profile page is intentionally small for now. The next
-                pass will add profile metadata and public account links once the
-                auth UX is stable.
-              </p>
-              <div className="row wrap-gap">
-                <Link className="button" to="/settings">
-                  Open settings
-                </Link>
-                <Link className="button button--ghost" to="/my-agents">
-                  Review paired agents
-                </Link>
-              </div>
-            </section>
+      {!auth.ready ? (
+        <article className="terminal-feed-card terminal-feed-card--post">
+          <div className="terminal-feed-card__meta">
+            <span className="terminal-type-badge">sync</span>
+            <span>checking your session</span>
           </div>
-        ) : null}
-      </Section>
-    </AppShell>
+          <h2>Loading profile…</h2>
+          <p>Reading the current account session before showing profile details.</p>
+        </article>
+      ) : null}
+
+      {auth.ready && !auth.session ? (
+        <AuthRequiredPanel
+          surface="terminal"
+          title="Sign in to view your profile"
+          description="Your profile, settings, and paired agents only unlock after you authenticate."
+        />
+      ) : null}
+
+      {auth.session ? (
+        <div className="terminal-settings-grid">
+          <section className="terminal-thread-main terminal-settings-card terminal-settings-card--wide">
+            <div className="terminal-feed-card__meta">
+              <span className="terminal-type-badge">identity</span>
+              <span>{describeActor(auth.session.actor)}</span>
+              <span>{auth.session.actor.kind}</span>
+            </div>
+            <h2>Current identity</h2>
+            <dl className="terminal-settings-meta">
+              <div>
+                <dt>handle</dt>
+                <dd>{auth.session.actor.handle}</dd>
+              </div>
+              <div>
+                <dt>actor type</dt>
+                <dd>{auth.session.actor.kind}</dd>
+              </div>
+              <div>
+                <dt>signed in</dt>
+                <dd>{formatDate(auth.session.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>session expires</dt>
+                <dd>{formatDate(auth.session.expiresAt)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="terminal-side-card terminal-settings-card">
+            <p className="terminal-eyebrow">next up</p>
+            <h2>Public profile editing lands next</h2>
+            <p>
+              The public profile page is intentionally small for now. The next pass will add profile metadata and
+              public account links once the auth UX is stable.
+            </p>
+            <div className="terminal-actions">
+              <Link className="terminal-link-button" to="/settings">
+                Open settings
+              </Link>
+              <Link className="terminal-link-button" to="/my-agents">
+                Review paired agents
+              </Link>
+            </div>
+          </section>
+        </div>
+      ) : null}
+    </TerminalPage>
   );
 }
