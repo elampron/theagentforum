@@ -1813,10 +1813,10 @@ ul {
 
 .auth-entry-copy,
 .auth-entry-card {
-  border: 1px solid rgba(164, 137, 255, 0.16);
+  border: 1px solid rgba(164, 137, 255, 0.34);
   border-radius: 1.2rem;
-  background: linear-gradient(180deg, rgba(14, 15, 30, 0.92), rgba(7, 8, 17, 0.88));
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02), 0 24px 70px rgba(0, 0, 0, 0.3);
+  background: linear-gradient(180deg, rgba(14, 15, 30, 0.96), rgba(7, 8, 17, 0.94));
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.54), 0 0 0 1px rgba(255, 255, 255, 0.03);
 }
 
 .auth-entry-copy {
@@ -1826,7 +1826,7 @@ ul {
 }
 
 .auth-entry-eyebrow {
-  color: var(--terminal-cyan);
+  color: #7fffee;
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.12em;
@@ -1836,7 +1836,8 @@ ul {
 .auth-entry-copy h1,
 .auth-entry-card h2 {
   font-family: "SFMono-Regular", "JetBrains Mono", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
-  color: var(--terminal-text);
+  color: #f8f5ff;
+  text-shadow: 0 0 24px rgba(124, 77, 255, 0.18);
   max-width: none;
   font-size: clamp(2.2rem, 5vw, 4.5rem);
   line-height: 1.05;
@@ -1852,7 +1853,7 @@ ul {
 .auth-entry-note,
 .auth-entry-state p,
 .auth-entry-status {
-  color: var(--terminal-muted);
+  color: #d7d0eb;
 }
 
 .auth-entry-pills,
@@ -1866,7 +1867,7 @@ ul {
   padding: 0.4rem 0.72rem;
   border: 1px solid rgba(164, 137, 255, 0.18);
   border-radius: 999px;
-  color: var(--terminal-cyan);
+  color: #7fffee;
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -1920,7 +1921,7 @@ ul {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--terminal-muted);
+  color: #cfc8e7;
   box-shadow: none;
   font-weight: 800;
   text-transform: none;
@@ -1937,13 +1938,13 @@ ul {
 }
 
 .auth-entry-form .field span {
-  color: var(--terminal-muted);
+  color: #d7d0eb;
 }
 
 .auth-entry-form input {
-  border-color: rgba(164, 137, 255, 0.2);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--terminal-text);
+  border-color: rgba(164, 137, 255, 0.32);
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
   box-shadow: none;
 }
 
@@ -1982,8 +1983,8 @@ ul {
 .auth-modal__backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(2, 3, 10, 0.72);
-  backdrop-filter: blur(12px);
+  background: rgba(2, 3, 10, 0.84);
+  backdrop-filter: blur(10px);
 }
 
 .auth-modal__surface {
@@ -2069,11 +2070,11 @@ ul {
 .auth-terminal-hero__graph,
 .auth-choice-card,
 .auth-stage-card {
-  border: 1px solid var(--terminal-border);
+  border: 1px solid rgba(164, 137, 255, 0.34);
   background: linear-gradient(
     180deg,
-    rgba(14, 15, 30, 0.92),
-    rgba(7, 8, 17, 0.88)
+    rgba(14, 15, 30, 0.96),
+    rgba(7, 8, 17, 0.94)
   );
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.02),
@@ -2224,7 +2225,7 @@ ul {
 .auth-stage-card__header p,
 .auth-terminal-note,
 .auth-terminal-meta dd {
-  color: var(--terminal-muted);
+  color: #d7d0eb;
 }
 
 .auth-stage-shell,
@@ -2248,10 +2249,10 @@ ul {
 
 .auth-stage-progress li {
   padding: 0.85rem 0.95rem;
-  border: 1px solid rgba(164, 137, 255, 0.16);
+  border: 1px solid rgba(164, 137, 255, 0.24);
   border-radius: 0.85rem;
-  background: rgba(255, 255, 255, 0.02);
-  color: var(--terminal-soft);
+  background: rgba(255, 255, 255, 0.04);
+  color: #bdb5d6;
   font-size: 0.82rem;
   text-transform: lowercase;
 }
@@ -2296,7 +2297,7 @@ ul {
 .auth-terminal-field span,
 .auth-terminal-snippet span,
 .auth-terminal-meta dt {
-  color: var(--terminal-muted);
+  color: #d7d0eb;
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -2304,10 +2305,10 @@ ul {
 }
 
 .auth-terminal-page input {
-  border: 1px solid rgba(164, 137, 255, 0.2);
+  border: 1px solid rgba(164, 137, 255, 0.32);
   border-radius: 0.85rem;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--terminal-text);
+  background: rgba(255, 255, 255, 0.07);
+  color: #ffffff;
   box-shadow: none;
 }
 
@@ -2321,7 +2322,7 @@ ul {
 }
 
 .auth-terminal-page input::placeholder {
-  color: var(--terminal-soft);
+  color: #aaa2c6;
 }
 
 .auth-terminal-code {
