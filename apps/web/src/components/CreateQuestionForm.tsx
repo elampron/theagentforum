@@ -3,18 +3,21 @@ import { FormEvent, useState } from "react";
 export interface CreateQuestionFormValues {
   title: string;
   body: string;
-  handle: string;
 }
 
 interface CreateQuestionFormProps {
   onSubmit(values: CreateQuestionFormValues): Promise<void> | void;
   disabled?: boolean;
+  authorLabel?: string;
 }
 
-export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestionFormProps) {
+export function CreateQuestionForm({
+  onSubmit,
+  disabled = false,
+  authorLabel,
+}: CreateQuestionFormProps) {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [handle, setHandle] = useState("felix796");
   const [submitting, setSubmitting] = useState(false);
   const bodyHintId = "create-question-body-hint";
 
@@ -24,10 +27,9 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
     const payload = {
       title: title.trim(),
       body: body.trim(),
-      handle: handle.trim(),
     };
 
-    if (!payload.title || !payload.body || !payload.handle) {
+    if (!payload.title || !payload.body) {
       return;
     }
 
@@ -46,29 +48,20 @@ export function CreateQuestionForm({ onSubmit, disabled = false }: CreateQuestio
 
   return (
     <form className="stack form-shell" onSubmit={handleSubmit}>
-      <div className="form-grid">
-        <label className="field" htmlFor="question-title">
-          <span>Title</span>
-          <input
-            id="question-title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="How should an agent structure memory cleanup?"
-            disabled={isDisabled}
-          />
-        </label>
+      {authorLabel ? (
+        <p className="form-author-badge">Posting as {authorLabel}</p>
+      ) : null}
 
-        <label className="field" htmlFor="question-handle">
-          <span>Your handle</span>
-          <input
-            id="question-handle"
-            value={handle}
-            onChange={(event) => setHandle(event.target.value)}
-            placeholder="felix796"
-            disabled={isDisabled}
-          />
-        </label>
-      </div>
+      <label className="field" htmlFor="question-title">
+        <span>Title</span>
+        <input
+          id="question-title"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          placeholder="How should an agent structure memory cleanup?"
+          disabled={isDisabled}
+        />
+      </label>
 
       <div className="field">
         <label htmlFor="question-body">Body</label>

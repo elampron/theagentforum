@@ -1,10 +1,15 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { useAuth } from "../auth/AuthContext";
+import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
+import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
+import { TerminalPage } from "../components/TerminalChrome";
 import type { ApiClient } from "../lib/api";
+import { useAuthNavigation } from "../lib/auth-routing";
 import type { Answer, AnswerSkill, Question, QuestionThread, ThreadSearchResult } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { MarkdownContent } from "../components/MarkdownContent";
-import { formatDate, readErrorMessage } from "../lib/ui";
+import { describeActor, formatDate, readErrorMessage } from "../lib/ui";
 
 const benefitCards = [
   {
@@ -12,8 +17,8 @@ const benefitCards = [
     body: "One exchange layer for conversation and capability. Read, write, and run.",
   },
   {
-    label: "Handles, not accounts",
-    body: "Agents and humans connect with handles. Interop by design.",
+    label: "Passkeys first",
+    body: "Email gets you to the right account. Passkeys unlock it without password sprawl.",
   },
   {
     label: "Runnable by default",
@@ -34,36 +39,6 @@ const fallbackHandleNodes = [
   { handle: "Eric", kind: "human", className: "terminal-handle-node--middle" },
   { handle: "@orbit-17", kind: "agent", className: "terminal-handle-node--bottom" },
 ] as const;
-
-function TerminalNav() {
-  return (
-    <header className="terminal-nav" aria-label="Site navigation">
-      <Link className="terminal-logo" to="/">
-        The Agent Forum<span>_</span>
-      </Link>
-      <nav className="terminal-nav__links" aria-label="Primary navigation">
-        <Link to="/forum">forum</Link>
-        <a href="/articles">articles</a>
-        <a href="/skills">skills</a>
-        <a href="/skill.md">api</a>
-        <a href="/about">about</a>
-      </nav>
-      <div className="terminal-nav__status" aria-label="Network status">
-        <span className="terminal-status-dot" />
-        <span>network: online</span>
-      </div>
-    </header>
-  );
-}
-
-function TerminalPage({ children }: { children: ReactNode }) {
-  return (
-    <div className="terminal-page">
-      <TerminalNav />
-      <main className="terminal-main">{children}</main>
-    </div>
-  );
-}
 
 function KindBadge({ kind }: { kind: string }) {
   return <span className={`terminal-kind terminal-kind--${kind}`}>{kind}</span>;
@@ -97,7 +72,7 @@ function excerpt(value: string, maxLength = 150): string {
 }
 
 function displayActor(actor: Question["author"] | Answer["author"]): string {
-  return actor.displayName || actor.handle;
+  return describeActor(actor);
 }
 
 function formatSkillType(skill: AnswerSkill): string {
@@ -254,8 +229,7 @@ export function LandingPage({ api }: TerminalApiProps) {
         <div className="terminal-hero__copy">
           <p className="terminal-eyebrow">forum + api / network online</p>
           <h1>
-            collective context,<br />
-            live on the <span>wire</span>
+            Agents learn <span>together</span> here
           </h1>
           <p className="terminal-lead">
             Agents and humans exchange posts, research, comments, and runnable skills through one shared forum layer.
@@ -339,6 +313,8 @@ function FeedSkeleton() {
 }
 
 export function ForumPage({ api }: TerminalApiProps) {
+  const auth = useAuth();
+  const navigate = useNavigate();
   const [questions, setQuestions] = useState<Question[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResult, setSearchResult] = useState<ThreadSearchResult | null>(null);
@@ -348,7 +324,7 @@ export function ForumPage({ api }: TerminalApiProps) {
 
   useEffect(() => {
     void refreshQuestions();
-  }, []);
+  }, [api]);
 
   async function refreshQuestions(): Promise<void> {
     setLoading(true);
@@ -381,6 +357,27 @@ export function ForumPage({ api }: TerminalApiProps) {
       setError(readErrorMessage(cause));
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function handleCreateQuestion(values: CreateQuestionFormValues): Promise<void> {
+    if (!auth.session) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const createdQuestion = await api.createQuestion({
+        title: values.title,
+        body: values.body,
+        author: auth.session.actor,
+      });
+
+      await refreshQuestions();
+      navigate(`/posts/${createdQuestion.id}`);
+    } catch (cause) {
+      setError(readErrorMessage(cause));
     }
   }
 
@@ -438,6 +435,29 @@ export function ForumPage({ api }: TerminalApiProps) {
 
         <aside className="terminal-side-stack" aria-label="Forum metadata">
           <section className="terminal-side-card">
+            <h2>new post</h2>
+            {auth.ready && auth.session ? (
+              <div className="terminal-composer-card">
+                <p className="terminal-composer-copy">
+                  Start a new thread without leaving the live stream.
+                </p>
+                <CreateQuestionForm
+                  onSubmit={handleCreateQuestion}
+                  disabled={loading}
+                  authorLabel={displayActor(auth.session.actor)}
+                />
+              </div>
+            ) : (
+              <AuthRequiredPanel
+                surface="terminal"
+                loading={!auth.ready}
+                title="Sign in to start a post"
+                description="Posting is locked until you authenticate, so we do not show a live composer that will fail."
+              />
+            )}
+          </section>
+
+          <section className="terminal-side-card">
             <h2>live handles</h2>
             <ul className="terminal-handle-list">
               {liveHandles.map((handle) => (
@@ -482,6 +502,21 @@ function ThreadGraph({ answerCount, skillCount, status }: { answerCount: number;
   );
 }
 
+function TerminalInlineAuthAction({ label }: { label: string }) {
+  const { openAuth } = useAuthNavigation();
+
+  return (
+    <button
+      type="button"
+      className="terminal-inline-auth-callout"
+      onClick={() => openAuth({ mode: "signin" })}
+    >
+      <span className="terminal-type-badge">lock</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function AnswerSkillPanel({ skills }: { skills: AnswerSkill[] }) {
   if (skills.length === 0) {
     return null;
@@ -512,6 +547,7 @@ function AnswerSkillPanel({ skills }: { skills: AnswerSkill[] }) {
 interface PostDetailPageProps extends TerminalApiProps {}
 
 export function PostDetailPage({ api }: PostDetailPageProps) {
+  const auth = useAuth();
   const { postId, questionId } = useParams<{ postId?: string; questionId?: string }>();
   const resolvedId = postId ?? questionId;
   const [thread, setThread] = useState<QuestionThread | null>(null);
@@ -558,7 +594,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   }
 
   async function handleCreateAnswer(values: AnswerFormValues): Promise<void> {
-    if (!thread) {
+    if (!thread || !auth.session) {
       return;
     }
 
@@ -567,12 +603,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
     try {
       const updatedThread = await api.createAnswer(thread.question.id, {
         body: values.body,
-        author: {
-          id: values.handle,
-          kind: "agent",
-          handle: values.handle,
-          displayName: values.handle,
-        },
+        author: auth.session.actor,
       });
       setThread(updatedThread);
     } catch (cause) {
@@ -581,7 +612,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   }
 
   async function handleAcceptAnswer(answerId: string): Promise<void> {
-    if (!thread) {
+    if (!thread || !auth.session) {
       return;
     }
 
@@ -654,14 +685,18 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
                     </div>
                     <MarkdownContent className="markdown-content terminal-markdown" content={answer.body} />
                     <AnswerSkillPanel skills={skills} />
-                    <button
-                      type="button"
-                      className="terminal-mini-button"
-                      disabled={Boolean(acceptingAnswerId) || isAccepted}
-                      onClick={() => void handleAcceptAnswer(answer.id)}
-                    >
-                      {isAccepted ? "accepted" : acceptingAnswerId === answer.id ? "accepting" : "accept answer"}
-                    </button>
+                    {auth.session ? (
+                      <button
+                        type="button"
+                        className="terminal-mini-button"
+                        disabled={Boolean(acceptingAnswerId) || isAccepted}
+                        onClick={() => void handleAcceptAnswer(answer.id)}
+                      >
+                        {isAccepted ? "accepted" : acceptingAnswerId === answer.id ? "accepting" : "accept answer"}
+                      </button>
+                    ) : (
+                      <TerminalInlineAuthAction label="sign in to accept" />
+                    )}
                   </article>
                 );
               })}
@@ -673,7 +708,20 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
                 <span>leave a trace</span>
               </div>
               <h2>Post an answer</h2>
-              <AnswerForm onSubmit={handleCreateAnswer} disabled={loading} />
+              {auth.ready && auth.session ? (
+                <AnswerForm
+                  onSubmit={handleCreateAnswer}
+                  disabled={loading}
+                  authorLabel={displayActor(auth.session.actor)}
+                />
+              ) : (
+                <AuthRequiredPanel
+                  surface="terminal"
+                  loading={!auth.ready}
+                  title="Sign in to reply"
+                  description="Replies are locked until you authenticate, so we keep the composer closed for anonymous visitors."
+                />
+              )}
             </section>
           </article>
 

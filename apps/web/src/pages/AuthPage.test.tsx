@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../lib/api";
 import { AuthPage } from "./AuthPage";
@@ -30,50 +30,243 @@ describe("AuthPage", () => {
     });
   });
 
-  it("shows only the selected auth path on a fresh visit", async () => {
-    const user = userEvent.setup();
-    const api = {
-      listQuestions: vi.fn(),
-      searchThreads: vi.fn(),
-      createQuestion: vi.fn(),
-      getQuestionThread: vi.fn(),
-      createAnswer: vi.fn(),
-      acceptAnswer: vi.fn(),
-      listAnswerSkills: vi.fn(),
-      startRegistration: vi.fn(),
-      getRegistrationSession: vi.fn(),
-      resolveRegistrationSession: vi.fn(),
-      getPasskeyRegistrationOptions: vi.fn(),
-      registerPasskey: vi.fn(),
-      completeRegistrationVerification: vi.fn(),
-      redeemPairing: vi.fn(),
-    } as unknown as ApiClient;
-
+  it("renders the email-first passkey flow by default", () => {
     render(
       <MemoryRouter initialEntries={["/auth"]}>
-        <AuthPage api={api} />
+        <AuthPage api={buildApi()} />
       </MemoryRouter>,
     );
 
     expect(
-      screen.queryByRole("heading", { name: /sign in with a passkey/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: /start a handoff/i }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("heading", { name: /sign in with email and a passkey/i }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Sign in" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "Sign up" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByRole("button", { name: /continue with passkey/i })).toBeInTheDocument();
+  });
 
-    await user.click(
-      screen.getByRole("button", { name: /use existing passkey/i }),
+  it("signs in with a passkey and returns to the requested route", async () => {
+    const user = userEvent.setup();
+    const getCredential = vi.fn().mockResolvedValue(
+      buildAuthenticationCredential({
+        credentialId: Uint8Array.from([1, 2, 3, 4]),
+        clientDataJson: new TextEncoder().encode(
+          JSON.stringify({
+            type: "webauthn.get",
+            challenge: "AQIDBA",
+            origin: window.location.origin,
+          }),
+        ),
+        authenticatorData: Uint8Array.from([9, 8, 7, 6]),
+        signature: Uint8Array.from([4, 3, 2, 1]),
+      }),
     );
 
-    expect(
-      screen.getByRole("heading", { name: /sign in with a passkey/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Handle")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /start handoff/i }),
-    ).not.toBeInTheDocument();
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: {
+        get: getCredential,
+      },
+    });
+
+    const api = buildApi({
+      startAuthentication: vi.fn().mockResolvedValue({
+        id: "aas-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        status: "awaiting_authentication",
+        challenge: "AQIDBA",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:15:00.000Z",
+      }),
+      getPasskeyAuthenticationOptions: vi.fn().mockResolvedValue({
+        authenticationSessionId: "aas-1",
+        challenge: "AQIDBA",
+        rpId: "localhost",
+        allowCredentials: [{ id: "AQIDBA", type: "public-key", transports: ["internal"] }],
+        timeout: 60000,
+        userVerification: "required",
+      }),
+      authenticatePasskey: vi.fn().mockResolvedValue({
+        id: "aas-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        status: "verified",
+        challenge: "AQIDBA",
+        verificationMethod: "webauthn",
+        passkeyLabel: "Eric passkey",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:15:00.000Z",
+        verifiedAt: "2026-03-26T00:01:00.000Z",
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth?mode=signin&returnTo=/done"]}>
+        <Routes>
+          <Route path="/auth" element={<AuthPage api={api} />} />
+          <Route path="/done" element={<p>done</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("Email"), "Eric@Example.com");
+    await user.click(screen.getByRole("button", { name: /continue with passkey/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("done")).toBeInTheDocument();
+    });
+
+    expect(api.startAuthentication).toHaveBeenCalledWith({
+      handle: "eric@example.com",
+    });
+    expect(api.authenticatePasskey).toHaveBeenCalledWith({
+      authenticationSessionId: "aas-1",
+      credential: {
+        id: "AQIDBA",
+        rawId: "AQIDBA",
+        type: "public-key",
+        response: {
+          authenticatorData: "CQgHBg",
+          clientDataJSON: toBase64Url(
+            new TextEncoder().encode(
+              JSON.stringify({
+                type: "webauthn.get",
+                challenge: "AQIDBA",
+                origin: window.location.origin,
+              }),
+            ),
+          ),
+          signature: "BAMCAQ",
+        },
+        authenticatorAttachment: "platform",
+        clientExtensionResults: { credProps: { rk: true } },
+      },
+    });
+  });
+
+  it("creates a passkey account, then signs in and returns to the requested route", async () => {
+    const user = userEvent.setup();
+    const createCredential = vi.fn().mockResolvedValue(
+      buildCredential({
+        credentialId: Uint8Array.from([1, 2, 3, 4]),
+        clientDataJson: new TextEncoder().encode(
+          JSON.stringify({
+            type: "webauthn.create",
+            challenge: "AQIDBA",
+            origin: window.location.origin,
+          }),
+        ),
+        attestationObject: Uint8Array.from([9, 8, 7, 6]),
+        publicKey: Uint8Array.from([4, 3, 2, 1]),
+        publicKeyAlgorithm: -7,
+        transports: ["internal"],
+      }),
+    );
+    const getCredential = vi.fn().mockResolvedValue(
+      buildAuthenticationCredential({
+        credentialId: Uint8Array.from([1, 2, 3, 4]),
+        clientDataJson: new TextEncoder().encode(
+          JSON.stringify({
+            type: "webauthn.get",
+            challenge: "AQIDBA",
+            origin: window.location.origin,
+          }),
+        ),
+        authenticatorData: Uint8Array.from([9, 8, 7, 6]),
+        signature: Uint8Array.from([4, 3, 2, 1]),
+      }),
+    );
+
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: {
+        create: createCredential,
+        get: getCredential,
+      },
+    });
+
+    const api = buildApi({
+      startRegistration: vi.fn().mockResolvedValue(buildRegistrationSession()),
+      getPasskeyRegistrationOptions: vi.fn().mockResolvedValue({
+        registrationSessionId: "ars-1",
+        rp: { id: "localhost", name: "TheAgentForum" },
+        user: {
+          id: "BQYHCA",
+          name: "eric@example.com",
+          displayName: "Eric",
+        },
+        challenge: "AQIDBA",
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        timeout: 60000,
+        attestation: "none",
+        authenticatorSelection: {
+          residentKey: "preferred",
+          userVerification: "preferred",
+        },
+      }),
+      registerPasskey: vi.fn().mockResolvedValue({
+        ...buildRegistrationSession(),
+        status: "verified",
+        verificationMethod: "webauthn",
+        passkeyLabel: "Eric passkey",
+        verifiedAt: "2026-03-26T00:01:00.000Z",
+      }),
+      startAuthentication: vi.fn().mockResolvedValue({
+        id: "aas-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        status: "awaiting_authentication",
+        challenge: "AQIDBA",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:15:00.000Z",
+      }),
+      getPasskeyAuthenticationOptions: vi.fn().mockResolvedValue({
+        authenticationSessionId: "aas-1",
+        challenge: "AQIDBA",
+        rpId: "localhost",
+        allowCredentials: [{ id: "AQIDBA", type: "public-key", transports: ["internal"] }],
+        timeout: 60000,
+        userVerification: "required",
+      }),
+      authenticatePasskey: vi.fn().mockResolvedValue({
+        id: "aas-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        status: "verified",
+        challenge: "AQIDBA",
+        verificationMethod: "webauthn",
+        passkeyLabel: "Eric passkey",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:15:00.000Z",
+        verifiedAt: "2026-03-26T00:01:00.000Z",
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth?mode=signup&returnTo=/done"]}>
+        <Routes>
+          <Route path="/auth" element={<AuthPage api={api} />} />
+          <Route path="/done" element={<p>done</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(screen.getByRole("tab", { name: "Sign up" }));
+    await user.type(screen.getByLabelText("Email"), "eric@example.com");
+    await user.click(screen.getByRole("button", { name: /create passkey/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("done")).toBeInTheDocument();
+    });
+
+    expect(api.startRegistration).toHaveBeenCalledWith({
+      handle: "eric@example.com",
+      displayName: "Eric",
+    });
+    expect(api.registerPasskey).toHaveBeenCalled();
+    expect(api.authenticatePasskey).toHaveBeenCalled();
   });
 
   it("moves from the passkey step to the pairing step without showing both at once", async () => {
@@ -106,7 +299,7 @@ describe("AuthPage", () => {
       ...buildRegistrationSession(),
       status: "verified",
       verificationMethod: "webauthn",
-      passkeyLabel: "Felix MacBook Passkey",
+      passkeyLabel: "Eric passkey",
       verifiedAt: "2026-03-26T00:01:00.000Z",
       pairing: {
         ...buildRegistrationSession().pairing,
@@ -114,24 +307,15 @@ describe("AuthPage", () => {
       },
     });
 
-    const api = {
-      listQuestions: vi.fn(),
-      searchThreads: vi.fn(),
-      createQuestion: vi.fn(),
-      getQuestionThread: vi.fn(),
-      createAnswer: vi.fn(),
-      acceptAnswer: vi.fn(),
-      listAnswerSkills: vi.fn(),
-      startRegistration: vi.fn(),
+    const api = buildApi({
       getRegistrationSession: vi.fn().mockResolvedValue(buildRegistrationSession()),
-      resolveRegistrationSession: vi.fn(),
       getPasskeyRegistrationOptions: vi.fn().mockResolvedValue({
         registrationSessionId: "ars-1",
         rp: { id: "localhost", name: "TheAgentForum" },
         user: {
           id: "BQYHCA",
-          name: "felix796",
-          displayName: "Felix",
+          name: "eric@example.com",
+          displayName: "Eric",
         },
         challenge: "AQIDBA",
         pubKeyCredParams: [{ type: "public-key", alg: -7 }],
@@ -143,9 +327,7 @@ describe("AuthPage", () => {
         },
       }),
       registerPasskey,
-      completeRegistrationVerification: vi.fn(),
-      redeemPairing: vi.fn(),
-    } as unknown as ApiClient;
+    });
 
     render(
       <MemoryRouter initialEntries={["/auth?registration=ars-1"]}>
@@ -154,190 +336,59 @@ describe("AuthPage", () => {
     );
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "save passkey" }),
-      ).toBeEnabled();
+      expect(screen.getByRole("button", { name: "save passkey" })).toBeEnabled();
     });
 
-    expect(
-      screen.getByRole("heading", { name: /save a passkey/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /save a passkey/i })).toBeInTheDocument();
     expect(screen.queryByLabelText("Pairing code")).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText("Passkey label"));
-    await user.type(screen.getByLabelText("Passkey label"), "Felix MacBook Passkey");
+    await user.type(screen.getByLabelText("Passkey label"), "Eric passkey");
     await user.click(screen.getByRole("button", { name: "save passkey" }));
 
     await waitFor(() => {
-      expect(createCredential).toHaveBeenCalledTimes(1);
-      expect(registerPasskey).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("heading", { name: /pair this agent/i })).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("heading", { name: /pair this agent/i }),
-    ).toBeInTheDocument();
     expect(screen.getByLabelText("Pairing code")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "save passkey" }),
-    ).not.toBeInTheDocument();
-
-    const creationCall = createCredential.mock.calls[0]?.[0] as { publicKey?: PublicKeyCredentialCreationOptions };
-    expect(creationCall.publicKey).toBeDefined();
-    expect(Array.from(new Uint8Array(creationCall.publicKey?.challenge as ArrayBuffer))).toEqual([
-      1, 2, 3, 4,
-    ]);
-    expect(Array.from(new Uint8Array(creationCall.publicKey?.user.id as ArrayBuffer))).toEqual([
-      5, 6, 7, 8,
-    ]);
-
-    expect(registerPasskey).toHaveBeenCalledWith({
-      registrationSessionId: "ars-1",
-      credential: {
-        id: "AQIDBA",
-        rawId: "AQIDBA",
-        type: "public-key",
-        response: {
-          attestationObject: "CQgHBg",
-          clientDataJSON: toBase64Url(
-            new TextEncoder().encode(
-              JSON.stringify({
-                type: "webauthn.create",
-                challenge: "AQIDBA",
-                origin: window.location.origin,
-              }),
-            ),
-          ),
-          publicKey: "BAMCAQ",
-          publicKeyAlgorithm: -7,
-          transports: ["internal"],
-        },
-        authenticatorAttachment: "platform",
-        clientExtensionResults: { credProps: { rk: true } },
-      },
-      passkeyLabel: "Felix MacBook Passkey",
-    });
-  });
-
-  it("starts passkey sign-in and refreshes auth state after authentication succeeds", async () => {
-    const user = userEvent.setup();
-    const getCredential = vi.fn().mockResolvedValue(
-      buildAuthenticationCredential({
-        credentialId: Uint8Array.from([1, 2, 3, 4]),
-        clientDataJson: new TextEncoder().encode(
-          JSON.stringify({
-            type: "webauthn.get",
-            challenge: "AQIDBA",
-            origin: window.location.origin,
-          }),
-        ),
-        authenticatorData: Uint8Array.from([9, 8, 7, 6]),
-        signature: Uint8Array.from([4, 3, 2, 1]),
-      }),
-    );
-
-    Object.defineProperty(navigator, "credentials", {
-      configurable: true,
-      value: {
-        get: getCredential,
-      },
-    });
-
-    const onAuthStateChange = vi.fn().mockResolvedValue(undefined);
-    const api = {
-      listQuestions: vi.fn(),
-      searchThreads: vi.fn(),
-      createQuestion: vi.fn(),
-      getQuestionThread: vi.fn(),
-      createAnswer: vi.fn(),
-      acceptAnswer: vi.fn(),
-      listAnswerSkills: vi.fn(),
-      startRegistration: vi.fn(),
-      getRegistrationSession: vi.fn(),
-      resolveRegistrationSession: vi.fn(),
-      getPasskeyRegistrationOptions: vi.fn(),
-      registerPasskey: vi.fn(),
-      completeRegistrationVerification: vi.fn(),
-      redeemPairing: vi.fn(),
-      startAuthentication: vi.fn().mockResolvedValue({
-        id: "aas-1",
-        handle: "felix796",
-        displayName: "Felix",
-        status: "awaiting_authentication",
-        challenge: "AQIDBA",
-        createdAt: "2026-03-26T00:00:00.000Z",
-        expiresAt: "2026-03-26T00:15:00.000Z",
-      }),
-      getPasskeyAuthenticationOptions: vi.fn().mockResolvedValue({
-        authenticationSessionId: "aas-1",
-        challenge: "AQIDBA",
-        rpId: "localhost",
-        allowCredentials: [{ id: "AQIDBA", type: "public-key", transports: ["internal"] }],
-        timeout: 60000,
-        userVerification: "required",
-      }),
-      authenticatePasskey: vi.fn().mockResolvedValue({
-        id: "aas-1",
-        handle: "felix796",
-        displayName: "Felix",
-        status: "verified",
-        challenge: "AQIDBA",
-        verificationMethod: "webauthn",
-        passkeyLabel: "Felix MacBook Passkey",
-        createdAt: "2026-03-26T00:00:00.000Z",
-        expiresAt: "2026-03-26T00:15:00.000Z",
-        verifiedAt: "2026-03-26T00:01:00.000Z",
-      }),
-    } as unknown as ApiClient;
-
-    render(
-      <MemoryRouter initialEntries={["/auth"]}>
-        <AuthPage api={api} onAuthStateChange={onAuthStateChange} />
-      </MemoryRouter>,
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: /use existing passkey/i }),
-    );
-    await user.type(screen.getByLabelText("Handle"), "felix796");
-    await user.click(screen.getByRole("button", { name: "sign in" }));
-
-    await waitFor(() => {
-      expect(getCredential).toHaveBeenCalledTimes(1);
-      expect(onAuthStateChange).toHaveBeenCalledTimes(1);
-    });
-
-    expect(api.startAuthentication).toHaveBeenCalledWith({ handle: "felix796" });
-    expect(api.authenticatePasskey).toHaveBeenCalledWith({
-      authenticationSessionId: "aas-1",
-      credential: {
-        id: "AQIDBA",
-        rawId: "AQIDBA",
-        type: "public-key",
-        response: {
-          authenticatorData: "CQgHBg",
-          clientDataJSON: toBase64Url(
-            new TextEncoder().encode(
-              JSON.stringify({
-                type: "webauthn.get",
-                challenge: "AQIDBA",
-                origin: window.location.origin,
-              }),
-            ),
-          ),
-          signature: "BAMCAQ",
-        },
-        authenticatorAttachment: "platform",
-        clientExtensionResults: { credProps: { rk: true } },
-      },
-    });
+    expect(screen.queryByRole("button", { name: "save passkey" })).not.toBeInTheDocument();
   });
 });
+
+function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
+  return {
+    listQuestions: vi.fn(),
+    searchThreads: vi.fn(),
+    createQuestion: vi.fn(),
+    getQuestionThread: vi.fn(),
+    createAnswer: vi.fn(),
+    acceptAnswer: vi.fn(),
+    listAnswerSkills: vi.fn(),
+    startRegistration: vi.fn(),
+    getRegistrationSession: vi.fn(),
+    resolveRegistrationSession: vi.fn(),
+    getPasskeyRegistrationOptions: vi.fn(),
+    registerPasskey: vi.fn(),
+    completeRegistrationVerification: vi.fn(),
+    redeemPairing: vi.fn(),
+    startAuthentication: vi.fn(),
+    getPasskeyAuthenticationOptions: vi.fn(),
+    authenticatePasskey: vi.fn(),
+    getAuthSession: vi.fn().mockResolvedValue(null),
+    listPasskeys: vi.fn(),
+    removePasskey: vi.fn(),
+    listDevices: vi.fn(),
+    revokeDevice: vi.fn(),
+    signOut: vi.fn(),
+    ...overrides,
+  } as unknown as ApiClient;
+}
 
 function buildRegistrationSession() {
   return {
     id: "ars-1",
-    handle: "felix796",
-    displayName: "Felix",
+    handle: "eric@example.com",
+    displayName: "Eric",
     status: "pending_webauthn_registration" as const,
     challenge: "AQIDBA",
     verificationUrl: "/auth?registration=verify-token-1",

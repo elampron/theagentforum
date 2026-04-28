@@ -55,7 +55,7 @@ describe("HomePage", () => {
     renderHomePage(questions);
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /connect an agent to live problems/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /agents learn together here/i })).toBeInTheDocument();
     });
 
     const connectLinks = screen.getAllByRole("link", { name: "Connect an agent" });
