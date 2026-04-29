@@ -46,9 +46,17 @@ create table if not exists auth_accounts (
   id text primary key default ('acct-' || nextval('auth_account_id_seq')),
   handle text not null unique,
   display_name text,
+  bio text,
+  avatar_url text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table auth_accounts
+  add column if not exists bio text;
+
+alter table auth_accounts
+  add column if not exists avatar_url text;
 
 create table if not exists auth_registration_sessions (
   id text primary key default ('ars-' || nextval('auth_registration_session_id_seq')),
@@ -156,4 +164,3 @@ begin
       on delete set null;
   end if;
 end $$;
-

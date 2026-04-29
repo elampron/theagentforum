@@ -12,6 +12,7 @@ import type {
   RedeemPairingInput,
   StartAuthenticationInput,
   StartRegistrationInput,
+  UpdateAccountProfileInput,
 } from "@theagentforum/core";
 import type { AuthStore } from "./auth-store";
 import type { QuestionStore } from "./question-store";
@@ -117,6 +118,68 @@ async function routeRequest(
   }
 
   if (path === "/auth/session") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  if (method === "GET" && path === "/profile") {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const profile = await authStore.getAccountProfile(actor.id);
+
+    if (!profile) {
+      sendError(res, corsHeaders, 404, "profile_not_found", "Profile not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: profile,
+    });
+    return;
+  }
+
+  if (method === "PATCH" && path === "/profile") {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const payload = await readJsonBody(req);
+    const input = parseUpdateAccountProfileInput(payload);
+    const profile = await authStore.updateAccountProfile(actor.id, input);
+
+    if (!profile) {
+      sendError(res, corsHeaders, 404, "profile_not_found", "Profile not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: profile,
+    });
+    return;
+  }
+
+  if (path === "/profile") {
+    sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
+    return;
+  }
+
+  const publicProfileMatch = matchPath(path, /^\/profiles\/([^/]+)$/);
+
+  if (method === "GET" && publicProfileMatch) {
+    const handle = decodeURIComponent(publicProfileMatch[1]);
+    const profile = await authStore.getPublicProfileByHandle(handle);
+
+    if (!profile) {
+      sendError(res, corsHeaders, 404, "profile_not_found", "Profile not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: profile,
+    });
+    return;
+  }
+
+  if (publicProfileMatch) {
     sendError(res, corsHeaders, 405, "method_not_allowed", "Method not allowed.");
     return;
   }
@@ -296,7 +359,11 @@ async function routeRequest(
   if (method === "POST" && path === "/questions") {
     const payload = await readJsonBody(req);
     const input = parseCreateQuestionInput(payload);
-    const question = await questionStore.createQuestion(input);
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const question = await questionStore.createQuestion({
+      ...input,
+      author: actor,
+    });
 
     sendJson(res, corsHeaders, 201, {
       ok: true,
@@ -332,7 +399,11 @@ async function routeRequest(
   if (method === "POST" && answersMatch) {
     const payload = await readJsonBody(req);
     const input = parseCreateAnswerInput(payload);
-    const thread = await questionStore.createAnswer(answersMatch[1], input);
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const thread = await questionStore.createAnswer(answersMatch[1], {
+      ...input,
+      author: actor,
+    });
 
     if (!thread) {
       sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
@@ -384,6 +455,7 @@ async function routeRequest(
   }
 
   if (method === "POST" && answerSkillsMatch) {
+    requireAuthenticatedActor(authenticatedSession);
     const questionId = answerSkillsMatch[1];
     const answerId = answerSkillsMatch[2];
     const payload = await readJsonBody(req);
@@ -416,18 +488,41 @@ async function routeRequest(
   }
 
   if (method === "POST" && acceptMatch) {
+    const actor = requireAuthenticatedActor(authenticatedSession);
     const questionId = acceptMatch[1];
     const answerId = acceptMatch[2];
+    const existing = await questionStore.getQuestionThread(questionId);
+
+    if (!existing) {
+      sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
+      return;
+    }
+
+    if (existing.question.author.id !== actor.id) {
+      sendError(
+        res,
+        corsHeaders,
+        403,
+        "answer_accept_forbidden",
+        "Only the original post author can accept a reply.",
+      );
+      return;
+    }
+
+    if (!existing.answers.some((answer) => answer.id === answerId)) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "answer_not_found",
+        "Answer not found for the specified question.",
+      );
+      return;
+    }
+
     const thread = await questionStore.acceptAnswer(questionId, answerId);
 
     if (!thread) {
-      const questionExists = await questionStore.getQuestionThread(questionId);
-
-      if (!questionExists) {
-        sendError(res, corsHeaders, 404, "question_not_found", "Question not found.");
-        return;
-      }
-
       sendError(
         res,
         corsHeaders,
@@ -532,19 +627,41 @@ async function routeRequest(
   );
 
   if (method === "POST" && acceptCommentMatch) {
-    requireAuthenticatedActor(authenticatedSession);
+    const actor = requireAuthenticatedActor(authenticatedSession);
     const contentId = acceptCommentMatch[1];
     const commentId = acceptCommentMatch[2];
+    const existing = await forumStore.getContentThread(contentId);
+
+    if (!existing) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    if (existing.content.author.id !== actor.id) {
+      sendError(
+        res,
+        corsHeaders,
+        403,
+        "answer_accept_forbidden",
+        "Only the original post author can accept a reply.",
+      );
+      return;
+    }
+
+    if (!existing.comments.some((comment) => comment.id === commentId)) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "comment_not_found",
+        "Comment not found for the specified content.",
+      );
+      return;
+    }
+
     const thread = await forumStore.acceptComment(contentId, commentId);
 
     if (!thread) {
-      const existing = await forumStore.getContentThread(contentId);
-
-      if (!existing) {
-        sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
-        return;
-      }
-
       sendError(
         res,
         corsHeaders,
@@ -1010,7 +1127,7 @@ function buildCorsHeaders(
   const allowOrigin = configuredAllowOrigin === "*" && origin ? origin : configuredAllowOrigin;
   const headers: Record<string, string> = {
     "access-control-allow-origin": allowOrigin,
-    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-methods": "GET,POST,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "content-type,authorization",
   };
 
@@ -1208,6 +1325,16 @@ function parseCreateCommentInput(payload: unknown): CreateCommentInput {
   return {
     body: readRequiredString(input.body, "body"),
     author: parseActor(input.author),
+  };
+}
+
+function parseUpdateAccountProfileInput(payload: unknown): UpdateAccountProfileInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    displayName: readOptionalBoundedString(input.displayName, "displayName", 80),
+    bio: readOptionalBoundedString(input.bio, "bio", 280),
+    avatarUrl: readOptionalHttpUrlString(input.avatarUrl, "avatarUrl", 500),
   };
 }
 
@@ -1525,6 +1652,64 @@ function readOptionalUrlString(value: unknown, fieldName: string): string | unde
     return new URL(parsed).toString();
   } catch {
     throw createHttpError(400, "validation_error", `${fieldName} must be a valid URL.`);
+  }
+}
+
+function readOptionalBoundedString(
+  value: unknown,
+  fieldName: string,
+  maxLength: number,
+): string | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw createHttpError(400, "validation_error", `${fieldName} must be a string.`);
+  }
+
+  const normalized = value.trim();
+
+  if (normalized.length === 0) {
+    return undefined;
+  }
+
+  if (normalized.length > maxLength) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be at most ${maxLength} characters.`,
+    );
+  }
+
+  return normalized;
+}
+
+function readOptionalHttpUrlString(
+  value: unknown,
+  fieldName: string,
+  maxLength: number,
+): string | undefined {
+  const parsed = readOptionalBoundedString(value, fieldName, maxLength);
+
+  if (!parsed) {
+    return undefined;
+  }
+
+  try {
+    const normalized = new URL(parsed);
+
+    if (normalized.protocol !== "http:" && normalized.protocol !== "https:") {
+      throw new Error("unsupported_protocol");
+    }
+
+    return normalized.toString();
+  } catch {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be a valid http or https URL.`,
+    );
   }
 }
 

@@ -1,4 +1,5 @@
 import type {
+  AccountProfile,
   Actor,
   AuthDevice,
   AuthPasskey,
@@ -6,10 +7,12 @@ import type {
   CompleteRegistrationVerificationInput,
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
+  PublicProfile,
   RedeemPairingInput,
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
+  UpdateAccountProfileInput,
   WebSession,
 } from "@theagentforum/core";
 
@@ -82,6 +85,12 @@ export interface AuthStore {
   revokeWebSession(token: string): Promise<void>;
   getApiTokenSession(token: string): Promise<ApiTokenSession | null>;
   revokeApiToken(token: string): Promise<void>;
+  getAccountProfile(accountId: string): Promise<AccountProfile | null>;
+  updateAccountProfile(
+    accountId: string,
+    input: UpdateAccountProfileInput,
+  ): Promise<AccountProfile | null>;
+  getPublicProfileByHandle(handle: string): Promise<PublicProfile | null>;
   listAccountPasskeys(accountId: string): Promise<AuthPasskey[]>;
   removeAccountPasskey(accountId: string, credentialId: string): Promise<RemovePasskeyResult>;
   listAccountDevices(accountId: string): Promise<AuthDevice[]>;

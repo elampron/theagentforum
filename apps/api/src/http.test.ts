@@ -20,9 +20,37 @@ const agentAuthor = {
 describe("HTTP API", () => {
   it("serves the full question -> answer -> accept flow", async () => {
     const app = createTestApp();
+    const pairing = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "felix796",
+        displayName: "Felix",
+      },
+    });
+    const registrationId = pairing.body.data.id;
+    const pairingCode = pairing.body.data.pairing.code;
+
+    await requestJson(app, `/auth/registrations/${registrationId}/verify`, {
+      method: "POST",
+      body: {
+        passkeyLabel: "Felix CLI Passkey",
+      },
+    });
+
+    const redeemed = await requestJson(app, "/auth/pairings/redeem", {
+      method: "POST",
+      body: {
+        pairingCode,
+        deviceLabel: "pixel-cli",
+      },
+    });
+    const authHeader = {
+      authorization: `Bearer ${redeemed.body.data.pairing.token}`,
+    };
 
     const createQuestionResponse = await requestJson(app, "/questions", {
       method: "POST",
+      headers: authHeader,
       body: {
         title: "What should the first API support?",
         body: "Questions and accepted answers.",
@@ -36,6 +64,7 @@ describe("HTTP API", () => {
 
     const firstAnswerResponse = await requestJson(app, `/questions/${question.id}/answers`, {
       method: "POST",
+      headers: authHeader,
       body: {
         body: "Ship the smallest possible workflow first.",
         author: agentAuthor,
@@ -47,6 +76,7 @@ describe("HTTP API", () => {
 
     const secondAnswerResponse = await requestJson(app, `/questions/${question.id}/answers`, {
       method: "POST",
+      headers: authHeader,
       body: {
         body: "Add acceptance before reputation.",
         author: humanAuthor,
@@ -60,6 +90,7 @@ describe("HTTP API", () => {
       `/questions/${question.id}/accept/${answerToAccept.id}`,
       {
         method: "POST",
+        headers: authHeader,
       },
     );
 

@@ -9,6 +9,7 @@ import { useAuthNavigation } from "../lib/auth-routing";
 import type { Answer, AnswerSkill, Question, QuestionThread, ThreadSearchResult } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { MarkdownContent } from "../components/MarkdownContent";
+import { captureClientEvent } from "../lib/posthog";
 import { describeActor, formatDate, readErrorMessage } from "../lib/ui";
 
 const benefitCards = [
@@ -366,6 +367,7 @@ export function ForumPage({ api }: TerminalApiProps) {
     }
 
     setError(null);
+    captureClientEvent("taf_post_create_started");
 
     try {
       const createdQuestion = await api.createQuestion({
@@ -375,9 +377,16 @@ export function ForumPage({ api }: TerminalApiProps) {
       });
 
       await refreshQuestions();
+      captureClientEvent("taf_post_created", {
+        content_id: createdQuestion.id,
+      });
       navigate(`/posts/${createdQuestion.id}`);
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_post_create_failed", {
+        error_message: message,
+      });
     }
   }
 
@@ -599,6 +608,9 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
     }
 
     setError(null);
+    captureClientEvent("taf_reply_create_started", {
+      content_id: thread.question.id,
+    });
 
     try {
       const updatedThread = await api.createAnswer(thread.question.id, {
@@ -606,8 +618,16 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
         author: auth.session.actor,
       });
       setThread(updatedThread);
+      captureClientEvent("taf_reply_created", {
+        content_id: thread.question.id,
+      });
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_reply_create_failed", {
+        content_id: thread.question.id,
+        error_message: message,
+      });
     }
   }
 
@@ -618,11 +638,25 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
 
     setAcceptingAnswerId(answerId);
     setError(null);
+    captureClientEvent("taf_answer_accept_started", {
+      content_id: thread.question.id,
+      comment_id: answerId,
+    });
 
     try {
       setThread(await api.acceptAnswer(thread.question.id, answerId));
+      captureClientEvent("taf_answer_accepted", {
+        content_id: thread.question.id,
+        comment_id: answerId,
+      });
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_answer_accept_failed", {
+        content_id: thread.question.id,
+        comment_id: answerId,
+        error_message: message,
+      });
     } finally {
       setAcceptingAnswerId(null);
     }

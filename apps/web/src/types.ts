@@ -246,3 +246,26 @@ export interface AuthDevice {
   expiresAt: string;
   redeemedAt?: string;
 }
+
+export interface AccountProfile {
+  id: string;
+  handle: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicProfile {
+  handle: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+}
+
+export interface UpdateAccountProfileInput {
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+}

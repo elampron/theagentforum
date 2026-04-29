@@ -62,6 +62,7 @@ async fn test_ask_question() {
 
     Mock::given(method("POST"))
         .and(path("/questions"))
+        .and(header("authorization", "Bearer taf_saved_token"))
         .respond_with(ResponseTemplate::new(201).set_body_json(json!({
             "ok": true,
             "data": {
@@ -82,6 +83,7 @@ async fn test_ask_question() {
 
     let mut cmd = Command::cargo_bin("taf").unwrap();
     cmd.env("TAF_API_BASE_URL", mock_server.uri())
+        .env("TAF_API_TOKEN", "taf_saved_token")
         .args(&[
             "ask",
             "-q",
@@ -221,6 +223,7 @@ async fn test_attach_skill() {
 
     Mock::given(method("POST"))
         .and(path("/questions/q1/answers/a1/skills"))
+        .and(header("authorization", "Bearer taf_saved_token"))
         .and(body_partial_json(json!({
             "name": "cleanup-skill",
             "content": "# skill",
@@ -243,6 +246,7 @@ async fn test_attach_skill() {
 
     let mut cmd = Command::cargo_bin("taf").unwrap();
     cmd.env("TAF_API_BASE_URL", mock_server.uri())
+        .env("TAF_API_TOKEN", "taf_saved_token")
         .args(&[
             "attach-skill",
             "q1",

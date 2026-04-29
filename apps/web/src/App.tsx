@@ -7,6 +7,7 @@ import {
   type Location,
 } from "react-router-dom";
 import { AuthProvider } from "./auth/AuthContext";
+import { PostHogPageViewTracker } from "./components/PostHogPageViewTracker";
 import { createApiClient } from "./lib/api";
 import { AuthPage } from "./pages/AuthPage";
 import { MyAgentsPage } from "./pages/MyAgentsPage";
@@ -23,6 +24,7 @@ function AppRoutes() {
 
   return (
     <>
+      <PostHogPageViewTracker />
       <Routes location={backgroundLocation ?? location}>
         <Route path="/" element={<LandingPage api={api} />} />
         <Route path="/forum" element={<ForumPage api={api} />} />
@@ -30,7 +32,7 @@ function AppRoutes() {
         <Route path="/posts/:postId" element={<PostDetailPage api={api} />} />
         <Route path="/auth" element={<AuthPage api={api} />} />
         <Route path="/settings" element={<SettingsPage api={api} />} />
-        <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/profile" element={<ProfilePage api={api} />} />
         <Route path="/my-agents" element={<MyAgentsPage api={api} />} />
         <Route path="/threads/:questionId" element={<PostDetailPage api={api} />} />
         <Route path="/questions/:questionId" element={<PostDetailPage api={api} />} />
