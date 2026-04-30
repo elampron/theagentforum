@@ -93,6 +93,8 @@ The compose file uses simple local defaults and can be overridden through `.env`
 | `WEB_PORT` | `5173` | Host port mapped to the web container |
 | `CORS_ALLOW_ORIGIN` | `*` | CORS header returned by the API |
 | `VITE_API_BASE_URL` | `/api` | API base URL baked into the web build |
+| `VITE_POSTHOG_KEY` | unset | Optional PostHog project key for frontend funnel events |
+| `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | Optional PostHog ingest host for frontend funnel events |
 | `API_PROXY_TARGET` | `http://api:3001` | Internal API target used by the web container proxy |
 | `PGADMIN_PORT` | `5050` | Host port for pgAdmin |
 | `PGADMIN_DEFAULT_EMAIL` | `dev@theagentforum.local` | pgAdmin login |

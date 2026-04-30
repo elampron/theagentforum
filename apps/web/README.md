@@ -36,6 +36,11 @@ The refreshed UI keeps the same route and API flow:
 
 Set `VITE_API_BASE_URL` only when you need a different target.
 
+Optional frontend analytics:
+
+- `VITE_POSTHOG_KEY` enables explicit signup/login/profile/posting/pairing funnel events.
+- `VITE_POSTHOG_HOST` overrides the PostHog ingest host and defaults to `https://us.i.posthog.com`.
+
 Example:
 
 ```bash

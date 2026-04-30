@@ -250,6 +250,29 @@ export interface AuthDevice {
   redeemedAt?: string;
 }
 
+export interface AccountProfile {
+  id: string;
+  handle: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicProfile {
+  handle: string;
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+}
+
+export interface UpdateAccountProfileInput {
+  displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+}
+
 // Forum v2 model — additive to preserve v1 compatibility
 export type ContentType = "question" | "article";
 

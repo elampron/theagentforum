@@ -338,9 +338,14 @@ fn default_actor() -> Actor {
 }
 
 fn passkey_label_from(args: &RegisterArgs) -> String {
-    args.passkey_label
-        .clone()
-        .unwrap_or_else(|| format!("{} passkey", args.display_name.clone().unwrap_or_else(|| args.handle.clone())))
+    args.passkey_label.clone().unwrap_or_else(|| {
+        format!(
+            "{} passkey",
+            args.display_name
+                .clone()
+                .unwrap_or_else(|| args.handle.clone())
+        )
+    })
 }
 
 fn require_api_token() -> String {
@@ -382,7 +387,11 @@ fn auth_file_path() -> PathBuf {
 fn save_api_token(token: &str, base_url: &str) {
     let auth_dir = auth_dir();
     if let Err(error) = fs::create_dir_all(&auth_dir) {
-        eprintln!("Failed to create auth directory {}: {}", auth_dir.display(), error);
+        eprintln!(
+            "Failed to create auth directory {}: {}",
+            auth_dir.display(),
+            error
+        );
         exit(1);
     }
 
@@ -419,7 +428,11 @@ fn clear_saved_api_token() {
     let path = auth_file_path();
     if path.exists() {
         if let Err(error) = fs::remove_file(&path) {
-            eprintln!("Failed to remove saved auth state {}: {}", path.display(), error);
+            eprintln!(
+                "Failed to remove saved auth state {}: {}",
+                path.display(),
+                error
+            );
             exit(1);
         }
     }
@@ -469,7 +482,11 @@ where
 fn print_registration_summary(session: &RegistrationSession) {
     println!("Registration ID: {}", session.id);
     if let Some(url) = &session.verification_url {
-        println!("Verification URL: {}{}", get_base_url().trim_end_matches("/api"), url);
+        println!(
+            "Verification URL: {}{}",
+            get_base_url().trim_end_matches("/api"),
+            url
+        );
     }
     if let Some(token) = &session.verification_token {
         println!("Verification token: {}", token);
@@ -491,20 +508,33 @@ async fn main() {
     match cli.command {
         Commands::Health => {
             let url = format!("{}/health", base_url);
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let _: serde_json::Value = handle_response(res, cli.json).await;
             if !cli.json {
                 println!("API is healthy");
             }
         }
         Commands::Ask { title, description } => {
+            let token = require_api_token();
             let url = format!("{}/questions", base_url);
             let input = CreateQuestionInput {
                 title,
                 body: description.unwrap_or_default(),
                 author: default_actor(),
             };
-            let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client
+                .post(&url)
+                .bearer_auth(token)
+                .json(&input)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
             let question: Question = handle_response(res, cli.json).await;
             if !cli.json {
                 println!("Question created! ID: {}", question.id);
@@ -512,7 +542,10 @@ async fn main() {
         }
         Commands::List { status, limit } => {
             let url = format!("{}/questions", base_url);
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let mut questions: Vec<Question> = handle_response(res, false).await;
 
             if let Some(s) = status {
@@ -528,19 +561,33 @@ async fn main() {
                 println!("No questions found.");
             } else {
                 for q in questions {
-                    println!("- [{}] {} (by {}) - {}", q.status, q.title, q.author.handle, q.id);
+                    println!(
+                        "- [{}] {} (by {}) - {}",
+                        q.status, q.title, q.author.handle, q.id
+                    );
                 }
             }
         }
-        Commands::Search { query, status, limit } => {
-            let mut url = format!("{}/search/threads?query={}", base_url, urlencoding::encode(&query));
+        Commands::Search {
+            query,
+            status,
+            limit,
+        } => {
+            let mut url = format!(
+                "{}/search/threads?query={}",
+                base_url,
+                urlencoding::encode(&query)
+            );
             if let Some(status) = status {
                 url.push_str(&format!("&status={}", urlencoding::encode(&status)));
             }
             if let Some(limit) = limit {
                 url.push_str(&format!("&limit={}", limit));
             }
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let search: SearchResult = handle_response(res, cli.json).await;
 
             if !cli.json {
@@ -549,18 +596,30 @@ async fn main() {
                 } else {
                     println!("{} matches for '{}':", search.returned, search.query);
                     for item in search.matches {
-                        println!("- {} [{}] score={} matched in {}", item.question.title, item.question.id, item.score, item.match_sources.join(", "));
+                        println!(
+                            "- {} [{}] score={} matched in {}",
+                            item.question.title,
+                            item.question.id,
+                            item.score,
+                            item.match_sources.join(", ")
+                        );
                     }
                 }
             }
         }
         Commands::Question { id } => {
             let url = format!("{}/questions/{}", base_url, id);
-            let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                eprintln!("Network error: {}", e);
+                exit(1);
+            });
             let thread: QuestionThread = handle_response(res, cli.json).await;
 
             if !cli.json {
-                println!("Question: {} (ID: {})", thread.question.title, thread.question.id);
+                println!(
+                    "Question: {} (ID: {})",
+                    thread.question.title, thread.question.id
+                );
                 println!("Author: {}", thread.question.author.handle);
                 println!("Status: {}", thread.question.status);
                 println!("\n{}\n", thread.question.body);
@@ -570,37 +629,72 @@ async fn main() {
                 } else {
                     println!("--- Answers ---");
                     for ans in thread.answers {
-                        let accepted = if thread.question.accepted_answer_id.as_deref() == Some(&ans.id) {
-                            "[ACCEPTED] "
-                        } else {
-                            ""
-                        };
-                        println!("{}{} (by {}) - ID: {}", accepted, ans.body, ans.author.handle, ans.id);
+                        let accepted =
+                            if thread.question.accepted_answer_id.as_deref() == Some(&ans.id) {
+                                "[ACCEPTED] "
+                            } else {
+                                ""
+                            };
+                        println!(
+                            "{}{} (by {}) - ID: {}",
+                            accepted, ans.body, ans.author.handle, ans.id
+                        );
                         println!("-----------------");
                     }
                 }
             }
         }
         Commands::Answer { id, body } => {
+            let token = require_api_token();
             let url = format!("{}/questions/{}/answers", base_url, id);
             let input = CreateAnswerInput {
                 body,
                 author: default_actor(),
             };
-            let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client
+                .post(&url)
+                .bearer_auth(token)
+                .json(&input)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
             let thread: QuestionThread = handle_response(res, cli.json).await;
 
             if !cli.json {
-                println!("Answer added successfully to question {}!", thread.question.id);
+                println!(
+                    "Answer added successfully to question {}!",
+                    thread.question.id
+                );
             }
         }
-        Commands::Accept { question_id, answer_id } => {
-            let url = format!("{}/questions/{}/accept/{}", base_url, question_id, answer_id);
-            let res = client.post(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+        Commands::Accept {
+            question_id,
+            answer_id,
+        } => {
+            let token = require_api_token();
+            let url = format!(
+                "{}/questions/{}/accept/{}",
+                base_url, question_id, answer_id
+            );
+            let res = client
+                .post(&url)
+                .bearer_auth(token)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
             let thread: QuestionThread = handle_response(res, cli.json).await;
 
             if !cli.json {
-                println!("Answer {} accepted for question {}!", answer_id, thread.question.id);
+                println!(
+                    "Answer {} accepted for question {}!",
+                    answer_id, thread.question.id
+                );
             }
         }
         Commands::AttachSkill {
@@ -616,18 +710,34 @@ async fn main() {
                 exit(1);
             }
 
-            let url_path = format!("{}/questions/{}/answers/{}/skills", base_url, question_id, answer_id);
+            let token = require_api_token();
+            let url_path = format!(
+                "{}/questions/{}/answers/{}/skills",
+                base_url, question_id, answer_id
+            );
             let input = CreateAnswerSkillInput {
                 name,
                 content,
                 url,
                 mime_type,
             };
-            let res = client.post(&url_path).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+            let res = client
+                .post(&url_path)
+                .bearer_auth(token)
+                .json(&input)
+                .send()
+                .await
+                .unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
             let skill: AnswerSkill = handle_response(res, cli.json).await;
 
             if !cli.json {
-                println!("Skill {} attached to answer {} on question {}!", skill.id, skill.answer_id, skill.question_id);
+                println!(
+                    "Skill {} attached to answer {} on question {}!",
+                    skill.id, skill.answer_id, skill.question_id
+                );
             }
         }
         Commands::Auth { command } => match command {
@@ -637,7 +747,15 @@ async fn main() {
                     handle: args.handle.clone(),
                     display_name: args.display_name.clone(),
                 };
-                let res = client.post(&url).json(&start).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let res = client
+                    .post(&url)
+                    .json(&start)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let session: RegistrationSession = handle_response(res, cli.json).await;
                 if !cli.json {
                     print_registration_summary(&session);
@@ -646,7 +764,10 @@ async fn main() {
             }
             AuthCommands::Status { registration_id } => {
                 let url = format!("{}/auth/registrations/{}", base_url, registration_id);
-                let res = client.get(&url).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let res = client.get(&url).send().await.unwrap_or_else(|e| {
+                    eprintln!("Network error: {}", e);
+                    exit(1);
+                });
                 let session: RegistrationSession = handle_response(res, cli.json).await;
                 if !cli.json {
                     print_registration_summary(&session);
@@ -655,11 +776,15 @@ async fn main() {
             AuthCommands::Whoami => {
                 let token = require_api_token();
                 let url = format!("{}/auth/token", base_url);
-                let res = client.get(&url)
+                let res = client
+                    .get(&url)
                     .bearer_auth(token)
                     .send()
                     .await
-                    .unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let session: Option<ApiTokenSession> = handle_response(res, cli.json).await;
                 if !cli.json {
                     match session {
@@ -682,11 +807,15 @@ async fn main() {
             AuthCommands::Logout => {
                 let token = require_api_token();
                 let url = format!("{}/auth/token/revoke", base_url);
-                let res = client.post(&url)
+                let res = client
+                    .post(&url)
                     .bearer_auth(token)
                     .send()
                     .await
-                    .unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let response: LogoutResponse = handle_response(res, cli.json).await;
                 if response.revoked {
                     clear_saved_api_token();
@@ -699,13 +828,24 @@ async fn main() {
                     }
                 }
             }
-            AuthCommands::Pair { pairing_code, device_label } => {
+            AuthCommands::Pair {
+                pairing_code,
+                device_label,
+            } => {
                 let url = format!("{}/auth/pairings/redeem", base_url);
                 let input = RedeemPairingInput {
                     pairing_code,
                     device_label,
                 };
-                let res = client.post(&url).json(&input).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let res = client
+                    .post(&url)
+                    .json(&input)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let session: RegistrationSession = handle_response(res, cli.json).await;
                 if let Some(token) = session.pairing.token.as_deref() {
                     save_api_token(token, &base_url);
@@ -724,22 +864,49 @@ async fn main() {
                     handle: args.handle.clone(),
                     display_name: args.display_name.clone(),
                 };
-                let res = client.post(&register_url).json(&start).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let res = client
+                    .post(&register_url)
+                    .json(&start)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let session: RegistrationSession = handle_response(res, false).await;
 
                 let verify_url = format!("{}/auth/registrations/{}/verify", base_url, session.id);
                 let finish = serde_json::json!({
                     "passkeyLabel": passkey_label_from(&args),
                 });
-                let res = client.post(&verify_url).json(&finish).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let res = client
+                    .post(&verify_url)
+                    .json(&finish)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let verified: RegistrationSession = handle_response(res, false).await;
 
                 let pair_url = format!("{}/auth/pairings/redeem", base_url);
                 let pair = RedeemPairingInput {
                     pairing_code: verified.pairing.code.clone(),
-                    device_label: args.device_label.clone().unwrap_or_else(|| "taf-cli".into()),
+                    device_label: args
+                        .device_label
+                        .clone()
+                        .unwrap_or_else(|| "taf-cli".into()),
                 };
-                let res = client.post(&pair_url).json(&pair).send().await.unwrap_or_else(|e| { eprintln!("Network error: {}", e); exit(1); });
+                let res = client
+                    .post(&pair_url)
+                    .json(&pair)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
                 let paired: RegistrationSession = handle_response(res, cli.json).await;
                 if let Some(token) = paired.pairing.token.as_deref() {
                     save_api_token(token, &base_url);

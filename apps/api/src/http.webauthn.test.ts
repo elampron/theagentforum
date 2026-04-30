@@ -547,6 +547,69 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.equal(currentSession.body.data.actor.displayName, "Session Felix");
   });
 
+  it("reads and updates the signed-in profile without letting later auth flows overwrite it", async () => {
+    const app = createTestApp();
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "profile-owner@example.com",
+      displayName: "Profile Owner",
+    });
+
+    const beforeUpdate = await requestJson(app, "/profile", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(beforeUpdate.status, 200);
+    assert.equal(beforeUpdate.body.data.handle, "profile-owner@example.com");
+    assert.equal(beforeUpdate.body.data.displayName, "Profile Owner");
+    assert.equal(beforeUpdate.body.data.bio, undefined);
+
+    const updated = await requestJson(app, "/profile", {
+      method: "PATCH",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+      body: {
+        displayName: "Launch Owner",
+        bio: "Ships the launch checklist.",
+        avatarUrl: "https://example.com/avatar.png",
+      },
+    });
+
+    assert.equal(updated.status, 200);
+    assert.equal(updated.body.data.displayName, "Launch Owner");
+    assert.equal(updated.body.data.bio, "Ships the launch checklist.");
+    assert.equal(updated.body.data.avatarUrl, "https://example.com/avatar.png");
+
+    const refreshedSession = await requestJson(app, "/auth/session", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(refreshedSession.status, 200);
+    assert.equal(refreshedSession.body.data.actor.displayName, "Launch Owner");
+
+    await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "profile-owner@example.com",
+        displayName: "Stale Derived Name",
+      },
+    });
+
+    const afterRegistrationRestart = await requestJson(app, "/profile", {
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(afterRegistrationRestart.status, 200);
+    assert.equal(afterRegistrationRestart.body.data.displayName, "Launch Owner");
+  });
+
   it("requires a web session for protected v2 writes and attributes writes to the signed-in actor", async () => {
     const app = createTestApp();
 
@@ -649,6 +712,210 @@ describe("HTTP API - WebAuthn registration", () => {
 
     assert.equal(accepted.status, 200);
     assert.equal(accepted.body.data.content.acceptedCommentId, commentId);
+  });
+
+  it("forbids accepting a reply from a different authenticated actor", async () => {
+    const app = createTestApp();
+
+    const owner = await signInWithPasskey(app, {
+      handle: "owner@example.com",
+      displayName: "Owner",
+      fixture: createPasskeyFixture("accept-owner"),
+    });
+    const responder = await signInWithPasskey(app, {
+      handle: "responder@example.com",
+      displayName: "Responder",
+      fixture: createPasskeyFixture("accept-responder"),
+    });
+
+    const created = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        cookie: owner.cookieHeader,
+      },
+      body: {
+        type: "question",
+        title: "Who can accept this?",
+        body: "Only the original author should be able to.",
+        author: {
+          id: "spoofed-user",
+          kind: "agent",
+          handle: "spoofed",
+        },
+      },
+    });
+
+    const contentId = created.body.data.id as string;
+    const replied = await requestJson(app, `/v2/contents/${contentId}/comments`, {
+      method: "POST",
+      headers: {
+        cookie: responder.cookieHeader,
+      },
+      body: {
+        body: "Responder reply",
+        author: {
+          id: "spoofed-commenter",
+          kind: "agent",
+          handle: "spoofed-commenter",
+        },
+      },
+    });
+
+    const commentId = replied.body.data.comments[0].id as string;
+
+    const forbidden = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
+      method: "POST",
+      headers: {
+        cookie: responder.cookieHeader,
+      },
+    });
+
+    assert.equal(forbidden.status, 403);
+    assert.equal(forbidden.body.error.code, "answer_accept_forbidden");
+
+    const accepted = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
+      method: "POST",
+      headers: {
+        cookie: owner.cookieHeader,
+      },
+    });
+
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.data.content.acceptedCommentId, commentId);
+  });
+
+  it("covers the end-to-end signup, profile, posting, reply, accept, pairing, and token inspect smoke path", async () => {
+    const app = createTestApp();
+    const fixture = createPasskeyFixture("launch-smoke");
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        handle: "launch-smoke@example.com",
+        displayName: "Launch Smoke",
+      },
+    });
+
+    const registrationId = started.body.data.id as string;
+    const pairingCode = started.body.data.pairing.code as string;
+    const registrationOptions = await requestJson(app, `/auth/registrations/${registrationId}/passkey/options`, {
+      headers: {
+        origin: "http://localhost:5173",
+      },
+    });
+
+    const registered = await requestJson(app, "/auth/passkeys/register", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+      },
+      body: {
+        registrationSessionId: registrationId,
+        credential: fixture.createRegistrationCredential({
+          challenge: registrationOptions.body.data.challenge,
+          origin: "http://localhost:5173",
+          rpId: "localhost",
+        }),
+        passkeyLabel: "Launch Smoke Passkey",
+      },
+    });
+
+    assert.equal(registered.status, 200);
+    assert.equal(registered.body.data.status, "verified");
+
+    const paired = await requestJson(app, "/auth/pairings/redeem", {
+      method: "POST",
+      body: {
+        pairingCode,
+        deviceLabel: "launch-smoke-cli",
+      },
+    });
+
+    assert.equal(paired.status, 200);
+    assert.equal(paired.body.data.pairing.status, "paired");
+    const apiToken = paired.body.data.pairing.token as string;
+    assert.ok(apiToken);
+
+    const signedIn = await signInWithPasskey(app, {
+      handle: "launch-smoke@example.com",
+      displayName: "Launch Smoke",
+      fixture,
+      passkeyLabel: "Launch Smoke Passkey",
+    });
+
+    const updatedProfile = await requestJson(app, "/profile", {
+      method: "PATCH",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+      body: {
+        displayName: "Launch Smoke",
+        bio: "Exercises the live-user smoke path.",
+        avatarUrl: "https://example.com/launch-smoke.png",
+      },
+    });
+
+    assert.equal(updatedProfile.status, 200);
+    assert.equal(updatedProfile.body.data.bio, "Exercises the live-user smoke path.");
+
+    const created = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+      body: {
+        type: "question",
+        title: "Can the launch path post end to end?",
+        body: "Need a full smoke pass across auth, forum, and pairing.",
+        author: {
+          id: "spoofed-user",
+          kind: "agent",
+          handle: "spoofed",
+        },
+      },
+    });
+
+    assert.equal(created.status, 201);
+    const contentId = created.body.data.id as string;
+
+    const replied = await requestJson(app, `/v2/contents/${contentId}/comments`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+      },
+      body: {
+        body: "Yes. Pairing token writes can reply too.",
+        author: {
+          id: "spoofed-commenter",
+          kind: "agent",
+          handle: "spoofed-commenter",
+        },
+      },
+    });
+
+    assert.equal(replied.status, 201);
+    const commentId = replied.body.data.comments[0].id as string;
+    assert.equal(replied.body.data.comments[0].author.handle, "launch-smoke@example.com");
+
+    const accepted = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
+      method: "POST",
+      headers: {
+        cookie: signedIn.cookieHeader,
+      },
+    });
+
+    assert.equal(accepted.status, 200);
+    assert.equal(accepted.body.data.content.acceptedCommentId, commentId);
+
+    const tokenSession = await requestJson(app, "/auth/token", {
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+      },
+    });
+
+    assert.equal(tokenSession.status, 200);
+    assert.equal(tokenSession.body.data.actor.handle, "launch-smoke@example.com");
+    assert.equal(tokenSession.body.data.deviceLabel, "launch-smoke-cli");
   });
 
   it("clears the active web session on sign-out", async () => {

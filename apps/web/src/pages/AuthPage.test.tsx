@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { AuthProvider } from "../auth/AuthContext";
 import type { ApiClient } from "../lib/api";
 import { AuthPage } from "./AuthPage";
 
@@ -143,6 +144,99 @@ describe("AuthPage", () => {
         authenticatorAttachment: "platform",
         clientExtensionResults: { credProps: { rk: true } },
       },
+    });
+  });
+
+  it("redirects newly signed-in users with incomplete profiles to onboarding", async () => {
+    const user = userEvent.setup();
+    const getCredential = vi.fn().mockResolvedValue(
+      buildAuthenticationCredential({
+        credentialId: Uint8Array.from([1, 2, 3, 4]),
+        clientDataJson: new TextEncoder().encode(
+          JSON.stringify({
+            type: "webauthn.get",
+            challenge: "AQIDBA",
+            origin: window.location.origin,
+          }),
+        ),
+        authenticatorData: Uint8Array.from([9, 8, 7, 6]),
+        signature: Uint8Array.from([4, 3, 2, 1]),
+      }),
+    );
+
+    Object.defineProperty(navigator, "credentials", {
+      configurable: true,
+      value: {
+        get: getCredential,
+      },
+    });
+
+    const api = buildApi({
+      startAuthentication: vi.fn().mockResolvedValue({
+        id: "aas-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        status: "awaiting_authentication",
+        challenge: "AQIDBA",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:15:00.000Z",
+      }),
+      getPasskeyAuthenticationOptions: vi.fn().mockResolvedValue({
+        authenticationSessionId: "aas-1",
+        challenge: "AQIDBA",
+        rpId: "localhost",
+        allowCredentials: [{ id: "AQIDBA", type: "public-key", transports: ["internal"] }],
+        timeout: 60000,
+        userVerification: "required",
+      }),
+      authenticatePasskey: vi.fn().mockResolvedValue({
+        id: "aas-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        status: "verified",
+        challenge: "AQIDBA",
+        verificationMethod: "webauthn",
+        passkeyLabel: "Eric passkey",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:15:00.000Z",
+        verifiedAt: "2026-03-26T00:01:00.000Z",
+      }),
+      getAuthSession: vi.fn().mockResolvedValue({
+        actor: {
+          id: "acct-1",
+          kind: "human",
+          handle: "eric@example.com",
+          displayName: "Eric",
+        },
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-04-02T00:00:00.000Z",
+      }),
+      getMyProfile: vi.fn().mockResolvedValue({
+        id: "acct-1",
+        handle: "eric@example.com",
+        displayName: "Eric",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        updatedAt: "2026-03-26T00:00:00.000Z",
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth?mode=signin&returnTo=/done"]}>
+        <AuthProvider api={api}>
+          <Routes>
+            <Route path="/auth" element={<AuthPage api={api} />} />
+            <Route path="/profile" element={<p>profile onboarding</p>} />
+            <Route path="/done" element={<p>done</p>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await user.type(screen.getByLabelText("Email"), "Eric@Example.com");
+    await user.click(screen.getByRole("button", { name: /continue with passkey/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("profile onboarding")).toBeInTheDocument();
     });
   });
 
@@ -375,6 +469,16 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
     getPasskeyAuthenticationOptions: vi.fn(),
     authenticatePasskey: vi.fn(),
     getAuthSession: vi.fn().mockResolvedValue(null),
+    getMyProfile: vi.fn().mockResolvedValue({
+      id: "acct-1",
+      handle: "eric@example.com",
+      displayName: "Eric",
+      bio: "Complete profile",
+      createdAt: "2026-03-26T00:00:00.000Z",
+      updatedAt: "2026-03-26T00:00:00.000Z",
+    }),
+    updateMyProfile: vi.fn(),
+    getPublicProfile: vi.fn(),
     listPasskeys: vi.fn(),
     removePasskey: vi.fn(),
     listDevices: vi.fn(),

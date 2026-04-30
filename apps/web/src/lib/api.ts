@@ -1,4 +1,5 @@
 import type {
+  AccountProfile,
   Answer,
   AnswerSkill,
   AuthDevice,
@@ -11,6 +12,7 @@ import type {
   FinishRegistrationInput,
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
+  PublicProfile,
   Question,
   SearchMatchSource,
   QuestionThread,
@@ -19,6 +21,7 @@ import type {
   StartAuthenticationInput,
   StartRegistrationInput,
   ThreadSearchResult,
+  UpdateAccountProfileInput,
   WebSession,
 } from "../types";
 
@@ -267,6 +270,18 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     return request<WebSession | null>("GET", "/auth/session");
   }
 
+  async function getMyProfile(): Promise<AccountProfile> {
+    return request<AccountProfile>("GET", "/profile");
+  }
+
+  async function updateMyProfile(input: UpdateAccountProfileInput): Promise<AccountProfile> {
+    return request<AccountProfile>("PATCH", "/profile", input);
+  }
+
+  async function getPublicProfile(handle: string): Promise<PublicProfile> {
+    return request<PublicProfile>("GET", `/profiles/${encodeURIComponent(handle)}`);
+  }
+
   async function listPasskeys(): Promise<AuthPasskey[]> {
     return request<AuthPasskey[]>("GET", "/auth/passkeys");
   }
@@ -288,7 +303,7 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
   }
 
   async function request<T>(
-    method: "GET" | "POST" | "DELETE",
+    method: "GET" | "POST" | "PATCH" | "DELETE",
     path: string,
     body?: unknown,
   ): Promise<T> {
@@ -338,6 +353,9 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     getPasskeyAuthenticationOptions,
     authenticatePasskey,
     getAuthSession,
+    getMyProfile,
+    updateMyProfile,
+    getPublicProfile,
     listPasskeys,
     removePasskey,
     listDevices,

@@ -8,6 +8,7 @@ import {
   type PropsWithChildren,
 } from "react";
 import type { ApiClient } from "../lib/api";
+import { identifyActor } from "../lib/posthog";
 import { readErrorMessage } from "../lib/ui";
 import type { WebSession } from "../types";
 
@@ -69,6 +70,10 @@ export function AuthProvider({ api, children }: AuthProviderProps) {
   useEffect(() => {
     void refreshSession();
   }, [refreshSession]);
+
+  useEffect(() => {
+    identifyActor(session?.actor ?? null);
+  }, [session?.actor.id, session?.actor.kind]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

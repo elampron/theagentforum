@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type {
+  AccountProfile,
   Actor,
   AuthDevice,
   AuthPasskey,
@@ -8,10 +9,12 @@ import type {
   PairingSession,
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
+  PublicProfile,
   RedeemPairingInput,
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
+  UpdateAccountProfileInput,
   WebSession,
 } from "@theagentforum/core";
 import type {
@@ -68,6 +71,10 @@ interface StoredAccount {
   id: string;
   handle: string;
   displayName?: string;
+  bio?: string;
+  avatarUrl?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface StoredWebSession {
@@ -302,7 +309,7 @@ export function createInMemoryAuthStore(): AuthStore {
     const session: StoredAuthenticationSession = {
       id: `aas-${authenticationSequence++}`,
       handle: input.handle,
-      displayName: latestRegistration?.displayName ?? account?.displayName,
+      displayName: account?.displayName ?? latestRegistration?.displayName,
       status: "awaiting_authentication",
       challenge: createChallenge(),
       createdAt,
@@ -437,12 +444,7 @@ export function createInMemoryAuthStore(): AuthStore {
     const token = createWebSessionToken();
     const session: StoredWebSession = {
       token,
-      actor: {
-        id: account.id,
-        kind: "human",
-        handle: account.handle,
-        displayName: account.displayName,
-      },
+      actor: createStoredActor(account),
       createdAt,
       expiresAt,
     };
@@ -450,7 +452,7 @@ export function createInMemoryAuthStore(): AuthStore {
     webSessionsByToken.set(token, session);
     return {
       token,
-      actor: { ...session.actor },
+      actor: createStoredActor(account),
       createdAt,
       expiresAt,
     };
@@ -468,8 +470,10 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
+    const account = accountsByHandle.get(session.actor.handle);
+
     return {
-      actor: { ...session.actor },
+      actor: account ? createStoredActor(account) : { ...session.actor },
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
     };
@@ -503,12 +507,7 @@ export function createInMemoryAuthStore(): AuthStore {
     const account = ensureAccount(session.handle, session.displayName);
 
     return {
-      actor: {
-        id: account.id,
-        kind: "human",
-        handle: account.handle,
-        displayName: account.displayName,
-      },
+      actor: createStoredActor(account),
       createdAt: session.pairing.createdAt,
       expiresAt: session.pairing.expiresAt,
       deviceLabel: session.pairing.deviceLabel,
@@ -528,6 +527,44 @@ export function createInMemoryAuthStore(): AuthStore {
     if (session.pairing.status === "paired") {
       session.pairing.status = "expired";
     }
+  }
+
+  async function getAccountProfile(accountId: string): Promise<AccountProfile | null> {
+    const account = Array.from(accountsByHandle.values()).find((candidate) => candidate.id === accountId);
+    return account ? cloneAccountProfile(account) : null;
+  }
+
+  async function updateAccountProfile(
+    accountId: string,
+    input: UpdateAccountProfileInput,
+  ): Promise<AccountProfile | null> {
+    const account = Array.from(accountsByHandle.values()).find((candidate) => candidate.id === accountId);
+
+    if (!account) {
+      return null;
+    }
+
+    account.displayName = input.displayName;
+    account.bio = input.bio;
+    account.avatarUrl = input.avatarUrl;
+    account.updatedAt = new Date().toISOString();
+
+    return cloneAccountProfile(account);
+  }
+
+  async function getPublicProfileByHandle(handle: string): Promise<PublicProfile | null> {
+    const account = accountsByHandle.get(handle);
+
+    if (!account) {
+      return null;
+    }
+
+    return {
+      handle: account.handle,
+      displayName: account.displayName,
+      bio: account.bio,
+      avatarUrl: account.avatarUrl,
+    };
   }
 
   async function listAccountPasskeys(accountId: string): Promise<AuthPasskey[]> {
@@ -623,15 +660,19 @@ export function createInMemoryAuthStore(): AuthStore {
     if (existing) {
       if (displayName && !existing.displayName) {
         existing.displayName = displayName;
+        existing.updatedAt = new Date().toISOString();
       }
 
       return existing;
     }
 
+    const createdAt = new Date().toISOString();
     const account: StoredAccount = {
       id: `acct-${accountSequence++}`,
       handle,
       displayName,
+      createdAt,
+      updatedAt: createdAt,
     };
     accountsByHandle.set(handle, account);
     return account;
@@ -655,6 +696,9 @@ export function createInMemoryAuthStore(): AuthStore {
     revokeWebSession,
     getApiTokenSession,
     revokeApiToken,
+    getAccountProfile,
+    updateAccountProfile,
+    getPublicProfileByHandle,
     listAccountPasskeys,
     removeAccountPasskey,
     listAccountDevices,
@@ -702,6 +746,27 @@ function expireAuthenticationSessionIfNeeded(session: StoredAuthenticationSessio
 
 function isAuthenticatablePasskey(credential: StoredCredential): boolean {
   return !credential.credentialId.startsWith("manual-");
+}
+
+function createStoredActor(account: StoredAccount): Actor {
+  return {
+    id: account.id,
+    kind: "human",
+    handle: account.handle,
+    displayName: account.displayName,
+  };
+}
+
+function cloneAccountProfile(account: StoredAccount): AccountProfile {
+  return {
+    id: account.id,
+    handle: account.handle,
+    displayName: account.displayName,
+    bio: account.bio,
+    avatarUrl: account.avatarUrl,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt,
+  };
 }
 
 function cloneRegistrationSession(session: StoredRegistrationSession): RegistrationSession {

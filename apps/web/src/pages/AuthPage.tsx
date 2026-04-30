@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import type { ApiClient } from "../lib/api";
+import { captureClientEvent } from "../lib/posthog";
 import {
   buildAuthPath,
   buildPairingAuthPath,
@@ -18,6 +19,7 @@ import type {
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
   RegistrationSession,
+  WebSession,
 } from "../types";
 
 interface AuthPageProps {
@@ -76,7 +78,7 @@ interface EmailPasskeyAuthPageProps {
   api: ApiClient;
   presentation: "page" | "modal";
   returnTo: string;
-  onAuthStateChange: () => Promise<unknown>;
+  onAuthStateChange: () => Promise<WebSession | null>;
   sessionName: string | null;
   isAuthenticated: boolean;
 }
@@ -110,7 +112,10 @@ function EmailPasskeyAuthPage({
     navigate(returnTo, { replace: true });
   }
 
-  async function finishPasskeySignIn(nextIdentifier: string): Promise<void> {
+  async function finishPasskeySignIn(
+    nextIdentifier: string,
+    flow: "signin" | "signup",
+  ): Promise<void> {
     const authenticationSession = await api.startAuthentication({
       handle: nextIdentifier,
     });
@@ -122,7 +127,25 @@ function EmailPasskeyAuthPage({
       credential,
     });
 
-    await onAuthStateChange();
+    const nextSession = await onAuthStateChange();
+    captureClientEvent(flow === "signup" ? "taf_auth_signup_succeeded" : "taf_auth_signin_succeeded");
+
+    if (!nextSession?.actor.id) {
+      navigate(returnTo, { replace: true });
+      return;
+    }
+
+    try {
+      const profile = await api.getMyProfile();
+
+      if (profileNeedsOnboarding(profile) && !hasSkippedProfileOnboarding(profile.handle)) {
+        navigate(`/profile?onboarding=1&returnTo=${encodeURIComponent(returnTo)}`, { replace: true });
+        return;
+      }
+    } catch {
+      // Do not block sign-in completion if the profile prefetch fails.
+    }
+
     navigate(returnTo, { replace: true });
   }
 
@@ -137,11 +160,16 @@ function EmailPasskeyAuthPage({
     setBusy(true);
     setError(null);
     setStatusMessage(null);
+    captureClientEvent("taf_auth_signin_started");
 
     try {
-      await finishPasskeySignIn(nextIdentifier);
+      await finishPasskeySignIn(nextIdentifier, "signin");
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_auth_signin_failed", {
+        error_message: message,
+      });
     } finally {
       setBusy(false);
     }
@@ -158,6 +186,7 @@ function EmailPasskeyAuthPage({
     setBusy(true);
     setError(null);
     setStatusMessage("Saving your passkey.");
+    captureClientEvent("taf_auth_signup_started");
 
     try {
       const displayName = deriveDisplayNameFromIdentifier(nextIdentifier);
@@ -176,10 +205,14 @@ function EmailPasskeyAuthPage({
       });
 
       setStatusMessage("Passkey saved. Finishing sign in.");
-      await finishPasskeySignIn(nextIdentifier);
+      await finishPasskeySignIn(nextIdentifier, "signup");
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
       setStatusMessage(null);
+      captureClientEvent("taf_auth_signup_failed", {
+        error_message: message,
+      });
     } finally {
       setBusy(false);
     }
@@ -440,6 +473,7 @@ function PairingAuthPage({
 
     setStarting(true);
     setError(null);
+    captureClientEvent("taf_pairing_started");
 
     try {
       const session = await api.startRegistration({
@@ -449,7 +483,12 @@ function PairingAuthPage({
       setRegistrationSession(session);
       setPasskeyLabel(`${session.displayName ?? session.handle} device passkey`);
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_pairing_failed", {
+        stage: "start",
+        error_message: message,
+      });
     } finally {
       setStarting(false);
     }
@@ -493,8 +532,14 @@ function PairingAuthPage({
             passkeyLabel.trim() || `${options.user.displayName} passkey`,
         }),
       );
+      captureClientEvent("taf_pairing_passkey_registered");
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_pairing_failed", {
+        stage: "passkey",
+        error_message: message,
+      });
     } finally {
       setCreatingPasskey(false);
     }
@@ -520,8 +565,16 @@ function PairingAuthPage({
           deviceLabel,
         }),
       );
+      captureClientEvent("taf_pairing_token_redeemed", {
+        device_label: deviceLabel,
+      });
     } catch (cause) {
-      setError(readErrorMessage(cause));
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_pairing_failed", {
+        stage: "redeem",
+        error_message: message,
+      });
     } finally {
       setRedeeming(false);
     }
@@ -1258,6 +1311,18 @@ function formatStatus(status: string): string {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function profileNeedsOnboarding(profile: { bio?: string; avatarUrl?: string }): boolean {
+  return !profile.bio && !profile.avatarUrl;
+}
+
+function hasSkippedProfileOnboarding(handle: string): boolean {
+  try {
+    return window.localStorage.getItem(`taf.profile.onboarding.skip:${handle}`) === "1";
+  } catch {
+    return false;
+  }
 }
 
 function decodeMaybeBase64Url(value: string): Uint8Array {

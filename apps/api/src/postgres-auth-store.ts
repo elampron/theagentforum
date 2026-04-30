@@ -1,16 +1,18 @@
 import { randomBytes } from "node:crypto";
 import type {
+  AccountProfile,
   AuthenticationSession,
-  Actor,
   AuthDevice,
   AuthPasskey,
   CompleteRegistrationVerificationInput,
   PasskeyAuthenticationOptions,
   PasskeyRegistrationOptions,
+  PublicProfile,
   RedeemPairingInput,
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
+  UpdateAccountProfileInput,
   WebSession,
 } from "@theagentforum/core";
 import { runSql } from "./postgres";
@@ -44,6 +46,9 @@ export function createPostgresAuthStore(): AuthStore {
     revokeWebSession,
     getApiTokenSession,
     revokeApiToken,
+    getAccountProfile,
+    updateAccountProfile,
+    getPublicProfileByHandle,
     listAccountPasskeys,
     removeAccountPasskey,
     listAccountDevices,
@@ -60,7 +65,6 @@ async function startRegistration(input: StartRegistrationInput): Promise<Registr
         values (:'handle', nullif(:'display_name', ''))
         on conflict (handle)
         do update set
-          display_name = coalesce(nullif(excluded.display_name, ''), auth_accounts.display_name),
           updated_at = now()
         returning id, handle, display_name
       ),
@@ -639,6 +643,79 @@ async function revokeApiToken(token: string): Promise<void> {
     `,
     { token },
   );
+}
+
+async function getAccountProfile(accountId: string): Promise<AccountProfile | null> {
+  const output = await runSql(
+    `
+      select json_strip_nulls(json_build_object(
+        'id', id,
+        'handle', handle,
+        'displayName', display_name,
+        'bio', bio,
+        'avatarUrl', avatar_url,
+        'createdAt', to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'updatedAt', to_char(updated_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      )) :: text
+      from auth_accounts
+      where id = :'account_id';
+    `,
+    { account_id: accountId },
+  );
+
+  return output ? (JSON.parse(output) as AccountProfile) : null;
+}
+
+async function updateAccountProfile(
+  accountId: string,
+  input: UpdateAccountProfileInput,
+): Promise<AccountProfile | null> {
+  const output = await runSql(
+    `
+      update auth_accounts
+      set
+        display_name = nullif(:'display_name', ''),
+        bio = nullif(:'bio', ''),
+        avatar_url = nullif(:'avatar_url', ''),
+        updated_at = now()
+      where id = :'account_id'
+      returning json_strip_nulls(json_build_object(
+        'id', id,
+        'handle', handle,
+        'displayName', display_name,
+        'bio', bio,
+        'avatarUrl', avatar_url,
+        'createdAt', to_char(created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'updatedAt', to_char(updated_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+      )) :: text;
+    `,
+    {
+      account_id: accountId,
+      display_name: input.displayName ?? "",
+      bio: input.bio ?? "",
+      avatar_url: input.avatarUrl ?? "",
+    },
+  );
+
+  return output ? (JSON.parse(output) as AccountProfile) : null;
+}
+
+async function getPublicProfileByHandle(handle: string): Promise<PublicProfile | null> {
+  const output = await runSql(
+    `
+      select json_strip_nulls(json_build_object(
+        'handle', handle,
+        'displayName', display_name,
+        'bio', bio,
+        'avatarUrl', avatar_url
+      )) :: text
+      from auth_accounts
+      where handle = :'handle';
+    `,
+    { handle },
+  );
+
+  return output ? (JSON.parse(output) as PublicProfile) : null;
 }
 
 async function listAccountPasskeys(accountId: string): Promise<AuthPasskey[]> {
