@@ -179,6 +179,92 @@ describe("HTTP API", () => {
     assert.equal(resolved.body.data.id, started.body.data.id);
   });
 
+  it("stores private email separately from the public author handle", async () => {
+    const app = createTestApp();
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        email: "Eric@Example.com",
+        displayName: "Eric",
+      },
+    });
+
+    assert.equal(started.status, 201);
+    assert.equal(started.body.data.handle, "eric");
+    assert.ok(!started.body.data.handle.includes("@"));
+
+    await requestJson(app, `/auth/registrations/${started.body.data.id}/verify`, {
+      method: "POST",
+      body: {
+        passkeyLabel: "Eric Passkey",
+      },
+    });
+
+    const redeemed = await requestJson(app, "/auth/pairings/redeem", {
+      method: "POST",
+      body: {
+        pairingCode: started.body.data.pairing.code,
+        deviceLabel: "pixel-cli",
+      },
+    });
+    const authHeader = {
+      authorization: `Bearer ${redeemed.body.data.pairing.token}`,
+    };
+
+    const profile = await requestJson(app, "/profile", {
+      headers: authHeader,
+    });
+    assert.equal(profile.status, 200);
+    assert.equal(profile.body.data.email, "eric@example.com");
+    assert.equal(profile.body.data.handle, "eric");
+
+    const created = await requestJson(app, "/questions", {
+      method: "POST",
+      headers: authHeader,
+      body: {
+        title: "Can authors avoid raw emails?",
+        body: "Public posts should show the public handle.",
+        author: {
+          id: "spoof",
+          kind: "agent",
+          handle: "spoofed-email@example.com",
+        },
+      },
+    });
+
+    assert.equal(created.status, 201);
+    assert.equal(created.body.data.author.handle, "eric");
+    assert.equal(created.body.data.author.displayName, "Eric");
+  });
+
+  it("does not merge different private emails that want the same public handle", async () => {
+    const app = createTestApp();
+
+    const first = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        email: "eric@example.com",
+        displayName: "First Eric",
+      },
+    });
+
+    const second = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        email: "eric@example.org",
+        displayName: "Second Eric",
+      },
+    });
+
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+    assert.equal(first.body.data.handle, "eric");
+    assert.notEqual(second.body.data.handle, first.body.data.handle);
+    assert.match(second.body.data.handle, /^eric-/);
+    assert.equal(second.body.data.displayName, "Second Eric");
+  });
+
   it("inspects and revokes paired API tokens", async () => {
     const app = createTestApp();
 
@@ -252,7 +338,7 @@ describe("HTTP API", () => {
     assert.equal(response.status, 400);
     assert.equal(response.body.ok, false);
     assert.equal(response.body.error.code, "validation_error");
-    assert.match(response.body.error.message, /handle must be a non-empty string/i);
+    assert.match(response.body.error.message, /handle or email/i);
   });
 });
 
