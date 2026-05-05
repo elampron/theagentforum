@@ -3,6 +3,10 @@ import type { Actor } from "../types";
 
 export function readErrorMessage(cause: unknown): string {
   if (cause instanceof ApiClientError) {
+    if (cause.statusCode === 429) {
+      return "Too many attempts in a short window. Wait a minute, then try again.";
+    }
+
     return cause.message;
   }
 

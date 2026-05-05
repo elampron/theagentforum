@@ -250,6 +250,56 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.ok(authenticated.body.data.verifiedAt);
   });
 
+  it("starts passkey authentication from private email and returns the public handle", async () => {
+    const app = createTestApp();
+    const fixture = createPasskeyFixture();
+
+    const started = await requestJson(app, "/auth/registrations/start", {
+      method: "POST",
+      body: {
+        email: "Eric@Example.com",
+        displayName: "Eric",
+      },
+    });
+
+    assert.equal(started.status, 201);
+    assert.equal(started.body.data.handle, "eric");
+
+    const registrationId = started.body.data.id as string;
+    const registrationOptions = await requestJson(app, `/auth/registrations/${registrationId}/passkey/options`, {
+      headers: {
+        origin: "http://localhost:5173",
+      },
+    });
+
+    await requestJson(app, "/auth/passkeys/register", {
+      method: "POST",
+      headers: {
+        origin: "http://localhost:5173",
+      },
+      body: {
+        registrationSessionId: registrationId,
+        credential: fixture.createRegistrationCredential({
+          challenge: registrationOptions.body.data.challenge,
+          origin: "http://localhost:5173",
+          rpId: "localhost",
+        }),
+        passkeyLabel: "Eric MacBook Passkey",
+      },
+    });
+
+    const startedAuthentication = await requestJson(app, "/auth/authentications/start", {
+      method: "POST",
+      body: {
+        handle: "eric@example.com",
+      },
+    });
+
+    assert.equal(startedAuthentication.status, 201);
+    assert.equal(startedAuthentication.body.data.handle, "eric");
+    assert.equal(startedAuthentication.body.data.displayName, "Eric");
+  });
+
   it("rejects a passkey authentication assertion whose challenge does not match", async () => {
     const app = createTestApp();
     const fixture = createPasskeyFixture();
@@ -562,7 +612,8 @@ describe("HTTP API - WebAuthn registration", () => {
     });
 
     assert.equal(beforeUpdate.status, 200);
-    assert.equal(beforeUpdate.body.data.handle, "profile-owner@example.com");
+    assert.equal(beforeUpdate.body.data.handle, "profile-owner");
+    assert.equal(beforeUpdate.body.data.email, "profile-owner@example.com");
     assert.equal(beforeUpdate.body.data.displayName, "Profile Owner");
     assert.equal(beforeUpdate.body.data.bio, undefined);
 
@@ -895,7 +946,7 @@ describe("HTTP API - WebAuthn registration", () => {
 
     assert.equal(replied.status, 201);
     const commentId = replied.body.data.comments[0].id as string;
-    assert.equal(replied.body.data.comments[0].author.handle, "launch-smoke@example.com");
+    assert.equal(replied.body.data.comments[0].author.handle, "launch-smoke");
 
     const accepted = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
       method: "POST",
@@ -914,7 +965,7 @@ describe("HTTP API - WebAuthn registration", () => {
     });
 
     assert.equal(tokenSession.status, 200);
-    assert.equal(tokenSession.body.data.actor.handle, "launch-smoke@example.com");
+    assert.equal(tokenSession.body.data.actor.handle, "launch-smoke");
     assert.equal(tokenSession.body.data.deviceLabel, "launch-smoke-cli");
   });
 

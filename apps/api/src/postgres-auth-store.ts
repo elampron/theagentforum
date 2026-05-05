@@ -57,16 +57,84 @@ export function createPostgresAuthStore(): AuthStore {
 }
 
 async function startRegistration(input: StartRegistrationInput): Promise<RegistrationSession> {
+  const registrationFields = buildRegistrationFields(input);
   const verificationToken = randomBytes(6).toString("hex");
   const registrationSession = await queryJson<RegistrationSession>(
     `
-      with ensured_account as (
-        insert into auth_accounts (handle, display_name)
-        values (:'handle', nullif(:'display_name', ''))
-        on conflict (handle)
-        do update set
+      with registration_input as (
+        select
+          :'handle'::text as handle,
+          nullif(:'email', '')::text as email,
+          nullif(:'display_name', '')::text as display_name
+      ),
+      matched_account as (
+        select a.id
+        from auth_accounts a
+        cross join registration_input i
+        where (i.email is null and a.handle = i.handle)
+          or (i.email is not null and lower(a.email) = lower(i.email))
+          or (i.email is not null and lower(a.handle) = lower(i.email))
+        order by
+          case
+            when i.email is not null and lower(a.email) = lower(i.email) then 0
+            when i.email is not null and lower(a.handle) = lower(i.email) then 1
+            else 2
+          end,
+          a.created_at asc
+        limit 1
+      ),
+      updated_existing_account as (
+        update auth_accounts a
+        set
+          email = coalesce(a.email, i.email),
+          display_name = coalesce(a.display_name, i.display_name),
           updated_at = now()
+        from registration_input i, matched_account m
+        where a.id = m.id
+        returning a.id, a.handle, a.display_name
+      ),
+      candidate_handles as (
+        select handle, 0 as priority
+        from registration_input
+        union all
+        select
+          left(
+            concat(
+              (select handle from registration_input),
+              '-',
+              substr(md5(coalesce((select email from registration_input), '') || '-' || attempt::text), 1, 6)
+            ),
+            40
+          ) as handle,
+          attempt as priority
+        from generate_series(1, 20) as candidate_attempts(attempt)
+      ),
+      available_handle as (
+        select candidate_handles.handle
+        from candidate_handles
+        where not exists (
+          select 1
+          from auth_accounts a
+          where a.handle = candidate_handles.handle
+        )
+        order by candidate_handles.priority asc
+        limit 1
+      ),
+      created_account as (
+        insert into auth_accounts (handle, email, display_name)
+        select
+          available_handle.handle,
+          registration_input.email,
+          registration_input.display_name
+        from registration_input
+        cross join available_handle
+        where not exists (select 1 from matched_account)
         returning id, handle, display_name
+      ),
+      ensured_account as (
+        select * from updated_existing_account
+        union all
+        select * from created_account
       ),
       created_registration as (
         insert into auth_registration_sessions (
@@ -97,8 +165,9 @@ async function startRegistration(input: StartRegistrationInput): Promise<Registr
         on created_pairing.registration_session_id = created_registration.id;
     `,
     {
-      handle: input.handle,
-      display_name: input.displayName ?? "",
+      handle: registrationFields.handle,
+      email: registrationFields.email ?? "",
+      display_name: registrationFields.displayName ?? "",
       challenge: createChallenge(),
       verification_url: `/auth?registration=${verificationToken}`,
       pairing_code: createPairingCode(),
@@ -379,18 +448,26 @@ async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSes
 async function startAuthentication(
   input: StartAuthenticationInput,
 ): Promise<AuthenticationSession | null> {
+  const signInIdentifier = input.handle.trim().toLowerCase();
   const output = await runSql(
     `
       with matched_account as (
         select a.id, a.handle, a.display_name
         from auth_accounts a
-        where a.handle = :'handle'
+        where (
+            lower(a.handle) = :'sign_in_identifier'
+            or lower(a.email) = :'sign_in_identifier'
+          )
           and exists (
             select 1
             from auth_passkey_credentials c
             where c.account_id = a.id
               and c.credential_id not like 'manual-%'
           )
+        order by
+          case when lower(a.email) = :'sign_in_identifier' then 0 else 1 end,
+          a.created_at asc
+        limit 1
       ),
       created_authentication as (
         insert into auth_authentication_sessions (
@@ -411,7 +488,7 @@ async function startAuthentication(
       from created_authentication;
     `,
     {
-      handle: input.handle,
+      sign_in_identifier: signInIdentifier,
       challenge: createChallenge(),
     },
   );
@@ -651,6 +728,7 @@ async function getAccountProfile(accountId: string): Promise<AccountProfile | nu
       select json_strip_nulls(json_build_object(
         'id', id,
         'handle', handle,
+        'email', email,
         'displayName', display_name,
         'bio', bio,
         'avatarUrl', avatar_url,
@@ -682,6 +760,7 @@ async function updateAccountProfile(
       returning json_strip_nulls(json_build_object(
         'id', id,
         'handle', handle,
+        'email', email,
         'displayName', display_name,
         'bio', bio,
         'avatarUrl', avatar_url,
@@ -1043,6 +1122,38 @@ function issuedWebSessionSelect(webSessionAlias: string, accountAlias: string): 
     'createdAt', to_char(${webSessionAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'expiresAt', to_char(${webSessionAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   )`;
+}
+
+function buildRegistrationFields(input: StartRegistrationInput): {
+  handle: string;
+  email?: string;
+  displayName?: string;
+} {
+  const email = normalizeEmail(input.email);
+  const handle = buildPublicHandle(input.handle ?? email ?? "user");
+
+  return {
+    handle,
+    email,
+    displayName: input.displayName,
+  };
+}
+
+function normalizeEmail(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function buildPublicHandle(value: string): string {
+  const source = value.includes("@") ? value.split("@")[0] ?? value : value;
+  const handle = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+
+  return handle || `user-${randomBytes(3).toString("hex")}`;
 }
 
 async function queryJson<T>(sql: string, variables?: Record<string, string>): Promise<T> {

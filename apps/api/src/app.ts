@@ -888,7 +888,7 @@ async function routeRequest(
         corsHeaders,
         404,
         "passkey_authentication_not_available",
-        "No registered passkey was found for that handle.",
+        "No registered passkey was found for that email or handle.",
       );
       return;
     }
@@ -1340,10 +1340,26 @@ function parseUpdateAccountProfileInput(payload: unknown): UpdateAccountProfileI
 
 function parseStartRegistrationInput(payload: unknown): StartRegistrationInput {
   const input = asRecord(payload, "Request body must be an object.");
+  const rawHandle = readOptionalString(input.handle, "handle");
+  const rawEmail = readOptionalString(input.email, "email");
+  const inferredEmail = rawEmail ?? (rawHandle && isEmailLike(rawHandle) ? rawHandle : undefined);
+  const email = inferredEmail ? readEmailString(inferredEmail, "email") : undefined;
+  const displayName = readOptionalString(input.displayName, "displayName");
+  const publicHandleSource = rawHandle && rawHandle !== inferredEmail ? rawHandle : email;
+  const handle = publicHandleSource ? buildPublicHandle(publicHandleSource) : undefined;
+
+  if (!handle && !email) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      "Either handle or email must be a non-empty string.",
+    );
+  }
 
   return {
-    handle: readRequiredString(input.handle, "handle"),
-    displayName: readOptionalString(input.displayName, "displayName"),
+    handle,
+    email,
+    displayName,
   };
 }
 
@@ -1351,7 +1367,7 @@ function parseStartAuthenticationInput(payload: unknown): StartAuthenticationInp
   const input = asRecord(payload, "Request body must be an object.");
 
   return {
-    handle: readRequiredString(input.handle, "handle"),
+    handle: readRequiredString(input.handle, "handle").toLowerCase(),
   };
 }
 
@@ -1532,6 +1548,36 @@ function readOptionalString(value: unknown, fieldName: string): string | undefin
   }
 
   return value.trim();
+}
+
+function readEmailString(value: string, fieldName: string): string {
+  const email = value.trim().toLowerCase();
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be a valid email address.`,
+    );
+  }
+
+  return email;
+}
+
+function isEmailLike(value: string): boolean {
+  return value.includes("@");
+}
+
+function buildPublicHandle(value: string): string | undefined {
+  const source = value.includes("@") ? value.split("@")[0] ?? value : value;
+  const handle = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+
+  return handle || undefined;
 }
 
 function readOptionalInteger(value: unknown, fieldName: string): number | undefined {
