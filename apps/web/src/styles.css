@@ -2654,6 +2654,87 @@ ul {
   text-transform: lowercase;
 }
 
+.terminal-particle-word {
+  position: relative;
+  display: inline-block;
+  isolation: isolate;
+  color: #cabdff;
+  text-shadow: 0 0 28px rgba(164, 137, 255, 0.32);
+}
+
+.terminal-particle-swarm {
+  position: absolute;
+  inset: -0.42em -0.52em -0.3em;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.terminal-particle-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.16em;
+  height: 0.16em;
+  border-radius: 999px;
+  background: #a489ff;
+  box-shadow:
+    0 0 10px rgba(164, 137, 255, 0.95),
+    0 0 22px rgba(124, 77, 255, 0.58);
+  opacity: 0.82;
+  transform: rotate(0deg) translate(var(--orbit-x), var(--orbit-y)) scale(1);
+  animation: terminal-particle-orbit var(--orbit-speed) linear infinite;
+}
+
+.terminal-particle-dot:nth-child(1) {
+  --orbit-x: -1.95em;
+  --orbit-y: -0.34em;
+  --orbit-speed: 5.8s;
+  animation-delay: -0.7s;
+}
+
+.terminal-particle-dot:nth-child(2) {
+  --orbit-x: 1.72em;
+  --orbit-y: -0.5em;
+  --orbit-speed: 6.7s;
+  animation-delay: -2.2s;
+  width: 0.13em;
+  height: 0.13em;
+}
+
+.terminal-particle-dot:nth-child(3) {
+  --orbit-x: -0.62em;
+  --orbit-y: 0.62em;
+  --orbit-speed: 7.2s;
+  animation-delay: -4s;
+}
+
+.terminal-particle-dot:nth-child(4) {
+  --orbit-x: 2.2em;
+  --orbit-y: 0.3em;
+  --orbit-speed: 5.2s;
+  animation-delay: -1.3s;
+  width: 0.14em;
+  height: 0.14em;
+}
+
+.terminal-particle-dot:nth-child(5) {
+  --orbit-x: -2.35em;
+  --orbit-y: 0.18em;
+  --orbit-speed: 8s;
+  animation-delay: -5.1s;
+  width: 0.11em;
+  height: 0.11em;
+}
+
+.terminal-particle-dot:nth-child(6) {
+  --orbit-x: 0.48em;
+  --orbit-y: -0.7em;
+  --orbit-speed: 6.1s;
+  animation-delay: -3.3s;
+  width: 0.1em;
+  height: 0.1em;
+}
+
 .terminal-lead {
   max-width: 44rem;
   color: var(--terminal-muted);
@@ -3184,8 +3265,45 @@ ul {
 }
 
 .terminal-hero--home {
+  position: relative;
   grid-template-columns: minmax(0, 1fr) 24rem;
   min-height: auto;
+  overflow: hidden;
+  animation: terminal-rise-in 620ms ease-out both;
+}
+
+.terminal-hero--home::after {
+  position: absolute;
+  inset: auto -10% -5rem 46%;
+  height: 12rem;
+  content: "";
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(25, 242, 211, 0.16), rgba(164, 137, 255, 0.22));
+  filter: blur(32px);
+  pointer-events: none;
+  transform: rotate(-7deg);
+  animation: terminal-ambient-glow 8s ease-in-out infinite;
+}
+
+.terminal-hero--home > * {
+  position: relative;
+  z-index: 1;
+}
+
+.terminal-hero--home .terminal-hero__copy > * {
+  animation: terminal-rise-in 540ms ease-out both;
+}
+
+.terminal-hero--home .terminal-hero__copy > :nth-child(2) {
+  animation-delay: 70ms;
+}
+
+.terminal-hero--home .terminal-hero__copy > :nth-child(3) {
+  animation-delay: 140ms;
+}
+
+.terminal-hero--home .terminal-hero__copy > :nth-child(4) {
+  animation-delay: 210ms;
 }
 
 .terminal-home-overview,
@@ -3219,6 +3337,18 @@ ul {
   border: 1px solid rgba(164, 137, 255, 0.18);
   border-radius: 0.8rem;
   background: rgba(255, 255, 255, 0.03);
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.terminal-home-topic-chip:hover {
+  border-color: rgba(25, 242, 211, 0.32);
+  background: rgba(25, 242, 211, 0.07);
+  box-shadow: 0 0 28px rgba(25, 242, 211, 0.08);
+  transform: translateX(3px);
 }
 
 .terminal-home-topic-chip strong {
@@ -3635,4 +3765,137 @@ ul {
 
 .terminal-skill-panel .terminal-artifact-list strong {
   color: var(--terminal-text);
+}
+
+.terminal-hero--home .terminal-home-card,
+.terminal-benefits,
+.terminal-layout--thread,
+#recent-questions {
+  animation: terminal-rise-in 560ms ease-out both;
+}
+
+.terminal-hero--home .terminal-home-card:nth-child(1) {
+  animation-delay: 120ms;
+}
+
+.terminal-hero--home .terminal-home-card:nth-child(2) {
+  animation-delay: 190ms;
+}
+
+.terminal-hero--home .terminal-home-card:nth-child(3) {
+  animation-delay: 260ms;
+}
+
+.terminal-benefits {
+  animation-delay: 120ms;
+}
+
+.terminal-layout--thread {
+  animation-delay: 180ms;
+}
+
+#recent-questions {
+  animation-delay: 240ms;
+}
+
+.terminal-feed-list .terminal-feed-card--post {
+  animation: terminal-feed-in 420ms ease-out both;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.terminal-feed-list .terminal-feed-card--post:hover {
+  border-color: rgba(25, 242, 211, 0.28);
+  background: linear-gradient(180deg, rgba(16, 22, 39, 0.94), rgba(8, 12, 24, 0.9));
+  box-shadow: 0 0 0 1px rgba(25, 242, 211, 0.05), 0 26px 76px rgba(0, 0, 0, 0.38);
+  transform: translateY(-2px);
+}
+
+.terminal-feed-list .terminal-feed-card--post:nth-child(2) {
+  animation-delay: 60ms;
+}
+
+.terminal-feed-list .terminal-feed-card--post:nth-child(3) {
+  animation-delay: 120ms;
+}
+
+.terminal-feed-list .terminal-feed-card--post:nth-child(4) {
+  animation-delay: 180ms;
+}
+
+.terminal-feed-list .terminal-feed-card--post:nth-child(n + 5) {
+  animation-delay: 240ms;
+}
+
+@keyframes terminal-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes terminal-feed-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes terminal-ambient-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: translate3d(0, 0, 0) rotate(-7deg);
+  }
+
+  50% {
+    opacity: 0.9;
+    transform: translate3d(-18px, -10px, 0) rotate(-5deg);
+  }
+}
+
+@keyframes terminal-particle-orbit {
+  0% {
+    opacity: 0.78;
+    transform: rotate(0deg) translate(var(--orbit-x), var(--orbit-y)) scale(1);
+  }
+
+  32% {
+    opacity: 0.95;
+    transform: rotate(115deg) translate(var(--orbit-x), var(--orbit-y)) scale(1.06);
+  }
+
+  68% {
+    opacity: 0.84;
+    transform: rotate(245deg) translate(var(--orbit-x), var(--orbit-y)) scale(0.96);
+  }
+
+  100% {
+    opacity: 0.78;
+    transform: rotate(360deg) translate(var(--orbit-x), var(--orbit-y)) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 1ms !important;
+  }
 }
