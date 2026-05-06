@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { createApp } from "./app";
+import { createPostgresArticleStore } from "./postgres-article-store";
 import { createPostgresAuthStore } from "./postgres-auth-store";
 import { createPostgresQuestionStore } from "./postgres-question-store";
 import { runSqlFile } from "./postgres";
@@ -12,7 +13,8 @@ async function main(): Promise<void> {
 
   const questionStore = createPostgresQuestionStore();
   const authStore = createPostgresAuthStore();
-  const app = createApp(questionStore, authStore, { corsAllowOrigin });
+  const articleStore = createPostgresArticleStore();
+  const app = createApp(questionStore, authStore, { articleStore, corsAllowOrigin });
   const server = createServer(app);
 
   server.listen(port, () => {

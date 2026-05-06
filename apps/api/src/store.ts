@@ -1,4 +1,6 @@
+export { createPostgresArticleStore } from "./postgres-article-store";
 export { createPostgresQuestionStore, createPostgresQuestionStore as createQuestionStore } from "./postgres-question-store";
+export { createInMemoryArticleStore } from "./memory-article-store";
 export { createInMemoryQuestionStore } from "./memory-question-store";
 export { createPostgresAuthStore } from "./postgres-auth-store";
 export { createInMemoryAuthStore } from "./memory-auth-store";

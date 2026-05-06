@@ -1,42 +1,78 @@
 import type {
   Answer,
-  CreateAnswerInput,
-  Question,
-  ThreadSearchResult,
-} from "@theagentforum/core";
-import type {
-  Comment,
+  ArticleContent,
   Content,
+  ContentSearchMatchSource,
   ContentThread,
+  ContentThreadSearchMatch,
   ContentThreadSearchResult,
+  CreateAnswerInput,
   CreateCommentInput,
   CreateContentInput,
+  Question,
   QuestionContent,
 } from "@theagentforum/core";
+import type { ArticleStore } from "./article-store";
 import type { ForumStore } from "./forum-store";
+import { createInMemoryArticleStore } from "./memory-article-store";
 import type { QuestionStore, QuestionThread } from "./question-store";
 
-export function createForumAdapter(questionStore: QuestionStore): ForumStore {
+export function createForumAdapter(
+  questionStore: QuestionStore,
+  articleStore: ArticleStore = createInMemoryArticleStore(),
+): ForumStore {
   async function listContents(type?: Content["type"]): Promise<Content[]> {
-    if (!type || type === "question") {
+    if (type === "question") {
       const questions = await questionStore.listQuestions();
       return questions.map(mapQuestionToContent);
     }
 
-    // Articles not yet backed by storage in v2 MVP
-    return [];
+    if (type === "article") {
+      return articleStore.listArticles();
+    }
+
+    const [questions, articles] = await Promise.all([
+      questionStore.listQuestions(),
+      articleStore.listArticles(),
+    ]);
+
+    return [...questions.map(mapQuestionToContent), ...articles].sort(compareContentByCreatedAtDesc);
   }
 
   async function searchThreads(
     query: string,
     options: { type?: Content["type"]; status?: Question["status"]; limit?: number } = {},
   ): Promise<ContentThreadSearchResult> {
-    const type = options.type ?? "question";
-
-    if (type !== "question") {
-      return emptySearchResult(query);
+    if (options.type === "question") {
+      return searchQuestionThreads(query, options);
     }
 
+    if (options.type === "article") {
+      return searchArticleThreads(query, options.limit);
+    }
+
+    const [questionResult, articleResult] = await Promise.all([
+      searchQuestionThreads(query, options),
+      searchArticleThreads(query, options.limit),
+    ]);
+
+    const matches = [...questionResult.matches, ...articleResult.matches]
+      .sort((left, right) => right.score - left.score)
+      .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
+
+    return {
+      query,
+      strategy: "keyword_v1",
+      totalMatches: questionResult.totalMatches + articleResult.totalMatches,
+      returned: matches.length,
+      matches,
+    };
+  }
+
+  async function searchQuestionThreads(
+    query: string,
+    options: { status?: Question["status"]; limit?: number } = {},
+  ): Promise<ContentThreadSearchResult> {
     const result = await questionStore.searchThreads(query, {
       status: options.status,
       limit: options.limit,
@@ -49,15 +85,37 @@ export function createForumAdapter(questionStore: QuestionStore): ForumStore {
       returned: result.returned,
       matches: result.matches.map((m) => ({
         score: m.score,
-        matchSources: m.matchSources.map((s) => (s === "answer" ? "comment" : (s as any))),
+        matchSources: m.matchSources.map((s) => (s === "answer" ? "comment" : (s as ContentSearchMatchSource))),
         content: mapQuestionToContent(m.question),
       })),
     };
   }
 
+  async function searchArticleThreads(query: string, limit?: number): Promise<ContentThreadSearchResult> {
+    const normalizedQuery = normalizeSearchText(query);
+    const matches = (await articleStore.listArticles())
+      .map((article) => rankArticle(article, normalizedQuery))
+      .filter((match): match is ContentThreadSearchMatch => Boolean(match))
+      .sort((left, right) => right.score - left.score);
+
+    const returnedMatches = matches.slice(0, limit ?? matches.length);
+
+    return {
+      query,
+      strategy: "keyword_v1",
+      totalMatches: matches.length,
+      returned: returnedMatches.length,
+      matches: returnedMatches,
+    };
+  }
+
   async function createContent(input: CreateContentInput): Promise<Content> {
-    if (input.type !== "question") {
-      throw createNotImplementedError("Only type=question is supported in v2 MVP.");
+    if (input.type === "article") {
+      return articleStore.createArticle({
+        title: input.title,
+        body: input.body,
+        author: input.author,
+      });
     }
 
     const q = await questionStore.createQuestion({
@@ -70,6 +128,11 @@ export function createForumAdapter(questionStore: QuestionStore): ForumStore {
   }
 
   async function getContentThread(contentId: string): Promise<ContentThread | null> {
+    if (isArticleId(contentId)) {
+      const article = await articleStore.getArticle(contentId);
+      return article ? { content: article, comments: [] } : null;
+    }
+
     if (!isQuestionId(contentId)) {
       return null;
     }
@@ -119,6 +182,10 @@ function isQuestionId(id: string): boolean {
   return /^q-/.test(id);
 }
 
+function isArticleId(id: string): boolean {
+  return /^art-/.test(id);
+}
+
 function mapQuestionToContent(q: Question): QuestionContent {
   return {
     id: q.id,
@@ -132,7 +199,7 @@ function mapQuestionToContent(q: Question): QuestionContent {
   };
 }
 
-function mapAnswerToComment(a: Answer): Comment {
+function mapAnswerToComment(a: Answer): ContentThread["comments"][number] {
   return {
     id: a.id,
     contentId: a.questionId,
@@ -154,14 +221,33 @@ function mapCreateCommentToAnswerInput(input: CreateCommentInput): CreateAnswerI
   return { body: input.body, author: input.author };
 }
 
-function emptySearchResult(query: string): ContentThreadSearchResult {
-  return { query, strategy: "keyword_v1", totalMatches: 0, returned: 0, matches: [] };
+function rankArticle(article: ArticleContent, normalizedQuery: string): ContentThreadSearchMatch | null {
+  const title = normalizeSearchText(article.title);
+  const body = normalizeSearchText(article.body);
+  const matchSources: ContentSearchMatchSource[] = [];
+  let score = 0;
+
+  if (title.includes(normalizedQuery)) {
+    matchSources.push("title");
+    score += 5;
+  }
+
+  if (body.includes(normalizedQuery)) {
+    matchSources.push("body");
+    score += 2;
+  }
+
+  if (matchSources.length === 0) {
+    return null;
+  }
+
+  return { score, matchSources, content: article };
 }
 
-function createNotImplementedError(message: string): Error & { statusCode: number; code: string } {
-  const error = new Error(message) as Error & { statusCode: number; code: string };
-  error.statusCode = 501;
-  error.code = "not_implemented";
-  return error;
+function normalizeSearchText(value: string): string {
+  return value.trim().toLowerCase();
 }
 
+function compareContentByCreatedAtDesc(left: Content, right: Content): number {
+  return right.createdAt.localeCompare(left.createdAt);
+}

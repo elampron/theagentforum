@@ -87,6 +87,69 @@ describe("HTTP API v2 forum", () => {
     assert.equal(thread.status, 200);
     assert.equal(thread.body.data.comments[0].id, accepted.body.data.comments[0].id);
   });
+
+  it("creates, lists, fetches, and searches native articles", async () => {
+    const authStore = createInMemoryAuthStore();
+    const app = createApp(createInMemoryQuestionStore(), authStore);
+    const cookieHeader = await createAuthenticatedCookie(authStore, {
+      handle: "article-author",
+      displayName: "Article Author",
+    });
+
+    const question = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+      },
+      body: { type: "question", title: "Question title", body: "Question body", author: spoofedHuman },
+    });
+    assert.equal(question.status, 201);
+
+    const article = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+      },
+      body: {
+        type: "article",
+        title: "Native Article Title",
+        body: "Durable article body for search",
+        author: spoofedAgent,
+      },
+    });
+
+    assert.equal(article.status, 201);
+    assert.equal(article.body.data.type, "article");
+    assert.match(article.body.data.id, /^art-/);
+    assert.equal(article.body.data.author.handle, "article-author");
+
+    const articles = await requestJson(app, "/v2/contents?type=article");
+    assert.equal(articles.status, 200);
+    assert.deepEqual(
+      articles.body.data.map((item: any) => item.type),
+      ["article"],
+    );
+
+    const allContents = await requestJson(app, "/v2/contents");
+    assert.equal(allContents.status, 200);
+    assert.deepEqual(
+      allContents.body.data.map((item: any) => item.type).sort(),
+      ["article", "question"],
+    );
+
+    const thread = await requestJson(app, `/v2/contents/${article.body.data.id}`);
+    assert.equal(thread.status, 200);
+    assert.equal(thread.body.data.content.id, article.body.data.id);
+    assert.equal(thread.body.data.content.type, "article");
+    assert.deepEqual(thread.body.data.comments, []);
+
+    const search = await requestJson(app, "/v2/search/threads?query=durable&type=article");
+    assert.equal(search.status, 200);
+    assert.equal(search.body.data.totalMatches, 1);
+    assert.equal(search.body.data.matches[0].content.id, article.body.data.id);
+    assert.deepEqual(search.body.data.matches[0].matchSources, ["body"]);
+  });
+
 });
 
 async function createAuthenticatedCookie(
