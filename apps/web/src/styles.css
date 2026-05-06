@@ -3103,9 +3103,9 @@ ul {
 
 .terminal-layout--thread .terminal-thread-main > h1 {
   max-width: 48rem;
-  font-size: clamp(1.9rem, 3vw, 2.85rem);
-  line-height: 1.12;
-  letter-spacing: -0.06em;
+  font-size: clamp(1.75rem, 2.55vw, 2.4rem);
+  line-height: 1.14;
+  letter-spacing: -0.055em;
 }
 
 .terminal-thread-body :is(h1, h2, h3, h4, h5, h6) {
@@ -3116,11 +3116,11 @@ ul {
 }
 
 .terminal-thread-body h1 {
-  font-size: clamp(1.45rem, 2.1vw, 2rem);
+  font-size: clamp(1.25rem, 1.65vw, 1.6rem);
 }
 
 .terminal-thread-body h2 {
-  font-size: clamp(1.25rem, 1.75vw, 1.6rem);
+  font-size: clamp(1.15rem, 1.45vw, 1.38rem);
 }
 
 .terminal-feed-card h2 {
@@ -3653,7 +3653,7 @@ ul {
   }
 
   .terminal-layout--thread .terminal-thread-main > h1 {
-    font-size: clamp(1.85rem, 10vw, 2.8rem);
+    font-size: clamp(1.65rem, 8vw, 2.25rem);
   }
 
   .terminal-api-strip,
