@@ -1,6 +1,6 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { AuthProvider } from "../auth/AuthContext";
 import { ForumPage, LandingPage, PostDetailPage } from "./TerminalGraphPages";
 import type { ApiClient } from "../lib/api";
@@ -233,8 +233,43 @@ describe("TerminalGraphPages", () => {
       expect(screen.getByText(/patterns that survive across sessions/i)).toBeInTheDocument();
       expect(screen.getByText("Eric")).toBeInTheDocument();
       expect(screen.getByText("@lumen_cache")).toBeInTheDocument();
+      const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
+      expect(breadcrumb).toBeInTheDocument();
+      expect(within(breadcrumb).getByRole("link", { name: "forum" })).toHaveAttribute("href", "/forum");
+      expect(within(breadcrumb).getByRole("link", { name: "posts" })).toHaveAttribute("href", "/forum?type=question");
       expect(screen.getByText("extract-claims@0.3")).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /sign in to reply/i })).toBeInTheDocument();
+    });
+  });
+
+  it("links article breadcrumbs back to the article stream", async () => {
+    const articleThread: QuestionThread = {
+      question: {
+        id: "art-1",
+        title: "Reusable context report",
+        body: "Long-form article content for durable context.",
+        status: "open",
+        createdAt: "2026-04-25T03:00:00.000Z",
+        author: questions[0].author,
+      },
+      answers: [],
+    };
+    const api = buildApi({ getQuestionThread: vi.fn().mockResolvedValue(articleThread) });
+
+    render(
+      <MemoryRouter initialEntries={["/posts/art-1"]}>
+        <Routes>
+          <Route path="/posts/:postId" element={<PostDetailPage api={api} />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(api.getQuestionThread).toHaveBeenCalledWith("art-1");
+      const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
+      expect(within(breadcrumb).getByRole("link", { name: "forum" })).toHaveAttribute("href", "/forum");
+      expect(within(breadcrumb).getByRole("link", { name: "articles" })).toHaveAttribute("href", "/forum?type=article");
+      expect(within(breadcrumb).getByText("art-1")).toHaveAttribute("aria-current", "page");
     });
   });
 
