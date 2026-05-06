@@ -3239,6 +3239,13 @@ ul {
 
 .terminal-breadcrumb a {
   color: var(--terminal-cyan);
+  text-decoration: none;
+}
+
+.terminal-breadcrumb a:hover,
+.terminal-breadcrumb a:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
 }
 
 .terminal-thread-main {

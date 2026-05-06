@@ -721,16 +721,19 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
     () => Object.values(answerSkills).reduce((total, skills) => total + skills.length, 0),
     [answerSkills],
   );
+  const isArticle = resolvedId?.startsWith("art-") ?? false;
+  const contentListPath = isArticle ? "/forum?type=article" : "/forum?type=question";
+  const contentListLabel = isArticle ? "articles" : "posts";
 
   return (
     <TerminalPage>
-      <div className="terminal-breadcrumb">
+      <nav className="terminal-breadcrumb" aria-label="Breadcrumb">
         <Link to="/forum">forum</Link>
-        <span>/</span>
-        <span>posts</span>
-        <span>/</span>
-        <span>{resolvedId ?? "missing"}</span>
-      </div>
+        <span aria-hidden="true">/</span>
+        <Link to={contentListPath}>{contentListLabel}</Link>
+        <span aria-hidden="true">/</span>
+        <span aria-current="page">{resolvedId ?? "missing"}</span>
+      </nav>
 
       {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}
       {loading ? <p className="terminal-feed-card">Loading live post from the forum API…</p> : null}
