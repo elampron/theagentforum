@@ -2509,7 +2509,7 @@ ul {
     radial-gradient(circle at 28% 70%, rgba(25, 242, 211, 0.08), transparent 24rem),
     linear-gradient(180deg, #050610 0%, #02030a 58%, #05050d 100%);
   font-family: "SFMono-Regular", "JetBrains Mono", "Cascadia Code", "Roboto Mono", ui-monospace, monospace;
-  overflow: clip;
+  overflow-x: hidden;
 }
 
 .terminal-page a {
@@ -3026,6 +3026,7 @@ ul {
   display: grid;
   gap: 1.4rem;
   align-items: start;
+  min-width: 0;
 }
 
 .terminal-layout--feed,
@@ -3075,6 +3076,7 @@ ul {
 .terminal-thread-main,
 .terminal-side-card,
 .terminal-comment-card {
+  min-width: 0;
   border-radius: 1rem;
   padding: 1.2rem;
 }
@@ -3106,12 +3108,14 @@ ul {
   font-size: clamp(1.75rem, 2.55vw, 2.4rem);
   line-height: 1.14;
   letter-spacing: -0.055em;
+  overflow-wrap: anywhere;
 }
 
 .terminal-thread-body :is(h1, h2, h3, h4, h5, h6) {
   font-family: inherit;
   line-height: 1.2;
   letter-spacing: -0.04em;
+  overflow-wrap: anywhere;
   text-transform: none;
 }
 
@@ -3243,6 +3247,7 @@ ul {
 
 .terminal-thread-body {
   max-width: 58rem;
+  min-width: 0;
   font-size: 1.06rem;
   line-height: 1.8;
 }
@@ -3639,12 +3644,45 @@ ul {
 
 @media (max-width: 640px) {
   .terminal-main {
-    width: min(calc(100% - 1rem), 1240px);
-    padding-top: 1.5rem;
+    width: 100%;
+    max-width: 100vw;
+    padding: 1.5rem 0.5rem 3rem;
   }
 
   .terminal-nav {
     padding: 1rem;
+  }
+
+  .terminal-layout--thread {
+    width: 100%;
+    max-width: 100%;
+    gap: 1rem;
+  }
+
+  .terminal-layout--thread > *,
+  .terminal-layout--thread .terminal-thread-main,
+  .terminal-layout--thread .terminal-side-card,
+  .terminal-layout--thread .terminal-comment-card {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .terminal-layout--thread .terminal-thread-main,
+  .terminal-layout--thread .terminal-side-card,
+  .terminal-layout--thread .terminal-comment-card {
+    padding: 1rem;
+  }
+
+  .terminal-layout--thread .terminal-feed-card__meta,
+  .terminal-layout--thread .terminal-comment-card__meta,
+  .terminal-layout--thread .terminal-breadcrumb {
+    gap: 0.45rem;
+    font-size: 0.7rem;
+  }
+
+  .terminal-thread-body {
+    font-size: 0.95rem;
+    line-height: 1.7;
   }
 
   .terminal-hero h1,
@@ -3653,7 +3691,19 @@ ul {
   }
 
   .terminal-layout--thread .terminal-thread-main > h1 {
-    font-size: clamp(1.65rem, 8vw, 2.25rem);
+    max-width: 100%;
+    font-size: clamp(1.45rem, 7vw, 2rem);
+    word-break: break-word;
+  }
+
+  .terminal-thread-body,
+  .terminal-thread-body :is(p, li, blockquote),
+  .terminal-thread-body :is(h1, h2, h3, h4, h5, h6),
+  .terminal-comment-card,
+  .terminal-artifact-list li {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .terminal-api-strip,
