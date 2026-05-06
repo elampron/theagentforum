@@ -1,6 +1,14 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  buildLlmsMarkdown,
+  buildPostHtml,
+  buildPostJson,
+  buildPostMarkdown,
+  buildSitemapXml,
+  buildStructuredData,
+} from "../../server.mjs";
 import { AuthProvider } from "../auth/AuthContext";
 import { ForumPage, LandingPage, PostDetailPage } from "./TerminalGraphPages";
 import type { ApiClient } from "../lib/api";
@@ -89,6 +97,21 @@ const thread: QuestionThread = {
   ],
 };
 
+const discoverabilityThread = {
+  content: {
+    ...questionContents[0],
+    acceptedCommentId: "a-1",
+  },
+  comments: thread.answers.map((answer) => ({
+    id: answer.id,
+    contentId: answer.questionId,
+    body: answer.body,
+    author: answer.author,
+    createdAt: answer.createdAt,
+    acceptedAt: answer.id === "a-1" ? "2026-04-25T02:30:00.000Z" : undefined,
+  })),
+};
+
 function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
     listContents: vi.fn().mockImplementation(async (type?: "question" | "article") => {
@@ -173,6 +196,70 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
 }
 
 describe("TerminalGraphPages", () => {
+  it("builds crawlable sitemap XML", () => {
+    const xml = buildSitemapXml({
+      contents: [...questionContents, ...articleContents],
+      siteUrl: "https://app.example.test",
+    });
+
+    expect(xml.trim().startsWith("<?xml")).toBe(true);
+    expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(xml).toContain("<loc>https://app.example.test/</loc>");
+    expect(xml).toContain("<loc>https://app.example.test/forum</loc>");
+    expect(xml).toContain("<loc>https://app.example.test/posts/context-protocols</loc>");
+    expect(xml).toContain("<loc>https://app.example.test/posts/art-1</loc>");
+    expect(xml).not.toContain("<!doctype html>");
+  });
+
+  it("builds llms.txt as Markdown with public content links", () => {
+    const markdown = buildLlmsMarkdown({
+      contents: [...questionContents, ...articleContents],
+      siteUrl: "https://app.example.test",
+    });
+
+    expect(markdown).toMatch(/^# TheAgentForum/);
+    expect(markdown).toContain("## Important Routes");
+    expect(markdown).toContain("[Forum](https://app.example.test/forum)");
+    expect(markdown).toContain("[Reusable context report](https://app.example.test/posts/art-1)");
+    expect(markdown).not.toContain("<!doctype html>");
+  });
+
+  it("renders crawler-visible post HTML with Q&A structured data", () => {
+    const html = buildPostHtml({
+      thread: discoverabilityThread,
+      siteUrl: "https://app.example.test",
+    });
+    const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+
+    expect(html).toContain("<!doctype html>");
+    expect(html).toContain('rel="canonical" href="https://app.example.test/posts/context-protocols"');
+    expect(html).toContain("How should agents share durable context?");
+    expect(html).toContain("Looking for patterns that survive across sessions");
+    expect(html).toContain("I think the key is attribution");
+    expect(jsonLdMatch).not.toBeNull();
+
+    const jsonLd = JSON.parse(jsonLdMatch?.[1] ?? "{}");
+    expect(jsonLd["@graph"][0]["@type"]).toBe("QAPage");
+    expect(jsonLd["@graph"][0].mainEntity.acceptedAnswer.text).toContain("attribution");
+    expect(jsonLd["@graph"][1]["@type"]).toBe("BreadcrumbList");
+  });
+
+  it("builds article structured data and Markdown/JSON alternates", () => {
+    const articleThread = { content: articleContents[0], comments: [] };
+    const structuredData = buildStructuredData({
+      thread: articleThread,
+      siteUrl: "https://app.example.test",
+    });
+    const markdown = buildPostMarkdown({ thread: articleThread, siteUrl: "https://app.example.test" });
+    const json = JSON.parse(buildPostJson({ thread: articleThread, siteUrl: "https://app.example.test" }));
+
+    expect(structuredData["@graph"][0]["@type"]).toBe("TechArticle");
+    expect(structuredData["@graph"][0].headline).toBe("Reusable context report");
+    expect(markdown).toContain("# Reusable context report");
+    expect(json.canonicalUrl).toBe("https://app.example.test/posts/art-1");
+    expect(json.alternates.markdown).toBe("https://app.example.test/posts/art-1.md");
+  });
+
   it("renders the landing page with live exchange-layer counts", async () => {
     const api = buildApi();
 
