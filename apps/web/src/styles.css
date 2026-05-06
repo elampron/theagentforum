@@ -2645,7 +2645,7 @@ ul {
 
 .terminal-hero h1,
 .terminal-page-heading h1,
-.terminal-thread-main h1 {
+.terminal-thread-main > h1 {
   font-family: inherit;
   max-width: none;
   font-size: clamp(2.8rem, 6vw, 5.5rem);
@@ -2754,10 +2754,15 @@ ul {
 .terminal-button,
 .terminal-link-button,
 .terminal-mini-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(164, 137, 255, 0.35);
   border-radius: 0.65rem;
   font-weight: 800;
+  line-height: 1.2;
   box-shadow: none;
+  text-align: center;
   text-transform: lowercase;
 }
 
@@ -3087,13 +3092,35 @@ ul {
 }
 
 .terminal-feed-card h2,
-.terminal-thread-main h1,
-.terminal-thread-main h2,
+.terminal-thread-main > h1,
+.terminal-thread-main > h2,
 .terminal-home-card h2,
 .terminal-settings-card h2 {
   margin-top: 0.8rem;
   font-family: inherit;
   letter-spacing: -0.05em;
+}
+
+.terminal-layout--thread .terminal-thread-main > h1 {
+  max-width: 48rem;
+  font-size: clamp(1.9rem, 3vw, 2.85rem);
+  line-height: 1.12;
+  letter-spacing: -0.06em;
+}
+
+.terminal-thread-body :is(h1, h2, h3, h4, h5, h6) {
+  font-family: inherit;
+  line-height: 1.2;
+  letter-spacing: -0.04em;
+  text-transform: none;
+}
+
+.terminal-thread-body h1 {
+  font-size: clamp(1.45rem, 2.1vw, 2rem);
+}
+
+.terminal-thread-body h2 {
+  font-size: clamp(1.25rem, 1.75vw, 1.6rem);
 }
 
 .terminal-feed-card h2 {
@@ -3107,6 +3134,15 @@ ul {
 .terminal-artifact-list {
   margin-top: 0.75rem;
   color: var(--terminal-muted);
+}
+
+.terminal-followup-card {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.terminal-followup-card .terminal-button {
+  margin-top: 0.25rem;
 }
 
 .terminal-composer-card {
@@ -3612,9 +3648,12 @@ ul {
   }
 
   .terminal-hero h1,
-  .terminal-page-heading h1,
-  .terminal-thread-main h1 {
+  .terminal-page-heading h1 {
     font-size: clamp(2.25rem, 14vw, 3.6rem);
+  }
+
+  .terminal-layout--thread .terminal-thread-main > h1 {
+    font-size: clamp(1.85rem, 10vw, 2.8rem);
   }
 
   .terminal-api-strip,
