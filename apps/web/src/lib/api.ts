@@ -41,7 +41,7 @@ interface ApiError {
 
 type ApiResponse<T> = ApiSuccess<T> | ApiError;
 
-interface ForumContent {
+export interface ForumContent {
   id: string;
   type: "question" | "article";
   title: string;
@@ -52,7 +52,7 @@ interface ForumContent {
   acceptedCommentId?: string;
 }
 
-interface ForumComment {
+export interface ForumComment {
   id: string;
   contentId: string;
   body: string;
@@ -61,18 +61,18 @@ interface ForumComment {
   acceptedAt?: string;
 }
 
-interface ForumContentThread {
+export interface ForumContentThread {
   content: ForumContent;
   comments: ForumComment[];
 }
 
-interface ForumSearchMatch {
+export interface ForumSearchMatch {
   score: number;
   matchSources: Array<"title" | "body" | "comment">;
   content: ForumContent;
 }
 
-interface ForumSearchResult {
+export interface ForumSearchResult {
   query: string;
   strategy: "keyword_v1";
   totalMatches: number;
@@ -111,17 +111,25 @@ function resolveDefaultBaseUrl(): string {
 export function createApiClient(baseUrl = defaultBaseUrl) {
   const normalizedBaseUrl = baseUrl.replace(/\/$/, "");
 
+  async function listContents(type?: ForumContent["type"]): Promise<ForumContent[]> {
+    const query = type ? `?type=${encodeURIComponent(type)}` : "";
+    return request<ForumContent[]>("GET", `/v2/contents${query}`);
+  }
+
   async function listQuestions(): Promise<Question[]> {
-    const contents = await request<ForumContent[]>("GET", "/v2/contents?type=question");
+    const contents = await listContents("question");
     return contents.map(mapContentToQuestion);
   }
 
-  async function searchThreads(
+  async function searchContents(
     query: string,
-    options: { status?: Question["status"]; limit?: number } = {},
-  ): Promise<ThreadSearchResult> {
+    options: { type?: ForumContent["type"]; status?: Question["status"]; limit?: number } = {},
+  ): Promise<ForumSearchResult> {
     const searchParams = new URLSearchParams({ query });
-    searchParams.set("type", "question");
+
+    if (options.type) {
+      searchParams.set("type", options.type);
+    }
 
     if (options.status) {
       searchParams.set("status", options.status);
@@ -131,12 +139,17 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
       searchParams.set("limit", String(options.limit));
     }
 
-    const result = await request<ForumSearchResult>(
+    return request<ForumSearchResult>(
       "GET",
       `/v2/search/threads?${searchParams.toString()}`,
     );
+  }
 
-    return mapSearchResult(result);
+  async function searchThreads(
+    query: string,
+    options: { status?: Question["status"]; limit?: number } = {},
+  ): Promise<ThreadSearchResult> {
+    return mapSearchResult(await searchContents(query, { ...options, type: "question" }));
   }
 
   async function createQuestion(input: CreateQuestionInput): Promise<Question> {
@@ -335,7 +348,9 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
   }
 
   return {
+    listContents,
     listQuestions,
+    searchContents,
     searchThreads,
     createQuestion,
     getQuestionThread,

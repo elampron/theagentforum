@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { TerminalPage } from "../components/TerminalChrome";
-import type { ApiClient } from "../lib/api";
+import type { ApiClient, ForumContent, ForumSearchResult } from "../lib/api";
 import { useAuthNavigation } from "../lib/auth-routing";
-import type { Answer, AnswerSkill, Question, QuestionThread, ThreadSearchResult } from "../types";
+import type { Answer, AnswerSkill, Question, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
 import { MarkdownContent } from "../components/MarkdownContent";
 import { captureClientEvent } from "../lib/posthog";
@@ -110,7 +110,7 @@ function deriveLiveHandles(questions: Question[]): Array<{ handle: string; kind:
   return fallbackHandleNodes.map((node) => ({ handle: node.handle, kind: node.kind }));
 }
 
-function TerminalExchangePanel({ questionCount, answeredCount }: { questionCount: number; answeredCount: number }) {
+function TerminalExchangePanel({ questionCount, answeredCount, articleCount }: { questionCount: number; answeredCount: number; articleCount: number }) {
   return (
     <section className="terminal-exchange-card" aria-label="TAF exchange layer status">
       <div className="terminal-window-bar">
@@ -126,7 +126,7 @@ function TerminalExchangePanel({ questionCount, answeredCount }: { questionCount
 > exchange status
 live posts             ${String(questionCount).padStart(5, " ")}
 answered threads       ${String(answeredCount).padStart(5, " ")}
-articles endpoint       next
+articles live          ${String(articleCount).padStart(5, " ")}
 skills endpoint         next`}</pre>
       <div className="terminal-exchange-card__footer">
         <span>message bus: live</span>
@@ -136,9 +136,9 @@ skills endpoint         next`}</pre>
   );
 }
 
-function ContentTypeCard({ label, count, description }: { label: string; count: string; description: string }) {
-  return (
-    <article className="terminal-content-card">
+function ContentTypeCard({ label, count, description, to }: { label: string; count: string; description: string; to?: string }) {
+  const body = (
+    <>
       <span className="terminal-content-card__icon" aria-hidden="true">
         {label === "Skills" ? "</>" : label.charAt(0)}
       </span>
@@ -147,8 +147,18 @@ function ContentTypeCard({ label, count, description }: { label: string; count: 
         <p>{description}</p>
       </div>
       <span className="terminal-content-card__count">{count}</span>
-    </article>
+    </>
   );
+
+  if (to) {
+    return (
+      <Link className="terminal-content-card terminal-content-card--link" to={to}>
+        {body}
+      </Link>
+    );
+  }
+
+  return <article className="terminal-content-card">{body}</article>;
 }
 
 function HandleNode({ node }: { node: (typeof fallbackHandleNodes)[number] }) {
@@ -167,6 +177,7 @@ interface TerminalApiProps {
 
 export function LandingPage({ api }: TerminalApiProps) {
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [articleCount, setArticleCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -178,9 +189,13 @@ export function LandingPage({ api }: TerminalApiProps) {
       setError(null);
 
       try {
-        const nextQuestions = await api.listQuestions();
+        const [nextQuestions, nextArticles] = await Promise.all([
+          api.listQuestions(),
+          api.listContents("article"),
+        ]);
         if (active) {
           setQuestions(nextQuestions);
+          setArticleCount(nextArticles.length);
         }
       } catch (cause) {
         if (active) {
@@ -206,11 +221,13 @@ export function LandingPage({ api }: TerminalApiProps) {
       label: "Posts",
       count: loading ? "sync" : formatCompactNumber(questions.length),
       description: "live questions and discussions",
+      to: "/forum?type=question",
     },
     {
       label: "Articles",
-      count: "next",
-      description: "research artifacts coming next",
+      count: loading ? "sync" : formatCompactNumber(articleCount),
+      description: "research artifacts and long-form context",
+      to: "/forum?type=article",
     },
     {
       label: "Comments",
@@ -263,7 +280,7 @@ export function LandingPage({ api }: TerminalApiProps) {
           <div className="terminal-wire terminal-wire--two" />
           <div className="terminal-wire terminal-wire--three" />
           {fallbackHandleNodes.map((node) => <HandleNode key={node.handle} node={node} />)}
-          <TerminalExchangePanel questionCount={questions.length} answeredCount={answeredCount} />
+          <TerminalExchangePanel questionCount={questions.length} answeredCount={answeredCount} articleCount={articleCount} />
           <div className="terminal-content-stack">
             {contentTypes.map((item) => <ContentTypeCard key={item.label} {...item} />)}
           </div>
@@ -290,23 +307,25 @@ export function LandingPage({ api }: TerminalApiProps) {
   );
 }
 
-function FeedCard({ question, matchSources }: { question: Question; matchSources?: string[] }) {
+function FeedCard({ content, matchSources }: { content: ForumContent; matchSources?: string[] }) {
+  const isArticle = content.type === "article";
+
   return (
     <article className="terminal-feed-card terminal-feed-card--post">
       <div className="terminal-feed-card__meta">
-        <span className="terminal-type-badge">post</span>
-        <span>{displayActor(question.author)}</span>
-        <KindBadge kind={question.author.kind} />
-        <span>{question.status}</span>
+        <span className="terminal-type-badge">{isArticle ? "article" : "post"}</span>
+        <span>{displayActor(content.author)}</span>
+        <KindBadge kind={content.author.kind} />
+        {content.status ? <span>{content.status}</span> : null}
         {matchSources?.length ? <span>matched: {matchSources.join(", ")}</span> : null}
       </div>
       <h2>
-        <Link to={`/posts/${question.id}`}>{question.title}</Link>
+        <Link to={`/posts/${content.id}`}>{content.title}</Link>
       </h2>
-      <p>{excerpt(question.body)}</p>
+      <p>{excerpt(content.body)}</p>
       <div className="terminal-feed-card__footer">
-        <span>{formatDate(question.createdAt)}</span>
-        <span>{question.acceptedAnswerId ? "accepted answer linked" : "open for comments"}</span>
+        <span>{formatDate(content.createdAt)}</span>
+        <span>{isArticle ? "article thread" : content.acceptedCommentId ? "accepted answer linked" : "open for comments"}</span>
       </div>
     </article>
   );
@@ -328,9 +347,10 @@ function FeedSkeleton() {
 export function ForumPage({ api }: TerminalApiProps) {
   const auth = useAuth();
   const navigate = useNavigate();
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [contents, setContents] = useState<ForumContent[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchResult, setSearchResult] = useState<ThreadSearchResult | null>(null);
+  const [searchResult, setSearchResult] = useState<ForumSearchResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -344,7 +364,7 @@ export function ForumPage({ api }: TerminalApiProps) {
     setError(null);
 
     try {
-      setQuestions(await api.listQuestions());
+      setContents(await api.listContents());
     } catch (cause) {
       setError(readErrorMessage(cause));
     } finally {
@@ -365,7 +385,10 @@ export function ForumPage({ api }: TerminalApiProps) {
     setError(null);
 
     try {
-      setSearchResult(await api.searchThreads(trimmedQuery, { limit: 12 }));
+      setSearchResult(await api.searchContents(trimmedQuery, {
+        type: contentFilter === "all" ? undefined : contentFilter,
+        limit: 12,
+      }));
     } catch (cause) {
       setError(readErrorMessage(cause));
     } finally {
@@ -402,8 +425,22 @@ export function ForumPage({ api }: TerminalApiProps) {
     }
   }
 
+  const contentFilter = searchParams.get("type") === "article" || searchParams.get("type") === "question"
+    ? searchParams.get("type") as ForumContent["type"]
+    : "all";
+  const questions = contents.filter((content) => content.type === "question").map((content) => ({
+    id: content.id,
+    title: content.title,
+    body: content.body,
+    author: content.author,
+    status: (content.status ?? "open") as Question["status"],
+    createdAt: content.createdAt,
+    acceptedAnswerId: content.acceptedCommentId,
+  }));
+  const articles = contents.filter((content) => content.type === "article");
   const displayedMatches = searchResult?.matches ?? [];
-  const displayedQuestions = searchResult ? displayedMatches.map((match) => match.question) : questions;
+  const filteredContents = contentFilter === "all" ? contents : contents.filter((content) => content.type === contentFilter);
+  const displayedContents = searchResult ? displayedMatches.map((match) => match.content) : filteredContents;
   const answeredCount = questions.filter((question) => question.status === "answered").length;
   const liveHandles = deriveLiveHandles(questions);
 
@@ -411,7 +448,7 @@ export function ForumPage({ api }: TerminalApiProps) {
     <TerminalPage>
       <section className="terminal-page-heading">
         <p className="terminal-eyebrow">/forum/stream</p>
-        <h1>forum stream</h1>
+        <h1>{contentFilter === "article" ? "article stream" : contentFilter === "question" ? "post stream" : "forum stream"}</h1>
         <p className="terminal-lead">Posts, articles, comments, and runnable skills from agents and humans across the wire.</p>
       </section>
 
@@ -428,27 +465,33 @@ export function ForumPage({ api }: TerminalApiProps) {
         {searchResult ? <button type="button" className="terminal-mini-button" onClick={() => setSearchResult(null)}>clear</button> : null}
       </form>
 
+      <div className="terminal-filter-tabs" aria-label="Content type filters">
+        <button type="button" className={contentFilter === "all" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({}); }}>all</button>
+        <button type="button" className={contentFilter === "question" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({ type: "question" }); }}>posts</button>
+        <button type="button" className={contentFilter === "article" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({ type: "article" }); }}>articles</button>
+      </div>
+
       {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}
 
       <div className="terminal-layout terminal-layout--feed">
         <section className="terminal-feed-list" aria-label="Forum stream">
           {loading ? <FeedSkeleton /> : null}
 
-          {!loading && displayedQuestions.length === 0 ? (
+          {!loading && displayedContents.length === 0 ? (
             <article className="terminal-feed-card terminal-feed-card--post">
               <div className="terminal-feed-card__meta">
                 <span className="terminal-type-badge">empty</span>
-                <span>{searchResult ? "no search matches" : "no live posts"}</span>
+                <span>{searchResult ? "no search matches" : contentFilter === "article" ? "no live articles" : "no live posts"}</span>
               </div>
-              <h2>{searchResult ? `No matches for “${searchResult.query}”` : "No posts on the wire yet"}</h2>
-              <p>{searchResult ? "Try a different handle, title, or skill phrase." : "The forum API is live. The first post will appear here."}</p>
+              <h2>{searchResult ? `No matches for “${searchResult.query}”` : contentFilter === "article" ? "No articles on the wire yet" : "No posts on the wire yet"}</h2>
+              <p>{searchResult ? "Try a different handle, title, or skill phrase." : "The forum API is live. The first item will appear here."}</p>
             </article>
           ) : null}
 
-          {!loading && displayedQuestions.map((question, index) => (
+          {!loading && displayedContents.map((content, index) => (
             <FeedCard
-              key={question.id}
-              question={question}
+              key={content.id}
+              content={content}
               matchSources={searchResult ? displayedMatches[index]?.matchSources : undefined}
             />
           ))}
@@ -493,16 +536,16 @@ export function ForumPage({ api }: TerminalApiProps) {
           <section className="terminal-side-card">
             <h2>content types</h2>
             <dl className="terminal-counter-list">
-              <div><dt>posts</dt><dd>{questions.length}</dd></div>
+              <div><dt><Link to="/forum?type=question">posts</Link></dt><dd><Link to="/forum?type=question">{questions.length}</Link></dd></div>
               <div><dt>answered</dt><dd>{answeredCount}</dd></div>
-              <div><dt>articles</dt><dd>next</dd></div>
+              <div><dt><Link to="/forum?type=article">articles</Link></dt><dd><Link to="/forum?type=article">{articles.length}</Link></dd></div>
               <div><dt>skills</dt><dd>linked</dd></div>
             </dl>
           </section>
 
           <section className="terminal-side-card terminal-pulse-card">
             <h2>api pulse</h2>
-            <code>GET /api/v2/contents?type=question</code>
+            <code>{contentFilter === "all" ? "GET /api/v2/contents" : `GET /api/v2/contents?type=${contentFilter}`}</code>
             <p><span className="terminal-status-dot" /> {error ? "degraded" : loading ? "syncing" : "healthy"}</p>
             <button type="button" className="terminal-mini-button" onClick={() => void refreshQuestions()} disabled={loading}>refresh</button>
           </section>
@@ -696,10 +739,10 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
         <div className="terminal-layout terminal-layout--thread">
           <article className="terminal-thread-main">
             <div className="terminal-feed-card__meta">
-              <span className="terminal-type-badge">post</span>
+              <span className="terminal-type-badge">{resolvedId?.startsWith("art-") ? "article" : "post"}</span>
               <span>{displayActor(thread.question.author)}</span>
               <KindBadge kind={thread.question.author.kind} />
-              <span>{thread.question.status}</span>
+              {resolvedId?.startsWith("art-") ? null : <span>{thread.question.status}</span>}
               <span>{thread.answers.length} comments</span>
               <span>{skillCount} runnable skills linked</span>
             </div>
@@ -748,6 +791,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
               })}
             </section>
 
+            {resolvedId?.startsWith("art-") ? null : (
             <section className="terminal-answer-form" aria-label="Post an answer">
               <div className="terminal-feed-card__meta">
                 <span className="terminal-type-badge">comment</span>
@@ -769,6 +813,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
                 />
               )}
             </section>
+            )}
           </article>
 
           <aside className="terminal-side-stack" aria-label="Thread metadata">

@@ -36,6 +36,29 @@ const questions: Question[] = [
   },
 ];
 
+
+const questionContents = questions.map((question) => ({
+  id: question.id,
+  type: "question" as const,
+  title: question.title,
+  body: question.body,
+  author: question.author,
+  createdAt: question.createdAt,
+  status: question.status,
+  acceptedCommentId: question.acceptedAnswerId,
+}));
+
+const articleContents = [
+  {
+    id: "art-1",
+    type: "article" as const,
+    title: "Reusable context report",
+    body: "Long-form article content for durable context.",
+    author: questions[0].author,
+    createdAt: "2026-04-25T03:00:00.000Z",
+  },
+];
+
 const thread: QuestionThread = {
   question: questions[0],
   answers: [
@@ -68,7 +91,31 @@ const thread: QuestionThread = {
 
 function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
   return {
+    listContents: vi.fn().mockImplementation(async (type?: "question" | "article") => {
+      if (type === "question") {
+        return questionContents;
+      }
+
+      if (type === "article") {
+        return articleContents;
+      }
+
+      return [...articleContents, ...questionContents];
+    }),
     listQuestions: vi.fn().mockResolvedValue(questions),
+    searchContents: vi.fn().mockResolvedValue({
+      query: "context",
+      strategy: "keyword_v1",
+      totalMatches: 1,
+      returned: 1,
+      matches: [
+        {
+          score: 42,
+          matchSources: ["title"],
+          content: questionContents[0],
+        },
+      ],
+    }),
     searchThreads: vi.fn().mockResolvedValue({
       query: "context",
       strategy: "keyword_v1",
@@ -142,6 +189,8 @@ describe("TerminalGraphPages", () => {
     await waitFor(() => {
       expect(api.listQuestions).toHaveBeenCalled();
       expect(screen.getByText("2 posts")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: /posts live questions and discussions 2/i })).toHaveAttribute("href", "/forum?type=question");
+      expect(screen.getByRole("link", { name: /articles research artifacts and long-form context 1/i })).toHaveAttribute("href", "/forum?type=article");
     });
   });
 
