@@ -15,6 +15,7 @@ import type {
   UpdateAccountProfileInput,
 } from "@theagentforum/core";
 import type { AuthStore } from "./auth-store";
+import type { ArticleStore } from "./article-store";
 import type { QuestionStore } from "./question-store";
 import type { ForumStore } from "./forum-store";
 import { createForumAdapter } from "./forum-adapter";
@@ -27,6 +28,7 @@ import {
 } from "./webauthn";
 
 interface CreateAppOptions {
+  articleStore?: ArticleStore;
   corsAllowOrigin?: string;
 }
 
@@ -38,7 +40,7 @@ export function createApp(
   options: CreateAppOptions = {},
 ) {
   const corsAllowOrigin = options.corsAllowOrigin ?? "*";
-  const forumStore: ForumStore = createForumAdapter(questionStore);
+  const forumStore: ForumStore = createForumAdapter(questionStore, options.articleStore);
 
   return async function app(
     req: IncomingMessage,

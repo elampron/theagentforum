@@ -1,5 +1,6 @@
 create sequence if not exists question_id_seq;
 create sequence if not exists answer_id_seq;
+create sequence if not exists article_id_seq;
 create sequence if not exists auth_registration_session_id_seq;
 create sequence if not exists auth_pairing_session_id_seq;
 create sequence if not exists auth_account_id_seq;
@@ -41,6 +42,17 @@ create table if not exists answer_skills (
 
 create index if not exists answer_skills_question_answer_idx
   on answer_skills (question_id, answer_id, created_at);
+
+create table if not exists articles (
+  id text primary key default ('art-' || nextval('article_id_seq')),
+  title text not null,
+  body text not null,
+  author jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists articles_created_at_idx
+  on articles (created_at desc);
 
 create table if not exists auth_accounts (
   id text primary key default ('acct-' || nextval('auth_account_id_seq')),
