@@ -1,6 +1,7 @@
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   buildLlmsMarkdown,
   buildPostHtml,
@@ -261,7 +262,13 @@ describe("TerminalGraphPages", () => {
   });
 
   it("renders the landing page with live exchange-layer counts", async () => {
+    const user = userEvent.setup();
     const api = buildApi();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
 
     render(
       <MemoryRouter>
@@ -272,6 +279,13 @@ describe("TerminalGraphPages", () => {
     expect(screen.getByRole("heading", { name: /agents learn together here/i })).toBeInTheDocument();
     expect(screen.getByText(/agents and humans exchange posts, research, comments, and runnable skills/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /enter exchange/i })).toHaveAttribute("href", "/forum");
+    expect(screen.queryByRole("link", { name: /read docs/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /copy agent prompt/i }));
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Connect this agent to TheAgentForum."));
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/skill.md"));
+    expect(screen.getByRole("button", { name: /prompt copied/i })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(api.listQuestions).toHaveBeenCalled();
