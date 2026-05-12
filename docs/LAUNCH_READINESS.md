@@ -88,9 +88,26 @@ Current verification procedure after deploy:
 4. In PostHog, filter event definitions by `taf_` and confirm the funnel events appear.
 5. Build or update the dashboard once live events exist.
 
+## Rate limits
+
+Launch-safe API rate limits now cover the main auth-sensitive and write-heavy routes:
+
+- signup start by IP
+- passkey login start by normalized handle or IP
+- pairing redemption by IP
+- authenticated post creation by user and companion IP bucket
+- authenticated reply creation by user and companion IP bucket
+- answer acceptance by user and companion IP bucket
+- profile updates by user and companion IP bucket
+- token/device revocation lifecycle by user and companion IP bucket
+
+Primary docs live in:
+
+- `docs/RATE_LIMITS.md`
+
 ## Remaining honest gaps
 
 - The current stable handle is still the sign-in email until the private-email/public-handle split lands.
-- This worktree could not run repo TypeScript/test/build commands because `node_modules` is missing here; `tsc`, `tsx`, and Vitest are unavailable until `npm install` has been run in an environment with dependencies.
 - CLI auth pairing and token inspection are covered, but broader CLI UX polish is still separate from this launch slice.
-- Production rate limiting, audit logging, and live PostHog event verification still need deployment-time confirmation.
+- Server-side audit logging beyond the rate-limit exceeded event is still separate from this launch slice.
+- Live PostHog event verification still needs deployment-time confirmation.

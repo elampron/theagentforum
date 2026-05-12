@@ -162,6 +162,25 @@ create index if not exists auth_web_sessions_account_id_idx
 create index if not exists auth_web_sessions_token_idx
   on auth_web_sessions (token);
 
+create table if not exists rate_limit_counters (
+  action text not null,
+  scope_type text not null,
+  scope_key_hash text not null,
+  window_seconds integer not null,
+  window_started_at timestamptz not null,
+  request_count integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint rate_limit_counters_scope_type_check
+    check (scope_type in ('user', 'ip')),
+  constraint rate_limit_counters_window_seconds_check
+    check (window_seconds > 0),
+  primary key (action, scope_type, scope_key_hash, window_seconds, window_started_at)
+);
+
+create index if not exists rate_limit_counters_updated_at_idx
+  on rate_limit_counters (updated_at);
+
 do $$
 begin
   if not exists (
