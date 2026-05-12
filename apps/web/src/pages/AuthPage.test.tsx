@@ -41,7 +41,7 @@ describe("AuthPage", () => {
     expect(
       screen.getByRole("heading", { name: /sign in with email and a passkey/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email or handle")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Sign in" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Sign up" })).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("button", { name: /continue with passkey/i })).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("AuthPage", () => {
     const api = buildApi({
       startAuthentication: vi.fn().mockResolvedValue({
         id: "aas-1",
-        handle: "eric@example.com",
+        handle: "eric",
         displayName: "Eric",
         status: "awaiting_authentication",
         challenge: "AQIDBA",
@@ -112,7 +112,7 @@ describe("AuthPage", () => {
       </MemoryRouter>,
     );
 
-    await user.type(screen.getByLabelText("Email"), "Eric@Example.com");
+    await user.type(screen.getByLabelText("Email or handle"), "Eric@Example.com");
     await user.click(screen.getByRole("button", { name: /continue with passkey/i }));
 
     await waitFor(() => {
@@ -232,7 +232,7 @@ describe("AuthPage", () => {
       </MemoryRouter>,
     );
 
-    await user.type(screen.getByLabelText("Email"), "Eric@Example.com");
+    await user.type(screen.getByLabelText("Email or handle"), "Eric@Example.com");
     await user.click(screen.getByRole("button", { name: /continue with passkey/i }));
 
     await waitFor(() => {
@@ -240,7 +240,7 @@ describe("AuthPage", () => {
     });
   });
 
-  it("creates a passkey account, then signs in and returns to the requested route", async () => {
+  it("creates a passkey account, signs in, and opens profile next steps", async () => {
     const user = userEvent.setup();
     const createCredential = vi.fn().mockResolvedValue(
       buildCredential({
@@ -288,7 +288,7 @@ describe("AuthPage", () => {
         rp: { id: "localhost", name: "TheAgentForum" },
         user: {
           id: "BQYHCA",
-          name: "eric@example.com",
+          name: "eric",
           displayName: "Eric",
         },
         challenge: "AQIDBA",
@@ -326,7 +326,7 @@ describe("AuthPage", () => {
       }),
       authenticatePasskey: vi.fn().mockResolvedValue({
         id: "aas-1",
-        handle: "eric@example.com",
+        handle: "eric",
         displayName: "Eric",
         status: "verified",
         challenge: "AQIDBA",
@@ -336,27 +336,44 @@ describe("AuthPage", () => {
         expiresAt: "2026-03-26T00:15:00.000Z",
         verifiedAt: "2026-03-26T00:01:00.000Z",
       }),
+      getAuthSession: vi
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce({
+          actor: {
+            id: "acct-1",
+            kind: "human",
+            handle: "eric",
+            displayName: "Eric",
+          },
+          createdAt: "2026-03-26T00:00:00.000Z",
+          expiresAt: "2026-04-02T00:00:00.000Z",
+        }),
     });
 
     render(
       <MemoryRouter initialEntries={["/auth?mode=signup&returnTo=/done"]}>
-        <Routes>
-          <Route path="/auth" element={<AuthPage api={api} />} />
-          <Route path="/done" element={<p>done</p>} />
-        </Routes>
+        <AuthProvider api={api}>
+          <Routes>
+            <Route path="/auth" element={<AuthPage api={api} />} />
+            <Route path="/profile" element={<p>profile next step</p>} />
+            <Route path="/done" element={<p>done</p>} />
+          </Routes>
+        </AuthProvider>
       </MemoryRouter>,
     );
 
     await user.click(screen.getByRole("tab", { name: "Sign up" }));
-    await user.type(screen.getByLabelText("Email"), "eric@example.com");
+    await user.type(screen.getByLabelText("Private email"), "eric@example.com");
     await user.click(screen.getByRole("button", { name: /create passkey/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("done")).toBeInTheDocument();
+      expect(screen.getByText("profile next step")).toBeInTheDocument();
     });
 
     expect(api.startRegistration).toHaveBeenCalledWith({
-      handle: "eric@example.com",
+      email: "eric@example.com",
+      handle: "eric",
       displayName: "Eric",
     });
     expect(api.registerPasskey).toHaveBeenCalled();
@@ -408,7 +425,7 @@ describe("AuthPage", () => {
         rp: { id: "localhost", name: "TheAgentForum" },
         user: {
           id: "BQYHCA",
-          name: "eric@example.com",
+          name: "eric",
           displayName: "Eric",
         },
         challenge: "AQIDBA",
@@ -491,7 +508,7 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
 function buildRegistrationSession() {
   return {
     id: "ars-1",
-    handle: "eric@example.com",
+    handle: "eric",
     displayName: "Eric",
     status: "pending_webauthn_registration" as const,
     challenge: "AQIDBA",

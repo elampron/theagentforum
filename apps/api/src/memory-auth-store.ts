@@ -70,6 +70,7 @@ interface StoredAuthenticationSession {
 interface StoredAccount {
   id: string;
   handle: string;
+  email?: string;
   displayName?: string;
   bio?: string;
   avatarUrl?: string;
@@ -90,6 +91,7 @@ export function createInMemoryAuthStore(): AuthStore {
   const authenticationSessions = new Map<string, StoredAuthenticationSession>();
   const credentialsByHandle = new Map<string, StoredCredential[]>();
   const accountsByHandle = new Map<string, StoredAccount>();
+  const accountsByEmail = new Map<string, StoredAccount>();
   const webSessionsByToken = new Map<string, StoredWebSession>();
   let accountSequence = 1;
   let registrationSequence = 1;
@@ -97,7 +99,7 @@ export function createInMemoryAuthStore(): AuthStore {
   let authenticationSequence = 1;
 
   async function startRegistration(input: StartRegistrationInput): Promise<RegistrationSession> {
-    ensureAccount(input.handle, input.displayName);
+    const account = ensureAccount(input);
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const pairingExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
@@ -106,8 +108,8 @@ export function createInMemoryAuthStore(): AuthStore {
 
     const session: StoredRegistrationSession = {
       id,
-      handle: input.handle,
-      displayName: input.displayName,
+      handle: account.handle,
+      displayName: account.displayName,
       status: "awaiting_verification",
       challenge: createChallenge(),
       verificationToken,
@@ -293,7 +295,13 @@ export function createInMemoryAuthStore(): AuthStore {
   async function startAuthentication(
     input: StartAuthenticationInput,
   ): Promise<AuthenticationSession | null> {
-    const credentials = (credentialsByHandle.get(input.handle) ?? []).filter(isAuthenticatablePasskey);
+    const account = findAccountBySignInIdentifier(input.handle);
+
+    if (!account) {
+      return null;
+    }
+
+    const credentials = (credentialsByHandle.get(account.handle) ?? []).filter(isAuthenticatablePasskey);
 
     if (credentials.length === 0) {
       return null;
@@ -302,13 +310,12 @@ export function createInMemoryAuthStore(): AuthStore {
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     const latestRegistration = Array.from(registrationSessions.values())
-      .filter((candidate) => candidate.handle === input.handle)
+      .filter((candidate) => candidate.handle === account.handle)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
-    const account = accountsByHandle.get(input.handle);
 
     const session: StoredAuthenticationSession = {
       id: `aas-${authenticationSequence++}`,
-      handle: input.handle,
+      handle: account.handle,
       displayName: account?.displayName ?? latestRegistration?.displayName,
       status: "awaiting_authentication",
       challenge: createChallenge(),
@@ -438,7 +445,10 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    const account = ensureAccount(authenticationSession.handle, authenticationSession.displayName);
+    const account = ensureAccount({
+      handle: authenticationSession.handle,
+      displayName: authenticationSession.displayName,
+    });
     const createdAt = new Date().toISOString();
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const token = createWebSessionToken();
@@ -504,7 +514,10 @@ export function createInMemoryAuthStore(): AuthStore {
       return null;
     }
 
-    const account = ensureAccount(session.handle, session.displayName);
+    const account = ensureAccount({
+      handle: session.handle,
+      displayName: session.displayName,
+    });
 
     return {
       actor: createStoredActor(account),
@@ -654,12 +667,22 @@ export function createInMemoryAuthStore(): AuthStore {
     return "revoked";
   }
 
-  function ensureAccount(handle: string, displayName?: string): StoredAccount {
-    const existing = accountsByHandle.get(handle);
+  function ensureAccount(input: StartRegistrationInput): StoredAccount {
+    const email = normalizeEmail(input.email);
+    const requestedHandle = buildPublicHandle(input.handle ?? email ?? "user");
+    const existing =
+      (email ? accountsByEmail.get(email) : undefined)
+      ?? (email ? accountsByHandle.get(email) : accountsByHandle.get(requestedHandle));
 
     if (existing) {
-      if (displayName && !existing.displayName) {
-        existing.displayName = displayName;
+      if (email && !existing.email) {
+        existing.email = email;
+        accountsByEmail.set(email, existing);
+        existing.updatedAt = new Date().toISOString();
+      }
+
+      if (input.displayName && !existing.displayName) {
+        existing.displayName = input.displayName;
         existing.updatedAt = new Date().toISOString();
       }
 
@@ -669,13 +692,22 @@ export function createInMemoryAuthStore(): AuthStore {
     const createdAt = new Date().toISOString();
     const account: StoredAccount = {
       id: `acct-${accountSequence++}`,
-      handle,
-      displayName,
+      handle: createAvailableHandle(requestedHandle, accountsByHandle),
+      email,
+      displayName: input.displayName,
       createdAt,
       updatedAt: createdAt,
     };
-    accountsByHandle.set(handle, account);
+    accountsByHandle.set(account.handle, account);
+    if (email) {
+      accountsByEmail.set(email, account);
+    }
     return account;
+  }
+
+  function findAccountBySignInIdentifier(identifier: string): StoredAccount | undefined {
+    const normalized = identifier.trim().toLowerCase();
+    return accountsByHandle.get(normalized) ?? accountsByEmail.get(normalized);
   }
 
   return {
@@ -708,6 +740,41 @@ export function createInMemoryAuthStore(): AuthStore {
 
 function createChallenge(): string {
   return randomBytes(18).toString("base64url");
+}
+
+function normalizeEmail(value: string | undefined): string | undefined {
+  const normalized = value?.trim().toLowerCase();
+  return normalized || undefined;
+}
+
+function buildPublicHandle(value: string): string {
+  const source = value.includes("@") ? value.split("@")[0] ?? value : value;
+  const handle = source
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+
+  return handle || `user-${randomBytes(3).toString("hex")}`;
+}
+
+function createAvailableHandle(
+  requestedHandle: string,
+  accountsByHandle: Map<string, StoredAccount>,
+): string {
+  if (!accountsByHandle.has(requestedHandle)) {
+    return requestedHandle;
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const candidate = `${requestedHandle}-${randomBytes(3).toString("hex")}`.slice(0, 40);
+    if (!accountsByHandle.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return `user-${randomBytes(6).toString("hex")}`;
 }
 
 function createPairingCode(): string {
@@ -761,6 +828,7 @@ function cloneAccountProfile(account: StoredAccount): AccountProfile {
   return {
     id: account.id,
     handle: account.handle,
+    email: account.email,
     displayName: account.displayName,
     bio: account.bio,
     avatarUrl: account.avatarUrl,

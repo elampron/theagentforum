@@ -72,7 +72,8 @@ export interface CreateAnswerInput {
 }
 
 export interface StartRegistrationInput {
-  handle: string;
+  handle?: string;
+  email?: string;
   displayName?: string;
 }
 
@@ -250,6 +251,7 @@ export interface AuthDevice {
 export interface AccountProfile {
   id: string;
   handle: string;
+  email?: string;
   displayName?: string;
   bio?: string;
   avatarUrl?: string;

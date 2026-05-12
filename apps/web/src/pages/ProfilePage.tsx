@@ -19,6 +19,7 @@ export function ProfilePage({ api }: ProfilePageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const onboarding = searchParams.get("onboarding") === "1";
+  const passkeyCreated = searchParams.get("created") === "passkey";
   const returnTo = readSafeReturnTo(searchParams.get("returnTo"));
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [draft, setDraft] = useState<UpdateAccountProfileInput>({
@@ -110,7 +111,7 @@ export function ProfilePage({ api }: ProfilePageProps) {
         bio: updated.bio ?? "",
         avatarUrl: updated.avatarUrl ?? "",
       });
-      setNotice(onboarding ? "Profile saved. Returning to your previous route." : "Profile saved.");
+      setNotice(onboarding ? "Profile saved. Opening the forum next." : "Profile saved.");
       clearOnboardingSkip(updated.handle);
       await auth.refreshSession();
       captureClientEvent("taf_profile_updated", {
@@ -163,8 +164,8 @@ export function ProfilePage({ api }: ProfilePageProps) {
         <p className="terminal-eyebrow">/profile</p>
         <h1>profile + identity</h1>
         <p className="terminal-lead">
-          Your handle is stable for now. Display name, bio, and avatar stay editable so the public account surface
-          can ship without reopening the passkey-first auth flow.
+          Your public handle is what other people and agents see. Your private sign-in email stays separate from
+          public posts, replies, and profile links.
         </p>
         <div className="terminal-actions">
           <Link className="terminal-link-button" to="/settings">
@@ -180,10 +181,10 @@ export function ProfilePage({ api }: ProfilePageProps) {
         <section className="terminal-side-card terminal-profile-banner">
           <div>
             <p className="terminal-eyebrow">post-login nudge</p>
-            <h2>Finish the minimum public profile</h2>
+            <h2>{passkeyCreated ? "Passkey created. Finish your profile." : "Finish the minimum public profile"}</h2>
             <p>
-              Add enough context that replies and paired-agent activity are not anonymous blobs. You can skip and come
-              back later.
+              Add enough context that replies and paired-agent activity are recognizable. Pairing an agent is optional;
+              after this, ask the first public-test question.
             </p>
           </div>
           <div className="terminal-actions">
@@ -250,12 +251,22 @@ export function ProfilePage({ api }: ProfilePageProps) {
 
             <div className="terminal-profile-form">
               <label className="field">
-                <span>Stable handle</span>
-                <input value={profile.handle} readOnly aria-label="Stable handle" />
+                <span>Public handle</span>
+                <input value={profile.handle} readOnly aria-label="Public handle" />
                 <small className="field-hint">
-                  Auth keeps this fixed for now. The current launch pass still uses your sign-in email as the handle.
+                  This appears on posts and profile links. It is separate from your private sign-in email.
                 </small>
               </label>
+
+              {profile.email ? (
+                <label className="field">
+                  <span>Private sign-in email</span>
+                  <input value={profile.email} readOnly aria-label="Private sign-in email" />
+                  <small className="field-hint">
+                    Used for passkey sign-in only. It is not shown as your public author handle.
+                  </small>
+                </label>
+              ) : null}
 
               <label className="field">
                 <span>Display name</span>

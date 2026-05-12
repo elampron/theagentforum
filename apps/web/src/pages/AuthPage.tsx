@@ -96,6 +96,8 @@ function EmailPasskeyAuthPage({
   const requestedMode = readRequestedMode(searchParams.get("mode"));
   const [mode, setMode] = useState<AuthMode>(requestedMode ?? "signin");
   const [identifier, setIdentifier] = useState("");
+  const [publicHandle, setPublicHandle] = useState("");
+  const [publicHandleEdited, setPublicHandleEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -105,6 +107,14 @@ function EmailPasskeyAuthPage({
       setMode(requestedMode);
     }
   }, [requestedMode]);
+
+  useEffect(() => {
+    if (mode !== "signup" || publicHandleEdited) {
+      return;
+    }
+
+    setPublicHandle(derivePublicHandleFromIdentifier(identifier));
+  }, [identifier, mode, publicHandleEdited]);
 
   const isSignedInState = isAuthenticated && !requestedMode;
 
@@ -132,6 +142,14 @@ function EmailPasskeyAuthPage({
 
     if (!nextSession?.actor.id) {
       navigate(returnTo, { replace: true });
+      return;
+    }
+
+    if (flow === "signup") {
+      navigate(
+        `/profile?onboarding=1&created=passkey&returnTo=${encodeURIComponent(returnTo)}`,
+        { replace: true },
+      );
       return;
     }
 
@@ -165,7 +183,7 @@ function EmailPasskeyAuthPage({
     try {
       await finishPasskeySignIn(nextIdentifier, "signin");
     } catch (cause) {
-      const message = readErrorMessage(cause);
+      const message = readPasskeyErrorMessage(cause);
       setError(message);
       captureClientEvent("taf_auth_signin_failed", {
         error_message: message,
@@ -177,22 +195,30 @@ function EmailPasskeyAuthPage({
 
   async function handleSignUp(): Promise<void> {
     const nextIdentifier = normalizeIdentifier(identifier);
+    const nextPublicHandle = normalizePublicHandle(
+      publicHandle || derivePublicHandleFromIdentifier(nextIdentifier),
+    );
 
     if (!isValidEmail(nextIdentifier)) {
       setError("Enter a valid email to create an account.");
       return;
     }
 
+    if (!nextPublicHandle) {
+      setError("Choose a public handle for posts and replies.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
-    setStatusMessage("Saving your passkey.");
+    setStatusMessage("Your email stays private. The browser will ask you to save a passkey.");
     captureClientEvent("taf_auth_signup_started");
 
     try {
       const displayName = deriveDisplayNameFromIdentifier(nextIdentifier);
-      // TODO: split private sign-in email from public account handle in the backend contract.
       const registrationSession = await api.startRegistration({
-        handle: nextIdentifier,
+        email: nextIdentifier,
+        handle: nextPublicHandle,
         displayName,
       });
       const options = await api.getPasskeyRegistrationOptions(registrationSession.id);
@@ -204,10 +230,10 @@ function EmailPasskeyAuthPage({
         passkeyLabel: `${displayName} passkey`,
       });
 
-      setStatusMessage("Passkey saved. Finishing sign in.");
+      setStatusMessage("Passkey saved. Signing you in, then profile setup opens.");
       await finishPasskeySignIn(nextIdentifier, "signup");
     } catch (cause) {
-      const message = readErrorMessage(cause);
+      const message = readPasskeyErrorMessage(cause);
       setError(message);
       setStatusMessage(null);
       captureClientEvent("taf_auth_signup_failed", {
@@ -312,7 +338,7 @@ function EmailPasskeyAuthPage({
 
             <div className="auth-entry-form">
               <label className="field" htmlFor="auth-identifier">
-                <span>Email</span>
+                <span>{mode === "signup" ? "Private email" : "Email or handle"}</span>
                 <input
                   id="auth-identifier"
                   type="text"
@@ -326,13 +352,29 @@ function EmailPasskeyAuthPage({
               </label>
 
               {mode === "signup" ? (
-                <p className="auth-entry-note">
-                  Alpha note: this email is also your current account identifier
-                  until profile handles split from sign-in email.
-                </p>
+                <>
+                  <label className="field" htmlFor="auth-public-handle">
+                    <span>Public handle</span>
+                    <input
+                      id="auth-public-handle"
+                      type="text"
+                      autoComplete="nickname"
+                      value={publicHandle}
+                      onChange={(event) => {
+                        setPublicHandleEdited(true);
+                        setPublicHandle(normalizePublicHandle(event.target.value));
+                      }}
+                      placeholder="eric"
+                      disabled={busy}
+                    />
+                  </label>
+                  <p className="auth-entry-note">
+                    Your email is only for sign-in. Posts, replies, and profile links use the public handle.
+                  </p>
+                </>
               ) : (
                 <p className="auth-entry-note">
-                  Legacy passkey accounts can still use their existing handle.
+                  Use the email you signed up with, or a legacy public handle from an earlier account.
                 </p>
               )}
 
@@ -358,6 +400,9 @@ function EmailPasskeyAuthPage({
                   Pair an agent instead
                 </Link>
               </div>
+              <p className="auth-entry-note">
+                If the passkey prompt closes, nothing is saved until this page reports success.
+              </p>
             </div>
           </>
         )}
@@ -476,14 +521,15 @@ function PairingAuthPage({
     captureClientEvent("taf_pairing_started");
 
     try {
+      const displayNameValue = displayName.trim() || deriveDisplayNameFromIdentifier(nextIdentifier);
       const session = await api.startRegistration({
-        handle: nextIdentifier,
-        displayName: displayName.trim() || deriveDisplayNameFromIdentifier(nextIdentifier),
+        ...buildRegistrationIdentity(nextIdentifier),
+        displayName: displayNameValue,
       });
       setRegistrationSession(session);
       setPasskeyLabel(`${session.displayName ?? session.handle} device passkey`);
     } catch (cause) {
-      const message = readErrorMessage(cause);
+      const message = readPasskeyErrorMessage(cause);
       setError(message);
       captureClientEvent("taf_pairing_failed", {
         stage: "start",
@@ -534,7 +580,7 @@ function PairingAuthPage({
       );
       captureClientEvent("taf_pairing_passkey_registered");
     } catch (cause) {
-      const message = readErrorMessage(cause);
+      const message = readPasskeyErrorMessage(cause);
       setError(message);
       captureClientEvent("taf_pairing_failed", {
         stage: "passkey",
@@ -713,7 +759,7 @@ function PairingAuthPage({
                 {registrationStage === "start" ? (
                   <div className="auth-terminal-form">
                     <label className="auth-terminal-field">
-                      <span>Account email or handle</span>
+                      <span>Account email or public handle</span>
                       <input
                         value={identifier}
                         onChange={(event) => setIdentifier(event.target.value)}
@@ -732,8 +778,8 @@ function PairingAuthPage({
                     </label>
 
                     <p className="auth-terminal-note">
-                      Already started from a CLI? Open the verification link here
-                      and the handoff will resume automatically.
+                      If you enter an email, it stays private. The public account handle is derived from it unless
+                      an existing account already matches.
                     </p>
 
                     <div className="auth-stage-card__actions">
@@ -1033,8 +1079,49 @@ function normalizeIdentifier(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function normalizePublicHandle(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32);
+}
+
+function derivePublicHandleFromIdentifier(value: string): string {
+  const normalized = normalizeIdentifier(value);
+  const source = normalized.includes("@")
+    ? normalized.split("@")[0] ?? normalized
+    : normalized;
+
+  return normalizePublicHandle(source);
+}
+
+function buildRegistrationIdentity(identifier: string): { email?: string; handle?: string } {
+  if (isValidEmail(identifier)) {
+    return {
+      email: identifier,
+      handle: derivePublicHandleFromIdentifier(identifier),
+    };
+  }
+
+  return {
+    handle: normalizePublicHandle(identifier),
+  };
+}
+
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function readPasskeyErrorMessage(cause: unknown): string {
+  if (cause instanceof DOMException) {
+    if (cause.name === "NotAllowedError" || cause.name === "AbortError") {
+      return "The passkey prompt was canceled or timed out. Try again when you are ready to approve it.";
+    }
+  }
+
+  return readErrorMessage(cause);
 }
 
 type BrowserCredentialWithAttestation = {

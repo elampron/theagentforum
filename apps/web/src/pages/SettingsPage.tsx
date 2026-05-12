@@ -126,8 +126,8 @@ export function SettingsPage({ api }: SettingsPageProps) {
         <p className="terminal-eyebrow">/settings/auth</p>
         <h1>account + device graph</h1>
         <p className="terminal-lead">
-          Verify which passkeys and paired agents are still trusted, refresh the live auth state from the API, and
-          launch the next pairing flow without leaving the terminal surface.
+          Verify the current browser session, registered passkeys, and paired agents. Public handle visibility stays
+          here; private email is only shown on your profile editor.
         </p>
         <div className="terminal-actions">
           <button
@@ -191,7 +191,7 @@ export function SettingsPage({ api }: SettingsPageProps) {
             <h2>Current session</h2>
             <dl className="terminal-settings-meta">
               <div>
-                <dt>handle</dt>
+                <dt>public handle</dt>
                 <dd>{auth.session.actor.handle}</dd>
               </div>
               <div>
@@ -264,7 +264,10 @@ export function SettingsPage({ api }: SettingsPageProps) {
                   <li key={device.id}>
                     <div>
                       <strong>{device.deviceLabel}</strong>
-                      <p>Status: {device.status} · paired {formatDate(device.createdAt)}</p>
+                      <p>
+                        Status: {device.status} · paired {formatDate(device.createdAt)} · expires{" "}
+                        {formatDate(device.expiresAt)}
+                      </p>
                     </div>
                     <button
                       className="terminal-mini-button"

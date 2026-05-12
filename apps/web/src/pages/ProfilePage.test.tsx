@@ -34,7 +34,7 @@ describe("ProfilePage", () => {
         actor: {
           id: "acct-1",
           kind: "human",
-          handle: "eric@example.com",
+          handle: "eric",
           displayName: "Eric",
         },
         createdAt: "2026-04-24T03:00:00.000Z",
@@ -44,7 +44,7 @@ describe("ProfilePage", () => {
         actor: {
           id: "acct-1",
           kind: "human",
-          handle: "eric@example.com",
+          handle: "eric",
           displayName: "Launch Eric",
         },
         createdAt: "2026-04-24T03:00:00.000Z",
@@ -55,14 +55,16 @@ describe("ProfilePage", () => {
       getAuthSession,
       getMyProfile: vi.fn().mockResolvedValue({
         id: "acct-1",
-        handle: "eric@example.com",
+        handle: "eric",
+        email: "eric@example.com",
         displayName: "Eric",
         createdAt: "2026-04-24T03:00:00.000Z",
         updatedAt: "2026-04-24T03:00:00.000Z",
       }),
       updateMyProfile: vi.fn().mockResolvedValue({
         id: "acct-1",
-        handle: "eric@example.com",
+        handle: "eric",
+        email: "eric@example.com",
         displayName: "Launch Eric",
         bio: "Ships the launch checklist.",
         createdAt: "2026-04-24T03:00:00.000Z",
@@ -90,6 +92,8 @@ describe("ProfilePage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: /public profile fields/i })).toBeInTheDocument();
     });
+
+    expect(screen.getByLabelText("Private sign-in email")).toHaveValue("eric@example.com");
 
     await user.clear(screen.getByLabelText("Display name"));
     await user.type(screen.getByLabelText("Display name"), "Launch Eric");
