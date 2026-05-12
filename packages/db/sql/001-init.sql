@@ -114,6 +114,29 @@ create table if not exists auth_pairing_sessions (
 create index if not exists auth_pairing_sessions_registration_session_id_idx
   on auth_pairing_sessions (registration_session_id);
 
+create sequence if not exists auth_agent_pairing_request_id_seq;
+
+create table if not exists auth_agent_pairing_requests (
+  id text primary key default ('apr-' || nextval('auth_agent_pairing_request_id_seq')),
+  pairing_code text not null unique,
+  account_id text references auth_accounts(id) on delete cascade,
+  device_label text not null,
+  token text unique,
+  status text not null default 'pending_approval',
+  created_at timestamptz not null default now(),
+  expires_at timestamptz not null default (now() + interval '30 minutes'),
+  approved_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint auth_agent_pairing_requests_status_check
+    check (status in ('pending_approval', 'paired', 'expired'))
+);
+
+create index if not exists auth_agent_pairing_requests_account_id_idx
+  on auth_agent_pairing_requests (account_id, created_at);
+
+create index if not exists auth_agent_pairing_requests_token_idx
+  on auth_agent_pairing_requests (token);
+
 create table if not exists auth_passkey_credentials (
   id text primary key default ('cred-' || nextval('auth_passkey_credential_id_seq')),
   account_id text not null references auth_accounts(id) on delete cascade,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { describe, it } from "node:test";
 import { createApp } from "./app";
+import type { AuthStore } from "./auth-store";
 import { createInMemoryAuthStore } from "./memory-auth-store";
 import { createInMemoryQuestionStore } from "./memory-question-store";
 
@@ -325,6 +326,90 @@ describe("HTTP API", () => {
     assert.equal(inspectedAfterRevoke.body.data, null);
   });
 
+  it("lets a signed-in browser approve agent pairing while the agent polls for the token", async () => {
+    const authStore = createInMemoryAuthStore();
+    const app = createApp(createInMemoryQuestionStore(), authStore);
+
+    const started = await requestJson(app, "/auth/agent-pairings/start", {
+      method: "POST",
+      body: {
+        deviceLabel: "codex-cli",
+      },
+    });
+
+    assert.equal(started.status, 201);
+    assert.equal(started.body.data.status, "pending_approval");
+    assert.equal(started.body.data.deviceLabel, "codex-cli");
+    assert.match(started.body.data.approvalUrl, /^\/auth\?agentPairing=/);
+
+    const pending = await requestJson(
+      app,
+      `/auth/agent-pairings/${started.body.data.code}`,
+    );
+
+    assert.equal(pending.status, 200);
+    assert.equal(pending.body.data.status, "pending_approval");
+    assert.equal(pending.body.data.token, undefined);
+
+    const blocked = await requestJson(app, "/auth/agent-pairings/approve", {
+      method: "POST",
+      body: {
+        pairingCode: started.body.data.code,
+      },
+    });
+
+    assert.equal(blocked.status, 401);
+
+    const cookie = await createAuthenticatedCookie(authStore, {
+      handle: "felix-agent-approval",
+      displayName: "Felix Agent Approval",
+    });
+    const approved = await requestJson(app, "/auth/agent-pairings/approve", {
+      method: "POST",
+      headers: {
+        cookie,
+      },
+      body: {
+        pairingCode: started.body.data.code,
+        deviceLabel: "Codex in browser",
+      },
+    });
+
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.data.status, "paired");
+    assert.equal(approved.body.data.deviceLabel, "Codex in browser");
+    assert.equal(approved.body.data.actor.handle, "felix-agent-approval");
+    assert.match(approved.body.data.token, /^taf_/);
+
+    const completed = await requestJson(
+      app,
+      `/auth/agent-pairings/${started.body.data.code}`,
+    );
+
+    assert.equal(completed.status, 200);
+    assert.equal(completed.body.data.status, "paired");
+    assert.equal(completed.body.data.token, approved.body.data.token);
+
+    const inspected = await requestJson(app, "/auth/token", {
+      headers: {
+        authorization: `Bearer ${approved.body.data.token}`,
+      },
+    });
+
+    assert.equal(inspected.status, 200);
+    assert.equal(inspected.body.data.actor.handle, "felix-agent-approval");
+    assert.equal(inspected.body.data.deviceLabel, "Codex in browser");
+
+    const devices = await requestJson(app, "/auth/devices", {
+      headers: {
+        cookie,
+      },
+    });
+
+    assert.equal(devices.status, 200);
+    assert.equal(devices.body.data[0].deviceLabel, "Codex in browser");
+  });
+
   it("returns validation errors for invalid auth payloads", async () => {
     const app = createTestApp();
 
@@ -344,6 +429,38 @@ describe("HTTP API", () => {
 
 function createTestApp() {
   return createApp(createInMemoryQuestionStore(), createInMemoryAuthStore());
+}
+
+async function createAuthenticatedCookie(
+  authStore: AuthStore,
+  input: { handle: string; displayName: string },
+): Promise<string> {
+  const registration = await authStore.startRegistration(input);
+  const credentialId = `cred-${input.handle}`;
+
+  await authStore.finishPasskeyRegistration({
+    registrationSessionId: registration.id,
+    credentialId,
+    publicKey: "public-key",
+    verificationMethod: "webauthn",
+    passkeyLabel: `${input.displayName} Passkey`,
+    transports: ["internal"],
+  });
+
+  const authenticationSession = await authStore.startAuthentication({ handle: input.handle });
+  assert.ok(authenticationSession);
+
+  await authStore.finishPasskeyAuthentication({
+    authenticationSessionId: authenticationSession.id,
+    credentialId,
+    verificationMethod: "webauthn",
+    signCount: 1,
+    passkeyLabel: `${input.displayName} Passkey`,
+  });
+
+  const webSession = await authStore.createWebSession(authenticationSession.id);
+  assert.ok(webSession);
+  return `taf_session=${webSession.token}`;
 }
 
 async function requestJson(

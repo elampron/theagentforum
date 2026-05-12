@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type {
   AccountProfile,
+  AgentPairingSession,
+  ApproveAgentPairingInput,
   Actor,
   AuthDevice,
   AuthPasskey,
@@ -12,6 +14,7 @@ import type {
   PublicProfile,
   RedeemPairingInput,
   RegistrationSession,
+  StartAgentPairingInput,
   StartAuthenticationInput,
   StartRegistrationInput,
   UpdateAccountProfileInput,
@@ -86,6 +89,20 @@ interface StoredWebSession {
   revokedAt?: string;
 }
 
+interface StoredAgentPairingSession {
+  id: string;
+  code: string;
+  status: AgentPairingSession["status"];
+  deviceLabel: string;
+  approvalUrl: string;
+  accountId?: string;
+  actor?: Actor;
+  token?: string;
+  createdAt: string;
+  expiresAt: string;
+  approvedAt?: string;
+}
+
 export function createInMemoryAuthStore(): AuthStore {
   const registrationSessions = new Map<string, StoredRegistrationSession>();
   const authenticationSessions = new Map<string, StoredAuthenticationSession>();
@@ -93,10 +110,12 @@ export function createInMemoryAuthStore(): AuthStore {
   const accountsByHandle = new Map<string, StoredAccount>();
   const accountsByEmail = new Map<string, StoredAccount>();
   const webSessionsByToken = new Map<string, StoredWebSession>();
+  const agentPairingSessions = new Map<string, StoredAgentPairingSession>();
   let accountSequence = 1;
   let registrationSequence = 1;
   let pairingSequence = 1;
   let authenticationSequence = 1;
+  let agentPairingSequence = 1;
 
   async function startRegistration(input: StartRegistrationInput): Promise<RegistrationSession> {
     const account = ensureAccount(input);
@@ -290,6 +309,74 @@ export function createInMemoryAuthStore(): AuthStore {
     session.pairing.redeemedAt = new Date().toISOString();
 
     return cloneRegistrationSession(session);
+  }
+
+  async function startAgentPairing(
+    input: StartAgentPairingInput,
+  ): Promise<AgentPairingSession> {
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const code = createPairingCode();
+    const session: StoredAgentPairingSession = {
+      id: `apr-${agentPairingSequence++}`,
+      code,
+      status: "pending_approval",
+      deviceLabel: input.deviceLabel,
+      approvalUrl: `/auth?agentPairing=${code}&flow=agent-pairing`,
+      createdAt,
+      expiresAt,
+    };
+
+    agentPairingSessions.set(code, session);
+    return cloneAgentPairingSession(session);
+  }
+
+  async function getAgentPairing(
+    pairingCode: string,
+  ): Promise<AgentPairingSession | null> {
+    const session = agentPairingSessions.get(pairingCode);
+
+    if (!session) {
+      return null;
+    }
+
+    expireAgentPairingIfNeeded(session);
+    return cloneAgentPairingSession(session);
+  }
+
+  async function approveAgentPairing(
+    accountId: string,
+    input: ApproveAgentPairingInput,
+  ): Promise<AgentPairingSession | null> {
+    const session = agentPairingSessions.get(input.pairingCode);
+
+    if (!session) {
+      return null;
+    }
+
+    expireAgentPairingIfNeeded(session);
+
+    if (session.status === "expired") {
+      return cloneAgentPairingSession(session);
+    }
+
+    const account = Array.from(accountsByHandle.values()).find(
+      (candidate) => candidate.id === accountId,
+    );
+
+    if (!account) {
+      return null;
+    }
+
+    const approvedAt = new Date().toISOString();
+    session.status = "paired";
+    session.accountId = account.id;
+    session.actor = createStoredActor(account);
+    session.deviceLabel = input.deviceLabel?.trim() || session.deviceLabel;
+    session.token = createToken();
+    session.approvedAt = approvedAt;
+
+    return cloneAgentPairingSession(session);
   }
 
   async function startAuthentication(
@@ -500,6 +587,27 @@ export function createInMemoryAuthStore(): AuthStore {
   }
 
   async function getApiTokenSession(token: string): Promise<ApiTokenSession | null> {
+    const agentPairingSession = Array.from(agentPairingSessions.values()).find(
+      (candidate) => candidate.token === token,
+    );
+
+    if (agentPairingSession) {
+      expireAgentPairingIfNeeded(agentPairingSession);
+
+      if (
+        agentPairingSession.status === "paired"
+        && Date.parse(agentPairingSession.expiresAt) > Date.now()
+        && agentPairingSession.actor
+      ) {
+        return {
+          actor: { ...agentPairingSession.actor },
+          createdAt: agentPairingSession.createdAt,
+          expiresAt: agentPairingSession.expiresAt,
+          deviceLabel: agentPairingSession.deviceLabel,
+        };
+      }
+    }
+
     const session = Array.from(registrationSessions.values()).find(
       (candidate) => candidate.pairing.token === token,
     );
@@ -528,6 +636,18 @@ export function createInMemoryAuthStore(): AuthStore {
   }
 
   async function revokeApiToken(token: string): Promise<void> {
+    const agentPairingSession = Array.from(agentPairingSessions.values()).find(
+      (candidate) => candidate.token === token,
+    );
+
+    if (agentPairingSession) {
+      agentPairingSession.token = undefined;
+      if (agentPairingSession.status === "paired") {
+        agentPairingSession.status = "expired";
+      }
+      return;
+    }
+
     const session = Array.from(registrationSessions.values()).find(
       (candidate) => candidate.pairing.token === token,
     );
@@ -634,7 +754,7 @@ export function createInMemoryAuthStore(): AuthStore {
       return [];
     }
 
-    return Array.from(registrationSessions.values())
+    const legacyDevices = Array.from(registrationSessions.values())
       .filter((session) => session.handle === account.handle && Boolean(session.pairing.deviceLabel))
       .map((session) => ({
         id: session.pairing.id,
@@ -643,7 +763,19 @@ export function createInMemoryAuthStore(): AuthStore {
         createdAt: session.pairing.createdAt,
         expiresAt: session.pairing.expiresAt,
         redeemedAt: session.pairing.redeemedAt,
-      }))
+      }));
+    const browserApprovedDevices = Array.from(agentPairingSessions.values())
+      .filter((session) => session.accountId === account.id && session.status === "paired")
+      .map((session) => ({
+        id: session.id,
+        deviceLabel: session.deviceLabel,
+        status: "paired" as const,
+        createdAt: session.createdAt,
+        expiresAt: session.expiresAt,
+        redeemedAt: session.approvedAt,
+      }));
+
+    return [...legacyDevices, ...browserApprovedDevices]
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   }
 
@@ -652,6 +784,16 @@ export function createInMemoryAuthStore(): AuthStore {
 
     if (!account) {
       return "not_found";
+    }
+
+    const agentPairingSession = Array.from(agentPairingSessions.values()).find(
+      (candidate) => candidate.accountId === account.id && candidate.id === deviceId,
+    );
+
+    if (agentPairingSession) {
+      agentPairingSession.token = undefined;
+      agentPairingSession.status = "expired";
+      return "revoked";
     }
 
     const session = Array.from(registrationSessions.values()).find(
@@ -718,6 +860,9 @@ export function createInMemoryAuthStore(): AuthStore {
     finishPasskeyRegistration,
     completeRegistrationVerification,
     redeemPairing,
+    startAgentPairing,
+    getAgentPairing,
+    approveAgentPairing,
     startAuthentication,
     getAuthenticationSession,
     getPasskeyAuthenticationOptions,
@@ -801,6 +946,12 @@ function expireRegistrationSessionIfNeeded(session: StoredRegistrationSession): 
   }
 }
 
+function expireAgentPairingIfNeeded(session: StoredAgentPairingSession): void {
+  if (session.status !== "paired" && Date.parse(session.expiresAt) <= Date.now()) {
+    session.status = "expired";
+  }
+}
+
 function expireAuthenticationSessionIfNeeded(session: StoredAuthenticationSession): void {
   if (
     session.status !== "expired"
@@ -841,6 +992,15 @@ function cloneRegistrationSession(session: StoredRegistrationSession): Registrat
   return {
     ...session,
     pairing: { ...session.pairing },
+  };
+}
+
+function cloneAgentPairingSession(
+  session: StoredAgentPairingSession,
+): AgentPairingSession {
+  return {
+    ...session,
+    actor: session.actor ? { ...session.actor } : undefined,
   };
 }
 

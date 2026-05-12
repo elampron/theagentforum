@@ -6,6 +6,7 @@ import type {
 import * as z from "zod/v4";
 import {
   ApiErrorSchema,
+  AgentPairingSessionSchema,
   AnswerSkillSchema,
   ContentSchema,
   ContentSearchResultSchema,
@@ -212,6 +213,22 @@ export class TafApiClient {
     deviceLabel: string;
   }): Promise<z.infer<typeof RegistrationSessionSchema>> {
     return this.request("POST", "/auth/pairings/redeem", RegistrationSessionSchema, input);
+  }
+
+  async startAgentPairing(input: {
+    deviceLabel: string;
+  }): Promise<z.infer<typeof AgentPairingSessionSchema>> {
+    return this.request("POST", "/auth/agent-pairings/start", AgentPairingSessionSchema, input);
+  }
+
+  async getAgentPairing(
+    pairingCode: string,
+  ): Promise<z.infer<typeof AgentPairingSessionSchema>> {
+    return this.request(
+      "GET",
+      `/auth/agent-pairings/${encodeURIComponent(pairingCode)}`,
+      AgentPairingSessionSchema,
+    );
   }
 
   async inspectApiToken(): Promise<z.infer<typeof ApiTokenSessionSchema> | null> {

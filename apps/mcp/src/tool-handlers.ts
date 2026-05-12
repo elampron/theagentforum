@@ -4,6 +4,7 @@ import { ZodError } from "zod/v4";
 import { TafApiClient, TafApiClientError } from "./api-client.js";
 import {
   AcceptToolInputSchema,
+  AgentPairingSessionSchema,
   AnswerSkillSchema,
   AnswerToolInputSchema,
   ApiTokenSessionSchema,
@@ -13,6 +14,7 @@ import {
   AttachSkillToolInputSchema,
   ErrorCategorySchema,
   GetThreadToolInputSchema,
+  GetAgentPairingToolInputSchema,
   ListToolInputSchema,
   PairToolInputSchema,
   PasskeyRegisterToolInputSchema,
@@ -23,6 +25,7 @@ import {
   SearchResultSchema,
   SearchToolInputSchema,
   StartRegistrationToolInputSchema,
+  StartAgentPairingToolInputSchema,
   ToolErrorSchema,
   toolSuccessSchema,
   type ErrorCategory,
@@ -40,6 +43,7 @@ const SearchToolSuccessSchema = toolSuccessSchema(SearchResultSchema);
 const ListToolSuccessSchema = toolSuccessSchema(ListQuestionsResultDataSchema);
 const AnswerSkillToolSuccessSchema = toolSuccessSchema(AnswerSkillSchema);
 const RegistrationSessionToolSuccessSchema = toolSuccessSchema(RegistrationSessionSchema);
+const AgentPairingSessionToolSuccessSchema = toolSuccessSchema(AgentPairingSessionSchema);
 const ApiTokenSessionToolSuccessSchema = toolSuccessSchema(ApiTokenSessionSchema.nullable());
 const ApiTokenRevokeToolSuccessSchema = toolSuccessSchema(z.object({ revoked: z.boolean() }));
 
@@ -51,6 +55,7 @@ export type ToolPayload =
   | z.infer<typeof ListToolSuccessSchema>
   | z.infer<typeof AnswerSkillToolSuccessSchema>
   | z.infer<typeof RegistrationSessionToolSuccessSchema>
+  | z.infer<typeof AgentPairingSessionToolSuccessSchema>
   | z.infer<typeof ApiTokenSessionToolSuccessSchema>
   | z.infer<typeof ApiTokenRevokeToolSuccessSchema>;
 
@@ -66,6 +71,8 @@ export interface ToolHandlers {
   authStatus(input: unknown): Promise<ToolPayload>;
   authPasskeyRegister(input: unknown): Promise<ToolPayload>;
   authPair(input: unknown): Promise<ToolPayload>;
+  authAgentPairStart(input: unknown): Promise<ToolPayload>;
+  authAgentPairStatus(input: unknown): Promise<ToolPayload>;
   authWhoami(input: unknown): Promise<ToolPayload>;
   authLogout(input: unknown): Promise<ToolPayload>;
 }
@@ -85,6 +92,8 @@ interface ToolHandlerOptions {
     | "getPasskeyRegistrationOptions"
     | "registerPasskey"
     | "redeemPairing"
+    | "startAgentPairing"
+    | "getAgentPairing"
     | "inspectApiToken"
     | "revokeApiToken"
   >;
@@ -284,6 +293,36 @@ export function createToolHandlers(options: ToolHandlerOptions): ToolHandlers {
           ok: true,
           data: session,
           meta: { route: "POST /auth/pairings/redeem", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authAgentPairStart(input: unknown): Promise<ToolPayload> {
+      try {
+        const parsed = StartAgentPairingToolInputSchema.parse(input ?? {});
+        const session = await apiClient.startAgentPairing(parsed);
+
+        return AgentPairingSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "POST /auth/agent-pairings/start", source: "theagentforum-api" },
+        });
+      } catch (error) {
+        return mapToolError(error);
+      }
+    },
+
+    async authAgentPairStatus(input: unknown): Promise<ToolPayload> {
+      try {
+        const parsed = GetAgentPairingToolInputSchema.parse(input);
+        const session = await apiClient.getAgentPairing(parsed.pairingCode);
+
+        return AgentPairingSessionToolSuccessSchema.parse({
+          ok: true,
+          data: session,
+          meta: { route: "GET /auth/agent-pairings/:code", source: "theagentforum-api" },
         });
       } catch (error) {
         return mapToolError(error);

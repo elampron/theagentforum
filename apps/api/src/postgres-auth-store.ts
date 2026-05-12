@@ -1,6 +1,8 @@
 import { randomBytes } from "node:crypto";
 import type {
   AccountProfile,
+  AgentPairingSession,
+  ApproveAgentPairingInput,
   AuthenticationSession,
   AuthDevice,
   AuthPasskey,
@@ -10,6 +12,7 @@ import type {
   PublicProfile,
   RedeemPairingInput,
   RegistrationSession,
+  StartAgentPairingInput,
   StartAuthenticationInput,
   StartRegistrationInput,
   UpdateAccountProfileInput,
@@ -36,6 +39,9 @@ export function createPostgresAuthStore(): AuthStore {
     finishPasskeyRegistration,
     completeRegistrationVerification,
     redeemPairing,
+    startAgentPairing,
+    getAgentPairing,
+    approveAgentPairing,
     startAuthentication,
     getAuthenticationSession,
     getPasskeyAuthenticationOptions,
@@ -445,6 +451,89 @@ async function redeemPairing(input: RedeemPairingInput): Promise<RegistrationSes
   return output ? (JSON.parse(output) as RegistrationSession) : null;
 }
 
+async function startAgentPairing(
+  input: StartAgentPairingInput,
+): Promise<AgentPairingSession> {
+  const output = await runSql(
+    `
+      insert into auth_agent_pairing_requests (
+        pairing_code,
+        device_label
+      )
+      values (
+        :'pairing_code',
+        :'device_label'
+      )
+      returning ${agentPairingSessionSelect("auth_agent_pairing_requests")} :: text;
+    `,
+    {
+      pairing_code: createPairingCode(),
+      device_label: input.deviceLabel,
+    },
+  );
+
+  if (!output) {
+    throw new Error("Failed to start agent pairing.");
+  }
+
+  return JSON.parse(output) as AgentPairingSession;
+}
+
+async function getAgentPairing(
+  pairingCode: string,
+): Promise<AgentPairingSession | null> {
+  await expireAgentPairing(pairingCode);
+
+  const output = await runSql(
+    `
+      select ${agentPairingSessionSelect("p", "acct")} :: text
+      from auth_agent_pairing_requests p
+      left join auth_accounts acct on acct.id = p.account_id
+      where p.pairing_code = :'pairing_code';
+    `,
+    { pairing_code: pairingCode },
+  );
+
+  return output ? (JSON.parse(output) as AgentPairingSession) : null;
+}
+
+async function approveAgentPairing(
+  accountId: string,
+  input: ApproveAgentPairingInput,
+): Promise<AgentPairingSession | null> {
+  await expireAgentPairing(input.pairingCode);
+
+  const output = await runSql(
+    `
+      with updated_pairing as (
+        update auth_agent_pairing_requests
+        set
+          account_id = :'account_id',
+          device_label = coalesce(nullif(:'device_label', ''), device_label),
+          token = :'token',
+          status = 'paired',
+          approved_at = now(),
+          updated_at = now()
+        where pairing_code = :'pairing_code'
+          and status = 'pending_approval'
+          and expires_at > now()
+        returning *
+      )
+      select ${agentPairingSessionSelect("updated_pairing", "acct")} :: text
+      from updated_pairing
+      join auth_accounts acct on acct.id = updated_pairing.account_id;
+    `,
+    {
+      account_id: accountId,
+      pairing_code: input.pairingCode,
+      device_label: input.deviceLabel ?? "",
+      token: createToken(),
+    },
+  );
+
+  return output ? (JSON.parse(output) as AgentPairingSession) : null;
+}
+
 async function startAuthentication(
   input: StartAuthenticationInput,
 ): Promise<AuthenticationSession | null> {
@@ -692,6 +781,22 @@ async function revokeWebSession(token: string): Promise<void> {
 async function getApiTokenSession(token: string): Promise<ApiTokenSession | null> {
   await expireApiTokenSession(token);
 
+  const agentPairingOutput = await runSql(
+    `
+      select ${apiTokenSessionSelect("p", "acct")} :: text
+      from auth_agent_pairing_requests p
+      join auth_accounts acct on acct.id = p.account_id
+      where p.token = :'token'
+        and p.status = 'paired'
+        and p.expires_at > now();
+    `,
+    { token },
+  );
+
+  if (agentPairingOutput) {
+    return JSON.parse(agentPairingOutput) as ApiTokenSession;
+  }
+
   const output = await runSql(
     `
       select ${apiTokenSessionSelect("p", "acct")} :: text
@@ -711,6 +816,13 @@ async function getApiTokenSession(token: string): Promise<ApiTokenSession | null
 async function revokeApiToken(token: string): Promise<void> {
   await runSql(
     `
+      update auth_agent_pairing_requests
+      set
+        token = null,
+        status = case when status = 'paired' then 'expired' else status end,
+        updated_at = now()
+      where token = :'token';
+
       update auth_pairing_sessions
       set
         token = null,
@@ -863,21 +975,44 @@ async function removeAccountPasskey(
 async function listAccountDevices(accountId: string): Promise<AuthDevice[]> {
   return queryJson<AuthDevice[]>(
     `
+      with devices as (
+        select
+          p.id,
+          p.device_label,
+          p.status,
+          p.created_at,
+          p.expires_at,
+          p.redeemed_at
+        from auth_pairing_sessions p
+        join auth_registration_sessions r on r.id = p.registration_session_id
+        where r.account_id = :'account_id'
+          and p.device_label is not null
+
+        union all
+
+        select
+          p.id,
+          p.device_label,
+          p.status,
+          p.created_at,
+          p.expires_at,
+          p.approved_at as redeemed_at
+        from auth_agent_pairing_requests p
+        where p.account_id = :'account_id'
+          and p.status = 'paired'
+      )
       select coalesce(json_agg(json_strip_nulls(json_build_object(
-        'id', p.id,
-        'deviceLabel', p.device_label,
-        'status', p.status,
-        'createdAt', to_char(p.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-        'expiresAt', to_char(p.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'id', devices.id,
+        'deviceLabel', devices.device_label,
+        'status', devices.status,
+        'createdAt', to_char(devices.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+        'expiresAt', to_char(devices.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
         'redeemedAt', case
-          when p.redeemed_at is null then null
-          else to_char(p.redeemed_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+          when devices.redeemed_at is null then null
+          else to_char(devices.redeemed_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
         end
-      )) order by p.created_at desc), '[]'::json) :: text
-      from auth_pairing_sessions p
-      join auth_registration_sessions r on r.id = p.registration_session_id
-      where r.account_id = :'account_id'
-        and p.device_label is not null;
+      )) order by devices.created_at desc), '[]'::json) :: text
+      from devices;
     `,
     { account_id: accountId },
   );
@@ -890,6 +1025,16 @@ async function revokeAccountDevice(
   const output = await runSql(
     `
       with updated_pairing as (
+        update auth_agent_pairing_requests p
+        set
+          token = null,
+          status = 'expired',
+          updated_at = now()
+        where p.id = :'device_id'
+          and p.account_id = :'account_id'
+        returning p.id
+      ),
+      updated_legacy_pairing as (
         update auth_pairing_sessions p
         set
           token = null,
@@ -906,6 +1051,7 @@ async function revokeAccountDevice(
       )
       select case
         when exists (select 1 from updated_pairing) then 'revoked'
+        when exists (select 1 from updated_legacy_pairing) then 'revoked'
         else 'not_found'
       end :: text;
     `,
@@ -956,9 +1102,32 @@ async function expireRegistrationByPairingCode(pairingCode: string): Promise<voi
   );
 }
 
+async function expireAgentPairing(pairingCode: string): Promise<void> {
+  await runSql(
+    `
+      update auth_agent_pairing_requests
+      set
+        status = 'expired',
+        updated_at = now()
+      where pairing_code = :'pairing_code'
+        and status <> 'paired'
+        and expires_at <= now();
+    `,
+    { pairing_code: pairingCode },
+  );
+}
+
 async function expireApiTokenSession(token: string): Promise<void> {
   await runSql(
     `
+      update auth_agent_pairing_requests
+      set
+        status = 'expired',
+        updated_at = now()
+      where token = :'token'
+        and status = 'paired'
+        and expires_at <= now();
+
       update auth_pairing_sessions
       set
         status = 'expired',
@@ -1108,6 +1277,36 @@ function apiTokenSessionSelect(pairingAlias: string, accountAlias: string): stri
     'createdAt', to_char(${pairingAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
     'expiresAt', to_char(${pairingAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
   )`;
+}
+
+function agentPairingSessionSelect(
+  pairingAlias: string,
+  accountAlias?: string,
+): string {
+  const actorExpression = accountAlias
+    ? `json_strip_nulls(json_build_object(
+      'id', ${accountAlias}.id,
+      'kind', 'human',
+      'handle', ${accountAlias}.handle,
+      'displayName', ${accountAlias}.display_name
+    ))`
+    : "null";
+
+  return `json_strip_nulls(json_build_object(
+    'id', ${pairingAlias}.id,
+    'code', ${pairingAlias}.pairing_code,
+    'status', ${pairingAlias}.status,
+    'deviceLabel', ${pairingAlias}.device_label,
+    'approvalUrl', '/auth?agentPairing=' || ${pairingAlias}.pairing_code || '&flow=agent-pairing',
+    'actor', ${actorExpression},
+    'token', ${pairingAlias}.token,
+    'createdAt', to_char(${pairingAlias}.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'expiresAt', to_char(${pairingAlias}.expires_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'approvedAt', case
+      when ${pairingAlias}.approved_at is null then null
+      else to_char(${pairingAlias}.approved_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+    end
+  ))`;
 }
 
 function issuedWebSessionSelect(webSessionAlias: string, accountAlias: string): string {

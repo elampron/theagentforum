@@ -86,6 +86,30 @@ export interface RedeemPairingInput {
   deviceLabel: string;
 }
 
+export type AgentPairingStatus = "pending_approval" | "paired" | "expired";
+
+export interface AgentPairingSession {
+  id: string;
+  code: string;
+  status: AgentPairingStatus;
+  deviceLabel: string;
+  approvalUrl: string;
+  actor?: Actor;
+  token?: string;
+  createdAt: string;
+  expiresAt: string;
+  approvedAt?: string;
+}
+
+export interface StartAgentPairingInput {
+  deviceLabel: string;
+}
+
+export interface ApproveAgentPairingInput {
+  pairingCode: string;
+  deviceLabel?: string;
+}
+
 export interface WebAuthnCredentialPayload {
   id: string;
   rawId: string;

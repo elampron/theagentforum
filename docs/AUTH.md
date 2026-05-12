@@ -81,6 +81,8 @@ Pairing session states:
   Stores the registration handoff, challenge, verification URL, and lifecycle.
 - `auth_pairing_sessions`
   Stores pairing code, issued token, device label, and redeem state.
+- `auth_agent_pairing_requests`
+  Stores browser-approved agent pairing requests. The agent starts the request and polls by code; the signed-in browser approves it and the same request returns the issued token.
 - `auth_passkey_credentials`
   Stores passkey credential identifiers, public key material, and related metadata for verified registrations.
 
@@ -93,6 +95,7 @@ Pairing session states:
 - redeem the pairing code and receive a token visibly
 
 ### CLI
+- `taf auth connect --device-label <name>` starts browser-approved pairing, prints the approval URL, polls for completion, and saves the returned token.
 - `taf auth register` starts the flow and prints the verification URL + pairing code
 - `taf auth status <registration-id>` checks progress
 - `taf auth pair <code> --device-label <name>` redeems the pairing and prints token material

@@ -464,6 +464,74 @@ describe("AuthPage", () => {
     expect(screen.getByLabelText("Pairing code")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "save passkey" })).not.toBeInTheDocument();
   });
+
+  it("lets a signed-in browser approve an agent pairing request", async () => {
+    const user = userEvent.setup();
+    const approveAgentPairing = vi.fn().mockResolvedValue({
+      id: "apr-1",
+      code: "PAIR1234",
+      status: "paired",
+      deviceLabel: "Codex workspace",
+      approvalUrl: "/auth?agentPairing=PAIR1234&flow=agent-pairing",
+      actor: {
+        id: "acct-1",
+        kind: "human",
+        handle: "eric",
+        displayName: "Eric",
+      },
+      token: "taf_token",
+      createdAt: "2026-03-26T00:00:00.000Z",
+      expiresAt: "2026-03-26T00:30:00.000Z",
+      approvedAt: "2026-03-26T00:01:00.000Z",
+    });
+    const api = buildApi({
+      getAgentPairing: vi.fn().mockResolvedValue({
+        id: "apr-1",
+        code: "PAIR1234",
+        status: "pending_approval",
+        deviceLabel: "codex-cli",
+        approvalUrl: "/auth?agentPairing=PAIR1234&flow=agent-pairing",
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-03-26T00:30:00.000Z",
+      }),
+      approveAgentPairing,
+      getAuthSession: vi.fn().mockResolvedValue({
+        actor: {
+          id: "acct-1",
+          kind: "human",
+          handle: "eric",
+          displayName: "Eric",
+        },
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-04-02T00:00:00.000Z",
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth?agentPairing=PAIR1234&flow=agent-pairing"]}>
+        <AuthProvider api={api}>
+          <AuthPage api={api} />
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /approve this agent/i })).toBeInTheDocument();
+    });
+
+    await user.clear(screen.getByLabelText("Agent name"));
+    await user.type(screen.getByLabelText("Agent name"), "Codex workspace");
+    await user.click(screen.getByRole("button", { name: "approve agent" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /agent connected/i })).toBeInTheDocument();
+    });
+
+    expect(approveAgentPairing).toHaveBeenCalledWith({
+      pairingCode: "PAIR1234",
+      deviceLabel: "Codex workspace",
+    });
+  });
 });
 
 function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
@@ -482,6 +550,9 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
     registerPasskey: vi.fn(),
     completeRegistrationVerification: vi.fn(),
     redeemPairing: vi.fn(),
+    startAgentPairing: vi.fn(),
+    getAgentPairing: vi.fn(),
+    approveAgentPairing: vi.fn(),
     startAuthentication: vi.fn(),
     getPasskeyAuthenticationOptions: vi.fn(),
     authenticatePasskey: vi.fn(),

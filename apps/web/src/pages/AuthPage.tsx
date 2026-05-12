@@ -14,6 +14,7 @@ import {
   readErrorMessage,
 } from "../lib/ui";
 import type {
+  AgentPairingSession,
   FinishAuthenticationInput,
   FinishRegistrationInput,
   PasskeyAuthenticationOptions,
@@ -48,8 +49,22 @@ export function AuthPage({ api, presentation = "page" }: AuthPageProps) {
   const auth = useAuth();
   const [searchParams] = useSearchParams();
   const registrationParam = searchParams.get("registration") ?? "";
+  const agentPairingParam = searchParams.get("agentPairing") ?? "";
   const flow = searchParams.get("flow");
   const returnTo = readSafeReturnTo(searchParams.get("returnTo"));
+
+  if (agentPairingParam || flow === "agent-pairing") {
+    return (
+      <AgentPairingApprovalPage
+        api={api}
+        presentation={presentation}
+        pairingCode={agentPairingParam}
+        returnTo={returnTo}
+        session={auth.session}
+        onAuthStateChange={auth.refreshSession}
+      />
+    );
+  }
 
   if (registrationParam || flow === "pairing") {
     return (
@@ -145,7 +160,7 @@ function EmailPasskeyAuthPage({
       return;
     }
 
-    if (flow === "signup") {
+    if (flow === "signup" && !isAgentPairingReturnTo(returnTo)) {
       navigate(
         `/profile?onboarding=1&created=passkey&returnTo=${encodeURIComponent(returnTo)}`,
         { replace: true },
@@ -156,7 +171,11 @@ function EmailPasskeyAuthPage({
     try {
       const profile = await api.getMyProfile();
 
-      if (profileNeedsOnboarding(profile) && !hasSkippedProfileOnboarding(profile.handle)) {
+      if (
+        !isAgentPairingReturnTo(returnTo)
+        && profileNeedsOnboarding(profile)
+        && !hasSkippedProfileOnboarding(profile.handle)
+      ) {
         navigate(`/profile?onboarding=1&returnTo=${encodeURIComponent(returnTo)}`, { replace: true });
         return;
       }
@@ -417,6 +436,199 @@ function EmailPasskeyAuthPage({
       </ModalFrame>
     );
   }
+
+  return <PageFrame>{content}</PageFrame>;
+}
+
+interface AgentPairingApprovalPageProps {
+  api: ApiClient;
+  presentation: "page" | "modal";
+  pairingCode: string;
+  returnTo: string;
+  session: WebSession | null;
+  onAuthStateChange: () => Promise<WebSession | null>;
+}
+
+function AgentPairingApprovalPage({
+  api,
+  presentation,
+  pairingCode,
+  returnTo,
+  session,
+  onAuthStateChange,
+}: AgentPairingApprovalPageProps) {
+  const navigate = useNavigate();
+  const [pairingSession, setPairingSession] = useState<AgentPairingSession | null>(null);
+  const [deviceLabel, setDeviceLabel] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const pairingReturnTo = pairingCode
+    ? `/auth?agentPairing=${encodeURIComponent(pairingCode)}&flow=agent-pairing`
+    : "/auth?flow=agent-pairing";
+
+  useEffect(() => {
+    if (!pairingCode) {
+      return;
+    }
+
+    void (async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const nextSession = await api.getAgentPairing(pairingCode);
+        setPairingSession(nextSession);
+        setDeviceLabel(nextSession.deviceLabel);
+      } catch (cause) {
+        setError(readErrorMessage(cause));
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [api, pairingCode]);
+
+  async function handleApprove(): Promise<void> {
+    if (!pairingCode) {
+      setError("Pairing code is missing.");
+      return;
+    }
+
+    setApproving(true);
+    setError(null);
+
+    try {
+      const approved = await api.approveAgentPairing({
+        pairingCode,
+        deviceLabel: deviceLabel.trim() || pairingSession?.deviceLabel,
+      });
+      setPairingSession(approved);
+      captureClientEvent("taf_agent_pairing_approved", {
+        device_label: approved.deviceLabel,
+      });
+    } catch (cause) {
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_agent_pairing_failed", {
+        error_message: message,
+      });
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  if (!session) {
+    return (
+      <EmailPasskeyAuthPage
+        api={api}
+        presentation={presentation}
+        returnTo={pairingReturnTo}
+        onAuthStateChange={onAuthStateChange}
+        sessionName={null}
+        isAuthenticated={false}
+      />
+    );
+  }
+
+  const approved = pairingSession?.status === "paired";
+  const expired = pairingSession?.status === "expired";
+
+  const content = (
+    <div className="terminal-page auth-terminal-page">
+      <header className="terminal-nav auth-terminal-nav" aria-label="Agent pairing approval navigation">
+        <Link className="terminal-logo" to={returnTo}>
+          The Agent Forum<span>_</span>
+        </Link>
+        <div className="auth-terminal-nav__meta">
+          <span className="auth-terminal-badge">agent approval</span>
+          <button
+            type="button"
+            className="terminal-link-button auth-terminal-nav__back"
+            onClick={() => navigate(returnTo, { replace: true })}
+          >
+            back
+          </button>
+        </div>
+      </header>
+
+      <main className="terminal-main auth-terminal-main">
+        <section className="auth-stage-shell">
+          <div className="auth-stage-topline">
+            <div className="auth-stage-topline__meta">
+              <span className="auth-terminal-badge">
+                account: {describeActor(session.actor)}
+              </span>
+              <span className="auth-terminal-status-chip">
+                pairing: {pairingSession ? formatStatus(pairingSession.status) : "loading"}
+              </span>
+            </div>
+          </div>
+
+          <article className="auth-stage-card">
+            <div className="auth-stage-card__header">
+              <h2>{approved ? "agent connected" : "approve this agent"}</h2>
+              <p>
+                {approved
+                  ? "The requesting agent can now finish setup automatically."
+                  : "Confirm that this browser account should issue a token for the requesting agent."}
+              </p>
+            </div>
+
+            {error ? <p className="auth-terminal-alert">{error}</p> : null}
+
+            {loading ? (
+              <p className="auth-terminal-note">Loading the agent pairing request.</p>
+            ) : null}
+
+            {pairingSession && !approved ? (
+              <div className="auth-terminal-form">
+                <dl className="auth-terminal-meta">
+                  <div>
+                    <dt>Pairing code</dt>
+                    <dd>{pairingSession.code}</dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd>{formatStatus(pairingSession.status)}</dd>
+                  </div>
+                </dl>
+
+                <label className="auth-terminal-field">
+                  <span>Agent name</span>
+                  <input
+                    value={deviceLabel}
+                    onChange={(event) => setDeviceLabel(event.target.value)}
+                    placeholder="Codex on laptop"
+                    disabled={approving || expired}
+                  />
+                </label>
+
+                <div className="auth-stage-card__actions">
+                  <button
+                    type="button"
+                    className="terminal-button"
+                    disabled={approving || expired}
+                    onClick={() => void handleApprove()}
+                  >
+                    {approving ? "approving..." : "approve agent"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
+            {approved && pairingSession ? (
+              <div className="auth-terminal-snippet">
+                <span>Pairing complete</span>
+                <code className="auth-terminal-code">
+                  {pairingSession.deviceLabel} connected as {describeActor(session.actor)}
+                </code>
+              </div>
+            ) : null}
+          </article>
+        </section>
+      </main>
+    </div>
+  );
 
   return <PageFrame>{content}</PageFrame>;
 }
@@ -1410,6 +1622,10 @@ function hasSkippedProfileOnboarding(handle: string): boolean {
   } catch {
     return false;
   }
+}
+
+function isAgentPairingReturnTo(returnTo: string): boolean {
+  return returnTo.startsWith("/auth?") && returnTo.includes("agentPairing=");
 }
 
 function decodeMaybeBase64Url(value: string): Uint8Array {

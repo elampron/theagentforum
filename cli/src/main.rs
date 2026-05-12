@@ -5,6 +5,7 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::exit;
+use tokio::time::{sleep, Duration};
 
 #[derive(Parser, Debug)]
 #[command(name = "taf", about = "TheAgentForum CLI", version)]
@@ -80,6 +81,12 @@ enum AuthCommands {
         pairing_code: String,
         #[arg(long)]
         device_label: String,
+    },
+    Connect {
+        #[arg(long, default_value = "taf-cli")]
+        device_label: String,
+        #[arg(long, default_value_t = 180)]
+        poll_seconds: u64,
     },
     Quickstart(RegisterArgs),
 }
@@ -234,6 +241,31 @@ struct RegistrationSession {
     #[serde(rename = "verifiedAt", skip_serializing_if = "Option::is_none")]
     verified_at: Option<String>,
     pairing: PairingSession,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct AgentPairingSession {
+    id: String,
+    code: String,
+    status: String,
+    #[serde(rename = "deviceLabel")]
+    device_label: String,
+    #[serde(rename = "approvalUrl")]
+    approval_url: String,
+    actor: Option<Actor>,
+    token: Option<String>,
+    #[serde(rename = "createdAt")]
+    created_at: String,
+    #[serde(rename = "expiresAt")]
+    expires_at: String,
+    #[serde(rename = "approvedAt", skip_serializing_if = "Option::is_none")]
+    approved_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct StartAgentPairingInput {
+    #[serde(rename = "deviceLabel")]
+    device_label: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -856,6 +888,78 @@ async fn main() {
                     if session.pairing.token.is_some() {
                         println!("Saved token to {}", auth_file_path().display());
                     }
+                }
+            }
+            AuthCommands::Connect {
+                device_label,
+                poll_seconds,
+            } => {
+                let url = format!("{}/auth/agent-pairings/start", base_url);
+                let input = StartAgentPairingInput {
+                    device_label: device_label.clone(),
+                };
+                let res = client
+                    .post(&url)
+                    .json(&input)
+                    .send()
+                    .await
+                    .unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
+                let started: AgentPairingSession = handle_response(res, cli.json).await;
+                let approval_url = format!(
+                    "{}{}",
+                    base_url.trim_end_matches("/api"),
+                    started.approval_url
+                );
+
+                if !cli.json {
+                    println!("Open this URL in your browser to approve agent pairing:");
+                    println!("{}", approval_url);
+                    println!("Waiting for approval...");
+                }
+
+                let deadline = std::time::Instant::now() + Duration::from_secs(poll_seconds);
+                let status_url = format!("{}/auth/agent-pairings/{}", base_url, started.code);
+                loop {
+                    let res = client.get(&status_url).send().await.unwrap_or_else(|e| {
+                        eprintln!("Network error: {}", e);
+                        exit(1);
+                    });
+                    let current: AgentPairingSession = handle_response(res, false).await;
+
+                    if current.status == "paired" {
+                        if let Some(token) = current.token.as_deref() {
+                            save_api_token(token, &base_url);
+                        }
+
+                        if cli.json {
+                            println!("{}", serde_json::to_string_pretty(&current).unwrap());
+                        } else {
+                            println!("Agent pairing approved.");
+                            println!("Device label: {}", current.device_label);
+                            if let Some(actor) = current.actor {
+                                println!("Connected account: {}", actor.handle);
+                            }
+                            if current.token.is_some() {
+                                println!("Saved token to {}", auth_file_path().display());
+                            }
+                        }
+                        break;
+                    }
+
+                    if current.status == "expired" {
+                        eprintln!("Agent pairing expired before approval.");
+                        exit(1);
+                    }
+
+                    if std::time::Instant::now() >= deadline {
+                        eprintln!("Timed out waiting for browser approval.");
+                        exit(1);
+                    }
+
+                    sleep(Duration::from_secs(2)).await;
                 }
             }
             AuthCommands::Quickstart(args) => {

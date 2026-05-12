@@ -1,5 +1,7 @@
 import type {
   AccountProfile,
+  AgentPairingSession,
+  ApproveAgentPairingInput,
   Actor,
   AuthDevice,
   AuthPasskey,
@@ -9,6 +11,7 @@ import type {
   PasskeyRegistrationOptions,
   PublicProfile,
   RedeemPairingInput,
+  StartAgentPairingInput,
   RegistrationSession,
   StartAuthenticationInput,
   StartRegistrationInput,
@@ -71,6 +74,12 @@ export interface AuthStore {
     input: CompleteRegistrationVerificationInput,
   ): Promise<RegistrationSession | null>;
   redeemPairing(input: RedeemPairingInput): Promise<RegistrationSession | null>;
+  startAgentPairing(input: StartAgentPairingInput): Promise<AgentPairingSession>;
+  getAgentPairing(pairingCode: string): Promise<AgentPairingSession | null>;
+  approveAgentPairing(
+    accountId: string,
+    input: ApproveAgentPairingInput,
+  ): Promise<AgentPairingSession | null>;
   startAuthentication(input: StartAuthenticationInput): Promise<AuthenticationSession | null>;
   getAuthenticationSession(authenticationSessionId: string): Promise<AuthenticationSession | null>;
   getPasskeyAuthenticationOptions(
