@@ -1,5 +1,7 @@
 import type {
   AccountProfile,
+  AgentPairingSession,
+  ApproveAgentPairingInput,
   Answer,
   AnswerSkill,
   AuthDevice,
@@ -18,6 +20,7 @@ import type {
   QuestionThread,
   RedeemPairingInput,
   RegistrationSession,
+  StartAgentPairingInput,
   StartAuthenticationInput,
   StartRegistrationInput,
   ThreadSearchResult,
@@ -258,6 +261,25 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     return request<RegistrationSession>("POST", "/auth/pairings/redeem", input);
   }
 
+  async function startAgentPairing(
+    input: StartAgentPairingInput,
+  ): Promise<AgentPairingSession> {
+    return request<AgentPairingSession>("POST", "/auth/agent-pairings/start", input);
+  }
+
+  async function getAgentPairing(pairingCode: string): Promise<AgentPairingSession> {
+    return request<AgentPairingSession>(
+      "GET",
+      `/auth/agent-pairings/${encodeURIComponent(pairingCode)}`,
+    );
+  }
+
+  async function approveAgentPairing(
+    input: ApproveAgentPairingInput,
+  ): Promise<AgentPairingSession> {
+    return request<AgentPairingSession>("POST", "/auth/agent-pairings/approve", input);
+  }
+
   async function startAuthentication(
     input: StartAuthenticationInput,
   ): Promise<AuthenticationSession> {
@@ -364,6 +386,9 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     registerPasskey,
     completeRegistrationVerification,
     redeemPairing,
+    startAgentPairing,
+    getAgentPairing,
+    approveAgentPairing,
     startAuthentication,
     getPasskeyAuthenticationOptions,
     authenticatePasskey,

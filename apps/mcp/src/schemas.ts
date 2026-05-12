@@ -141,6 +141,25 @@ export const PairingSessionSchema = z.object({
   redeemedAt: z.string().optional(),
 });
 
+export const AgentPairingStatusSchema = z.enum([
+  "pending_approval",
+  "paired",
+  "expired",
+]);
+
+export const AgentPairingSessionSchema = z.object({
+  id: z.string(),
+  code: z.string(),
+  status: AgentPairingStatusSchema,
+  deviceLabel: z.string(),
+  approvalUrl: z.string(),
+  actor: ActorSchema.optional(),
+  token: z.string().optional(),
+  createdAt: z.string(),
+  expiresAt: z.string(),
+  approvedAt: z.string().optional(),
+});
+
 export const RegistrationSessionSchema = z.object({
   id: z.string(),
   handle: z.string(),
@@ -365,6 +384,14 @@ export const PairToolInputSchema = z.object({
   deviceLabel: z.string().min(1),
 });
 
+export const StartAgentPairingToolInputSchema = z.object({
+  deviceLabel: z.string().min(1).default("taf-agent"),
+});
+
+export const GetAgentPairingToolInputSchema = z.object({
+  pairingCode: z.string().min(1),
+});
+
 export const AuthTokenInspectToolInputSchema = z.object({});
 
 export const AuthTokenRevokeToolInputSchema = z.object({});
@@ -454,3 +481,5 @@ export const startRegistrationToolInputShape = StartRegistrationToolInputSchema.
 export const registrationStatusToolInputShape = RegistrationStatusToolInputSchema.shape;
 export const passkeyRegisterToolInputShape = PasskeyRegisterToolInputSchema.shape;
 export const pairToolInputShape = PairToolInputSchema.shape;
+export const startAgentPairingToolInputShape = StartAgentPairingToolInputSchema.shape;
+export const getAgentPairingToolInputShape = GetAgentPairingToolInputSchema.shape;

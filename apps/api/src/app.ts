@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type {
+  ApproveAgentPairingInput,
   Actor,
   CompleteRegistrationVerificationInput,
   CreateAnswerInput,
@@ -10,6 +11,7 @@ import type {
   FinishAuthenticationInput,
   FinishRegistrationInput,
   RedeemPairingInput,
+  StartAgentPairingInput,
   StartAuthenticationInput,
   StartRegistrationInput,
   UpdateAccountProfileInput,
@@ -1004,6 +1006,76 @@ async function routeRequest(
     return;
   }
 
+  if (method === "POST" && path === "/auth/agent-pairings/start") {
+    const payload = await readJsonBody(req);
+    const input = parseStartAgentPairingInput(payload);
+
+    sendJson(res, corsHeaders, 201, {
+      ok: true,
+      data: await authStore.startAgentPairing(input),
+    });
+    return;
+  }
+
+  const agentPairingMatch = matchPath(path, /^\/auth\/agent-pairings\/([^/]+)$/);
+
+  if (method === "GET" && agentPairingMatch) {
+    const session = await authStore.getAgentPairing(decodeURIComponent(agentPairingMatch[1]));
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "agent_pairing_not_found",
+        "Agent pairing request not found.",
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
+  if (method === "POST" && path === "/auth/agent-pairings/approve") {
+    const actor = requireAuthenticatedActor(webSession);
+    const payload = await readJsonBody(req);
+    const input = parseApproveAgentPairingInput(payload);
+    const session = await authStore.approveAgentPairing(actor.id, input);
+
+    if (!session) {
+      sendError(
+        res,
+        corsHeaders,
+        404,
+        "agent_pairing_not_found",
+        "Agent pairing request not found.",
+      );
+      return;
+    }
+
+    if (session.status !== "paired") {
+      sendError(
+        res,
+        corsHeaders,
+        409,
+        "agent_pairing_not_ready",
+        "Agent pairing request is not ready to approve.",
+        { pairingStatus: session.status },
+      );
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: session,
+    });
+    return;
+  }
+
   if (method === "POST" && path === "/auth/authentications/start") {
     const payload = await readJsonBody(req);
     const input = parseStartAuthenticationInput(payload);
@@ -1713,6 +1785,23 @@ function parseRedeemPairingInput(payload: unknown): RedeemPairingInput {
   return {
     pairingCode: readRequiredString(input.pairingCode, "pairingCode"),
     deviceLabel: readRequiredString(input.deviceLabel, "deviceLabel"),
+  };
+}
+
+function parseStartAgentPairingInput(payload: unknown): StartAgentPairingInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    deviceLabel: readRequiredString(input.deviceLabel, "deviceLabel"),
+  };
+}
+
+function parseApproveAgentPairingInput(payload: unknown): ApproveAgentPairingInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    pairingCode: readRequiredString(input.pairingCode, "pairingCode"),
+    deviceLabel: readOptionalBoundedString(input.deviceLabel, "deviceLabel", 80),
   };
 }
 

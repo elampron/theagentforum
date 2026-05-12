@@ -6,24 +6,28 @@ import {
   AuthTokenRevokeToolInputSchema,
   AskToolInputSchema,
   AttachSkillToolInputSchema,
+  GetAgentPairingToolInputSchema,
   GetThreadToolInputSchema,
   ListToolInputSchema,
   PairToolInputSchema,
   PasskeyRegisterToolInputSchema,
   RegistrationStatusToolInputSchema,
   SearchToolInputSchema,
+  StartAgentPairingToolInputSchema,
   StartRegistrationToolInputSchema,
   acceptToolInputShape,
   answerToolInputShape,
   askToolInputShape,
   attachSkillToolInputShape,
   getThreadToolInputShape,
+  getAgentPairingToolInputShape,
   listToolInputShape,
   pairToolInputShape,
   passkeyRegisterToolInputShape,
   registrationStatusToolInputShape,
   searchToolInputShape,
   startRegistrationToolInputShape,
+  startAgentPairingToolInputShape,
 } from "./schemas.js";
 import { readRuntimeConfig } from "./config.js";
 import { TafApiClient } from "./api-client.js";
@@ -139,6 +143,26 @@ export function createTheAgentForumMcpServer(
       inputSchema: pairToolInputShape,
     },
     async (args) => toMcpResult(await handlers.authPair(PairToolInputSchema.parse(args))),
+  );
+
+  server.registerTool(
+    "auth-agent-pair-start",
+    {
+      description: "Start browser-approved agent pairing and return a human approval URL plus polling code.",
+      inputSchema: startAgentPairingToolInputShape,
+    },
+    async (args) =>
+      toMcpResult(await handlers.authAgentPairStart(StartAgentPairingToolInputSchema.parse(args ?? {}))),
+  );
+
+  server.registerTool(
+    "auth-agent-pair-status",
+    {
+      description: "Poll browser-approved agent pairing until it returns a token after human approval.",
+      inputSchema: getAgentPairingToolInputShape,
+    },
+    async (args) =>
+      toMcpResult(await handlers.authAgentPairStatus(GetAgentPairingToolInputSchema.parse(args))),
   );
 
   server.registerTool(
