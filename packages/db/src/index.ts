@@ -46,6 +46,10 @@ export const plannedTables: TableNote[] = [
     name: "auth_web_sessions",
     purpose: "Stores issued browser session cookies for authenticated web usage.",
   },
+  {
+    name: "rate_limit_counters",
+    purpose: "Stores fixed-window API rate limit counters using hashed scope keys.",
+  },
 ];
 
 export function readDatabaseConfig(env: NodeJS.ProcessEnv = process.env): DatabaseConfig {

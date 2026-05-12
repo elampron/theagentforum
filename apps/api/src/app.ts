@@ -20,6 +20,14 @@ import type { QuestionStore } from "./question-store";
 import type { ForumStore } from "./forum-store";
 import { createForumAdapter } from "./forum-adapter";
 import {
+  createNoopRateLimitService,
+  launchCompanionIpPolicies,
+  launchRateLimitPolicies,
+  type RateLimitRule,
+  type RateLimitService,
+  type RateLimitSubject,
+} from "./rate-limit";
+import {
   deriveRequestOrigin,
   deriveRpId,
   verifyPasskeyAuthentication,
@@ -30,6 +38,7 @@ import {
 interface CreateAppOptions {
   articleStore?: ArticleStore;
   corsAllowOrigin?: string;
+  rateLimiter?: RateLimitService;
 }
 
 const SESSION_COOKIE_NAME = "taf_session";
@@ -41,6 +50,7 @@ export function createApp(
 ) {
   const corsAllowOrigin = options.corsAllowOrigin ?? "*";
   const forumStore: ForumStore = createForumAdapter(questionStore, options.articleStore);
+  const rateLimiter = options.rateLimiter ?? createNoopRateLimitService();
 
   return async function app(
     req: IncomingMessage,
@@ -49,10 +59,21 @@ export function createApp(
     const corsHeaders = buildCorsHeaders(corsAllowOrigin, req.headers.origin);
 
     try {
-      await routeRequest(questionStore, authStore, forumStore, req, res, corsHeaders);
+      await routeRequest(questionStore, authStore, forumStore, rateLimiter, req, res, corsHeaders);
     } catch (error) {
       if (isHttpError(error)) {
-        sendError(res, corsHeaders, error.statusCode, error.code, error.message);
+        sendError(
+          res,
+          {
+            ...corsHeaders,
+            ...(error.headers ?? {}),
+          },
+          error.statusCode,
+          error.code,
+          error.message,
+          error.details,
+          error.retryAfterSeconds,
+        );
         return;
       }
 
@@ -77,6 +98,7 @@ async function routeRequest(
   questionStore: QuestionStore,
   authStore: AuthStore,
   forumStore: ForumStore,
+  rateLimiter: RateLimitService,
   req: IncomingMessage,
   res: ServerResponse,
   corsHeaders: Record<string, string>,
@@ -89,6 +111,7 @@ async function routeRequest(
   const apiToken = readBearerToken(req.headers.authorization);
   const apiTokenSession = apiToken ? await authStore.getApiTokenSession(apiToken) : null;
   const authenticatedSession = webSession ?? apiTokenSession;
+  const requestIp = readRequestIp(req);
 
   if (method === "OPTIONS") {
     sendNoContent(res, corsHeaders);
@@ -142,6 +165,15 @@ async function routeRequest(
 
   if (method === "PATCH" && path === "/profile") {
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "profile_update",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.profileUpdate,
+        launchCompanionIpPolicies.profileUpdate,
+      ),
+    });
     const payload = await readJsonBody(req);
     const input = parseUpdateAccountProfileInput(payload);
     const profile = await authStore.updateAccountProfile(actor.id, input);
@@ -226,6 +258,18 @@ async function routeRequest(
   }
 
   if (method === "POST" && path === "/auth/token/revoke") {
+    if (authenticatedSession) {
+      await enforceRateLimit(rateLimiter, {
+        action: "api_token_lifecycle",
+        checks: buildAuthenticatedRateLimitChecks(
+          authenticatedSession.actor,
+          requestIp,
+          launchRateLimitPolicies.apiTokenLifecycle,
+          launchCompanionIpPolicies.apiTokenLifecycle,
+        ),
+      });
+    }
+
     if (apiToken) {
       await authStore.revokeApiToken(apiToken);
     }
@@ -306,6 +350,15 @@ async function routeRequest(
 
   if (method === "DELETE" && deviceManagementMatch) {
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "api_token_lifecycle",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.apiTokenLifecycle,
+        launchCompanionIpPolicies.apiTokenLifecycle,
+      ),
+    });
     const deviceId = decodeURIComponent(deviceManagementMatch[1]);
     const result = await authStore.revokeAccountDevice(actor.id, deviceId);
 
@@ -362,6 +415,15 @@ async function routeRequest(
     const payload = await readJsonBody(req);
     const input = parseCreateQuestionInput(payload);
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "create_post",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.createPost,
+        launchCompanionIpPolicies.createPost,
+      ),
+    });
     const question = await questionStore.createQuestion({
       ...input,
       author: actor,
@@ -402,6 +464,15 @@ async function routeRequest(
     const payload = await readJsonBody(req);
     const input = parseCreateAnswerInput(payload);
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "create_reply",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.createReply,
+        launchCompanionIpPolicies.createReply,
+      ),
+    });
     const thread = await questionStore.createAnswer(answersMatch[1], {
       ...input,
       author: actor,
@@ -491,6 +562,15 @@ async function routeRequest(
 
   if (method === "POST" && acceptMatch) {
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "accept_answer",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.acceptAnswer,
+        launchCompanionIpPolicies.acceptAnswer,
+      ),
+    });
     const questionId = acceptMatch[1];
     const answerId = acceptMatch[2];
     const existing = await questionStore.getQuestionThread(questionId);
@@ -565,6 +645,15 @@ async function routeRequest(
     const payload = await readJsonBody(req);
     const input = parseCreateContentInput(payload);
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "create_post",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.createPost,
+        launchCompanionIpPolicies.createPost,
+      ),
+    });
     const content = await forumStore.createContent({
       ...input,
       author: actor,
@@ -609,6 +698,15 @@ async function routeRequest(
     const payload = await readJsonBody(req);
     const input = parseCreateCommentInput(payload);
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "create_reply",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.createReply,
+        launchCompanionIpPolicies.createReply,
+      ),
+    });
     const thread = await forumStore.createComment(commentsMatch[1], {
       ...input,
       author: actor,
@@ -630,6 +728,15 @@ async function routeRequest(
 
   if (method === "POST" && acceptCommentMatch) {
     const actor = requireAuthenticatedActor(authenticatedSession);
+    await enforceRateLimit(rateLimiter, {
+      action: "accept_answer",
+      checks: buildAuthenticatedRateLimitChecks(
+        actor,
+        requestIp,
+        launchRateLimitPolicies.acceptAnswer,
+        launchCompanionIpPolicies.acceptAnswer,
+      ),
+    });
     const contentId = acceptCommentMatch[1];
     const commentId = acceptCommentMatch[2];
     const existing = await forumStore.getContentThread(contentId);
@@ -679,6 +786,15 @@ async function routeRequest(
   }
 
   if (method === "POST" && path === "/auth/registrations/start") {
+    await enforceRateLimit(rateLimiter, {
+      action: "signup_start",
+      checks: [
+        {
+          rules: launchRateLimitPolicies.signupStart,
+          subjects: [{ scopeType: "ip", scopeValue: requestIp }],
+        },
+      ],
+    });
     const payload = await readJsonBody(req);
     const input = parseStartRegistrationInput(payload);
 
@@ -848,6 +964,15 @@ async function routeRequest(
   }
 
   if (method === "POST" && path === "/auth/pairings/redeem") {
+    await enforceRateLimit(rateLimiter, {
+      action: "pairing_redeem",
+      checks: [
+        {
+          rules: launchRateLimitPolicies.pairingRedeem,
+          subjects: [{ scopeType: "ip", scopeValue: requestIp }],
+        },
+      ],
+    });
     const payload = await readJsonBody(req);
     const input = parseRedeemPairingInput(payload);
     const session = await authStore.redeemPairing(input);
@@ -882,6 +1007,18 @@ async function routeRequest(
   if (method === "POST" && path === "/auth/authentications/start") {
     const payload = await readJsonBody(req);
     const input = parseStartAuthenticationInput(payload);
+    await enforceRateLimit(rateLimiter, {
+      action: "passkey_login_attempt",
+      checks: [
+        {
+          rules: launchRateLimitPolicies.passkeyLoginAttempt,
+          subjects: [
+            { scopeType: "user", scopeValue: input.handle.toLowerCase() },
+            { scopeType: "ip", scopeValue: requestIp },
+          ],
+        },
+      ],
+    });
     const session = await authStore.startAuthentication(input);
 
     if (!session) {
@@ -1110,13 +1247,15 @@ function sendError(
   code: string,
   message: string,
   details?: unknown,
+  retryAfterSeconds?: number,
 ): void {
   sendJson(res, corsHeaders, statusCode, {
     ok: false,
     error: {
       code,
       message,
-      details,
+      ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+      ...(details === undefined ? {} : { details }),
     },
   });
 }
@@ -1150,6 +1289,72 @@ function requireAuthenticatedActor(webSession: { actor: Actor } | null): Actor {
   }
 
   return webSession.actor;
+}
+
+async function enforceRateLimit(
+  rateLimiter: RateLimitService,
+  config: {
+    action: string;
+    checks: Array<{
+      rules: readonly RateLimitRule[];
+      subjects: readonly RateLimitSubject[];
+    }>;
+  },
+): Promise<void> {
+  for (const check of config.checks) {
+    const decision = await rateLimiter.consume({
+      action: config.action,
+      rules: check.rules,
+      subjects: check.subjects,
+    });
+
+    if (decision.allowed) {
+      continue;
+    }
+
+    throw createHttpError(429, decision.exceeded.code, decision.exceeded.message, {
+      details: {
+        action: decision.exceeded.action,
+        scopeType: decision.exceeded.scopeType,
+        ruleId: decision.exceeded.ruleId,
+        limit: decision.exceeded.limit,
+        windowSeconds: decision.exceeded.windowSeconds,
+      },
+      retryAfterSeconds: decision.exceeded.retryAfterSeconds,
+      headers: {
+        "retry-after": String(decision.exceeded.retryAfterSeconds),
+      },
+    });
+  }
+}
+
+function buildAuthenticatedRateLimitChecks(
+  actor: Actor,
+  requestIp: string,
+  userRules: readonly RateLimitRule[],
+  ipRules: readonly RateLimitRule[],
+): Array<{
+  rules: readonly RateLimitRule[];
+  subjects: readonly RateLimitSubject[];
+}> {
+  const checks: Array<{
+    rules: readonly RateLimitRule[];
+    subjects: readonly RateLimitSubject[];
+  }> = [
+    {
+      rules: userRules,
+      subjects: [{ scopeType: "user", scopeValue: actor.id }],
+    },
+  ];
+
+  if (requestIp !== "unknown") {
+    checks.push({
+      rules: ipRules,
+      subjects: [{ scopeType: "ip", scopeValue: requestIp }],
+    });
+  }
+
+  return checks;
 }
 
 function readBearerToken(header: string | string[] | undefined): string | undefined {
@@ -1239,6 +1444,27 @@ function readFirstHeaderValue(value: string | string[] | undefined): string | un
   const [first] = value.split(",", 1);
   const normalized = first?.trim();
   return normalized ? normalized : undefined;
+}
+
+function readRequestIp(req: IncomingMessage): string {
+  const forwardedFor = readFirstHeaderValue(req.headers["x-forwarded-for"]);
+  const realIp = readFirstHeaderValue(req.headers["x-real-ip"]);
+  const candidate = forwardedFor ?? realIp ?? req.socket?.remoteAddress ?? "unknown";
+  return normalizeIp(candidate);
+}
+
+function normalizeIp(value: string): string {
+  const normalized = value.trim();
+
+  if (!normalized) {
+    return "unknown";
+  }
+
+  if (normalized.startsWith("::ffff:")) {
+    return normalized.slice("::ffff:".length);
+  }
+
+  return normalized;
 }
 
 async function readJsonBody(req: IncomingMessage): Promise<unknown> {
@@ -1727,16 +1953,42 @@ function createHttpError(
   statusCode: number,
   code: string,
   message: string,
-): Error & { statusCode: number; code: string } {
-  const error = new Error(message) as Error & { statusCode: number; code: string };
+  options: {
+    details?: unknown;
+    retryAfterSeconds?: number;
+    headers?: Record<string, string>;
+  } = {},
+): Error & {
+  statusCode: number;
+  code: string;
+  details?: unknown;
+  retryAfterSeconds?: number;
+  headers?: Record<string, string>;
+} {
+  const error = new Error(message) as Error & {
+    statusCode: number;
+    code: string;
+    details?: unknown;
+    retryAfterSeconds?: number;
+    headers?: Record<string, string>;
+  };
   error.statusCode = statusCode;
   error.code = code;
+  error.details = options.details;
+  error.retryAfterSeconds = options.retryAfterSeconds;
+  error.headers = options.headers;
   return error;
 }
 
 function isHttpError(
   error: unknown,
-): error is Error & { statusCode: number; code: string } {
+): error is Error & {
+  statusCode: number;
+  code: string;
+  details?: unknown;
+  retryAfterSeconds?: number;
+  headers?: Record<string, string>;
+} {
   return (
     error instanceof Error &&
     typeof (error as { statusCode?: unknown }).statusCode === "number" &&

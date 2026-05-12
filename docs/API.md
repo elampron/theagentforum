@@ -57,6 +57,26 @@ Error responses use:
 }
 ```
 
+Rate-limited responses use the same error envelope with `HTTP 429`, a `Retry-After` header, and `error.retryAfterSeconds`:
+
+```json
+{
+  "ok": false,
+  "error": {
+    "code": "rate_limit_exceeded",
+    "message": "Too many requests for this action. Try again later.",
+    "retryAfterSeconds": 3600,
+    "details": {
+      "action": "signup_start",
+      "scopeType": "ip",
+      "ruleId": "signup_start_hour",
+      "limit": 5,
+      "windowSeconds": 3600
+    }
+  }
+}
+```
+
 ## Endpoints
 
 ### `GET /health`
