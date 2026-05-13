@@ -73,6 +73,7 @@ export function AuthPage({ api, presentation = "page" }: AuthPageProps) {
         presentation={presentation}
         registrationParam={registrationParam}
         returnTo={returnTo}
+        session={auth.session}
       />
     );
   }
@@ -638,6 +639,7 @@ interface PairingAuthPageProps {
   presentation: "page" | "modal";
   registrationParam: string;
   returnTo: string;
+  session: WebSession | null;
 }
 
 function PairingAuthPage({
@@ -645,6 +647,7 @@ function PairingAuthPage({
   presentation,
   registrationParam,
   returnTo,
+  session,
 }: PairingAuthPageProps) {
   const navigate = useNavigate();
   const [registrationSession, setRegistrationSession] =
@@ -654,6 +657,9 @@ function PairingAuthPage({
   const [loadingSession, setLoadingSession] = useState(false);
   const [creatingPasskey, setCreatingPasskey] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
+  const [approvingExistingSession, setApprovingExistingSession] = useState(false);
+  const [approvedExistingRegistrationId, setApprovedExistingRegistrationId] =
+    useState<string | null>(null);
   const [identifier, setIdentifier] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [passkeyLabel, setPasskeyLabel] = useState("This device passkey");
@@ -681,6 +687,54 @@ function PairingAuthPage({
       }
     })();
   }, [api, registrationParam]);
+
+  useEffect(() => {
+    if (
+      !session ||
+      !registrationSession ||
+      approvedExistingRegistrationId === registrationSession.id ||
+      approvingExistingSession
+    ) {
+      return;
+    }
+
+    if (!canApproveRegistrationWithSession(registrationSession, session)) {
+      return;
+    }
+
+    void (async () => {
+      setApprovingExistingSession(true);
+      setError(null);
+
+      try {
+        await api.completeRegistrationVerification(registrationSession.id, {
+          passkeyLabel: `${describeActor(session.actor)} browser approval`,
+        });
+        setApprovedExistingRegistrationId(registrationSession.id);
+        captureClientEvent("taf_pairing_existing_session_approved", {
+          return_to: returnTo,
+        });
+        navigate(returnTo, { replace: true });
+      } catch (cause) {
+        const message = readErrorMessage(cause);
+        setError(message);
+        captureClientEvent("taf_pairing_failed", {
+          stage: "existing_session_approval",
+          error_message: message,
+        });
+      } finally {
+        setApprovingExistingSession(false);
+      }
+    })();
+  }, [
+    api,
+    approvedExistingRegistrationId,
+    approvingExistingSession,
+    navigate,
+    registrationSession,
+    returnTo,
+    session,
+  ]);
 
   const verificationUrl = useMemo(() => {
     if (registrationSession?.verificationToken) {
@@ -719,6 +773,17 @@ function PairingAuthPage({
     registrationSession?.displayName ??
     registrationSession?.handle ??
     "your account";
+  const approvingWithCurrentSession = Boolean(
+    session &&
+      registrationSession &&
+      canApproveRegistrationWithSession(registrationSession, session),
+  );
+  const signedInHandleMismatch =
+    session &&
+    registrationSession &&
+    isRegistrationWaitingForVerification(registrationSession) &&
+    normalizeIdentifier(session.actor.handle) !==
+      normalizeIdentifier(registrationSession.handle);
 
   async function handleStartRegistration(): Promise<void> {
     const nextIdentifier = normalizeIdentifier(identifier);
@@ -918,6 +983,14 @@ function PairingAuthPage({
         </section>
 
         {error ? <p className="auth-terminal-alert">{error}</p> : null}
+        {approvingExistingSession || approvingWithCurrentSession ? (
+          <p className="auth-terminal-note">Approving this pairing with your signed-in browser session.</p>
+        ) : null}
+        {signedInHandleMismatch ? (
+          <p className="auth-terminal-alert" role="alert">
+            This pairing link is for {registrationSession.handle}, but this browser is signed in as {session.actor.handle}.
+          </p>
+        ) : null}
 
         <section className="auth-stage-shell">
           <div className="auth-stage-topline">
@@ -1007,7 +1080,10 @@ function PairingAuthPage({
                   </div>
                 ) : null}
 
-                {registrationStage === "passkey" && registrationSession ? (
+                {registrationStage === "passkey" &&
+                registrationSession &&
+                !signedInHandleMismatch &&
+                !approvingWithCurrentSession ? (
                   <>
                     <dl className="auth-terminal-meta">
                       <div>
@@ -1610,6 +1686,27 @@ function formatStatus(status: string): string {
     .split("_")
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
+}
+
+function canApproveRegistrationWithSession(
+  registrationSession: RegistrationSession,
+  session: WebSession,
+): boolean {
+  return (
+    isRegistrationWaitingForVerification(registrationSession) &&
+    registrationSession.pairing.status === "waiting_for_verification" &&
+    normalizeIdentifier(registrationSession.handle) ===
+      normalizeIdentifier(session.actor.handle)
+  );
+}
+
+function isRegistrationWaitingForVerification(
+  registrationSession: RegistrationSession,
+): boolean {
+  return (
+    registrationSession.status === "awaiting_verification" ||
+    registrationSession.status === "pending_webauthn_registration"
+  );
 }
 
 function profileNeedsOnboarding(profile: { bio?: string; avatarUrl?: string }): boolean {

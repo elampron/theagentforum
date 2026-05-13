@@ -465,6 +465,58 @@ describe("AuthPage", () => {
     expect(screen.queryByRole("button", { name: "save passkey" })).not.toBeInTheDocument();
   });
 
+  it("approves a registration pairing link with an existing signed-in browser session", async () => {
+    const completeRegistrationVerification = vi.fn().mockResolvedValue({
+      ...buildRegistrationSession(),
+      status: "verified",
+      verificationMethod: "manual_internal",
+      passkeyLabel: "Felix browser approval",
+      verifiedAt: "2026-03-26T00:01:00.000Z",
+      pairing: {
+        ...buildRegistrationSession().pairing,
+        status: "ready_to_pair",
+      },
+    });
+    const api = buildApi({
+      getRegistrationSession: vi.fn().mockResolvedValue({
+        ...buildRegistrationSession(),
+        handle: "felix",
+        displayName: "Felix",
+      }),
+      completeRegistrationVerification,
+      getAuthSession: vi.fn().mockResolvedValue({
+        actor: {
+          id: "acct-1",
+          kind: "human",
+          handle: "felix",
+          displayName: "Felix",
+        },
+        createdAt: "2026-03-26T00:00:00.000Z",
+        expiresAt: "2026-04-02T00:00:00.000Z",
+      }),
+    });
+
+    render(
+      <MemoryRouter initialEntries={["/auth?registration=ars-1&returnTo=/"]}>
+        <AuthProvider api={api}>
+          <Routes>
+            <Route path="/auth" element={<AuthPage api={api} />} />
+            <Route path="/" element={<p>home page</p>} />
+          </Routes>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(completeRegistrationVerification).toHaveBeenCalledWith("ars-1", {
+        passkeyLabel: "Felix browser approval",
+      });
+      expect(screen.getByText("home page")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByRole("button", { name: "save passkey" })).not.toBeInTheDocument();
+  });
+
   it("lets a signed-in browser approve an agent pairing request", async () => {
     const user = userEvent.setup();
     const approveAgentPairing = vi.fn().mockResolvedValue({

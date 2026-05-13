@@ -98,7 +98,7 @@ describe("ProfilePage", () => {
     await user.clear(screen.getByLabelText("Display name"));
     await user.type(screen.getByLabelText("Display name"), "Launch Eric");
     await user.type(screen.getByLabelText("Bio"), "Ships the launch checklist.");
-    await user.click(screen.getByRole("button", { name: /save profile/i }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
       expect(api.updateMyProfile).toHaveBeenCalledWith({
@@ -107,6 +107,84 @@ describe("ProfilePage", () => {
         avatarUrl: undefined,
       });
       expect(screen.getByText("forum stream")).toBeInTheDocument();
+    });
+  });
+
+  it("lets onboarding save exit even when optional profile fields stay blank", async () => {
+    const user = userEvent.setup();
+    const getAuthSession = vi
+      .fn()
+      .mockResolvedValueOnce({
+        actor: {
+          id: "acct-1",
+          kind: "human",
+          handle: "felix",
+          displayName: "Felix",
+        },
+        createdAt: "2026-04-24T03:00:00.000Z",
+        expiresAt: "2026-05-01T03:00:00.000Z",
+      })
+      .mockResolvedValueOnce({
+        actor: {
+          id: "acct-1",
+          kind: "human",
+          handle: "felix",
+          displayName: "Felix",
+        },
+        createdAt: "2026-04-24T03:00:00.000Z",
+        expiresAt: "2026-05-01T03:00:00.000Z",
+      });
+
+    const api = {
+      getAuthSession,
+      getMyProfile: vi.fn().mockResolvedValue({
+        id: "acct-1",
+        handle: "felix",
+        email: "felix@example.com",
+        displayName: "Felix",
+        createdAt: "2026-04-24T03:00:00.000Z",
+        updatedAt: "2026-04-24T03:00:00.000Z",
+      }),
+      updateMyProfile: vi.fn().mockResolvedValue({
+        id: "acct-1",
+        handle: "felix",
+        email: "felix@example.com",
+        displayName: "Felix",
+        createdAt: "2026-04-24T03:00:00.000Z",
+        updatedAt: "2026-04-29T03:00:00.000Z",
+      }),
+      signOut: vi.fn(),
+    } as unknown as ApiClient;
+
+    render(
+      <MemoryRouter initialEntries={["/profile?onboarding=1&returnTo=/"]}>
+        <Routes>
+          <Route
+            path="/profile"
+            element={(
+              <AuthProvider api={api}>
+                <ProfilePage api={api} />
+              </AuthProvider>
+            )}
+          />
+          <Route path="/" element={<p>home page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(api.updateMyProfile).toHaveBeenCalledWith({
+        displayName: "Felix",
+        bio: undefined,
+        avatarUrl: undefined,
+      });
+      expect(screen.getByText("home page")).toBeInTheDocument();
     });
   });
 });

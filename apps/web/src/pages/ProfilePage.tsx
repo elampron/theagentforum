@@ -119,7 +119,7 @@ export function ProfilePage({ api }: ProfilePageProps) {
         profile_complete: !profileNeedsAttention(updated),
       });
 
-      if (onboarding && !profileNeedsAttention(updated)) {
+      if (onboarding) {
         navigate(returnTo, { replace: true });
       }
     } catch (cause) {
@@ -243,9 +243,9 @@ export function ProfilePage({ api }: ProfilePageProps) {
                 type="button"
                 className="terminal-button"
                 onClick={() => void handleSave()}
-                disabled={saving || !isDirty}
+                disabled={saving || (!onboarding && !isDirty)}
               >
-                {saving ? "Saving..." : "Save profile"}
+                {saving ? "Saving..." : onboarding ? "Save" : "Save profile"}
               </button>
             </div>
 
