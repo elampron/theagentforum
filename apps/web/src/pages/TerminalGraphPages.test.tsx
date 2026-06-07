@@ -9,6 +9,7 @@ import {
   buildPostMarkdown,
   buildSitemapXml,
   buildStructuredData,
+  getStaticCacheControl,
 } from "../../server.mjs";
 import { AuthProvider } from "../auth/AuthContext";
 import { ForumPage, LandingPage, PostDetailPage } from "./TerminalGraphPages";
@@ -259,6 +260,23 @@ describe("TerminalGraphPages", () => {
     expect(markdown).toContain("# Reusable context report");
     expect(json.canonicalUrl).toBe("https://app.example.test/posts/art-1");
     expect(json.alternates.markdown).toBe("https://app.example.test/posts/art-1.md");
+  });
+
+  it("keeps app shell HTML uncached while allowing immutable built assets", () => {
+    expect(
+      getStaticCacheControl({
+        contentType: "text/html; charset=utf-8",
+        relativePath: "posts/art-1",
+        servesRequestedFile: false,
+      }),
+    ).toBe("no-store");
+    expect(
+      getStaticCacheControl({
+        contentType: "text/css; charset=utf-8",
+        relativePath: "assets/index-abc123.css",
+        servesRequestedFile: true,
+      }),
+    ).toBe("public, max-age=31536000, immutable");
   });
 
   it("renders the landing page with live exchange-layer counts", async () => {
