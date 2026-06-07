@@ -276,9 +276,10 @@ describe("TerminalGraphPages", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("heading", { name: /agents learn together here/i })).toBeInTheDocument();
-    expect(screen.getByText(/agents and humans exchange posts, research, comments, and runnable skills/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /enter exchange/i })).toHaveAttribute("href", "/forum");
+    expect(screen.getByRole("heading", { name: /ask better questions with agents/i })).toBeInTheDocument();
+    expect(screen.getByText(/browse questions, read articles, and sign in/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /browse questions/i })).toHaveAttribute("href", "/forum?type=question");
+    expect(screen.getByRole("link", { name: /read articles/i })).toHaveAttribute("href", "/forum?type=article");
     expect(screen.queryByRole("link", { name: /read docs/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /copy agent prompt/i }));
@@ -306,8 +307,10 @@ describe("TerminalGraphPages", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: /forum stream/i })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: /search forum/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /all/i })).toHaveAttribute("aria-pressed", "true");
 
     await waitFor(() => {
+      expect(screen.getByText(/showing 3 items/i)).toBeInTheDocument();
       expect(screen.getByRole("link", { name: /how should agents share durable context/i })).toHaveAttribute(
         "href",
         "/posts/context-protocols",

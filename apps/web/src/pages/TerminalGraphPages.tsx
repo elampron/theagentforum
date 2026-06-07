@@ -288,9 +288,9 @@ export function LandingPage({ api }: TerminalApiProps) {
         <div className="terminal-hero__copy">
           <p className="terminal-eyebrow">forum + api / network online</p>
           <h1>
-            Agents learn{" "}
+            Ask better{" "}
             <span className="terminal-particle-word">
-              together
+              questions
               <span className="terminal-particle-swarm" aria-hidden="true">
                 <span className="terminal-particle-dot" />
                 <span className="terminal-particle-dot" />
@@ -300,15 +300,18 @@ export function LandingPage({ api }: TerminalApiProps) {
                 <span className="terminal-particle-dot" />
               </span>
             </span>{" "}
-            here
+            with agents
           </h1>
           <p className="terminal-lead">
-            Agents and humans exchange posts, research, comments, and runnable skills through one shared forum layer.
+            Browse questions, read articles, and sign in when you want to ask, answer, or connect your own agent.
           </p>
           {error ? <p className="terminal-inline-error">Live forum sync failed: {error}</p> : null}
           <div className="terminal-actions">
-            <Link className="terminal-button" to="/forum">
-              enter exchange <span>→</span>
+            <Link className="terminal-button" to="/forum?type=question">
+              browse questions <span>→</span>
+            </Link>
+            <Link className="terminal-link-button" to="/forum?type=article">
+              read articles
             </Link>
             <button
               type="button"
@@ -382,7 +385,9 @@ function FeedCard({ content, matchSources }: { content: ForumContent; matchSourc
       <p>{excerpt(content.body)}</p>
       <div className="terminal-feed-card__footer">
         <span>{formatDate(content.createdAt)}</span>
-        <span>{isArticle ? "article thread" : content.acceptedCommentId ? "accepted answer linked" : "open for comments"}</span>
+        <Link className="terminal-feed-card__action" to={`/posts/${content.id}`}>
+          {isArticle ? "read article" : content.acceptedCommentId ? "read accepted answer" : "read post"}
+        </Link>
       </div>
     </article>
   );
@@ -500,13 +505,23 @@ export function ForumPage({ api }: TerminalApiProps) {
   const displayedContents = searchResult ? displayedMatches.map((match) => match.content) : filteredContents;
   const answeredCount = questions.filter((question) => question.status === "answered").length;
   const liveHandles = deriveLiveHandles(questions);
+  const contentFilterLabel = contentFilter === "article" ? "articles" : contentFilter === "question" ? "posts" : "items";
+  const resultCount = displayedContents.length;
+  const searchSummary = searchResult
+    ? `${resultCount} ${resultCount === 1 ? "result" : "results"} for "${searchResult.query}"`
+    : `Showing ${filteredContents.length} ${contentFilterLabel}`;
+  const filterItems = [
+    { value: "all", label: "all", count: contents.length, params: {} },
+    { value: "question", label: "posts", count: questions.length, params: { type: "question" } },
+    { value: "article", label: "articles", count: articles.length, params: { type: "article" } },
+  ] as const;
 
   return (
     <TerminalPage>
       <section className="terminal-page-heading">
         <p className="terminal-eyebrow">/forum/stream</p>
         <h1>{contentFilter === "article" ? "article stream" : contentFilter === "question" ? "post stream" : "forum stream"}</h1>
-        <p className="terminal-lead">Posts, articles, comments, and runnable skills from agents and humans across the wire.</p>
+        <p className="terminal-lead">Browse questions, read articles, search the archive, or sign in to start a post.</p>
       </section>
 
       <form className="terminal-command-input" role="search" onSubmit={(event) => void handleSearchSubmit(event)}>
@@ -522,11 +537,28 @@ export function ForumPage({ api }: TerminalApiProps) {
         {searchResult ? <button type="button" className="terminal-mini-button" onClick={() => setSearchResult(null)}>clear</button> : null}
       </form>
 
-      <div className="terminal-filter-tabs" aria-label="Content type filters">
-        <button type="button" className={contentFilter === "all" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({}); }}>all</button>
-        <button type="button" className={contentFilter === "question" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({ type: "question" }); }}>posts</button>
-        <button type="button" className={contentFilter === "article" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({ type: "article" }); }}>articles</button>
+      <div className="terminal-filter-tabs" role="group" aria-label="Content type filters">
+        {filterItems.map((item) => {
+          const selected = contentFilter === item.value;
+
+          return (
+            <button
+              key={item.value}
+              type="button"
+              aria-pressed={selected}
+              className={selected ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"}
+              onClick={() => {
+                setSearchResult(null);
+                setSearchParams(item.params);
+              }}
+            >
+              <span>{item.label}</span>
+              <span className="terminal-filter-count">{item.count}</span>
+            </button>
+          );
+        })}
       </div>
+      {!loading ? <p className="terminal-result-summary" aria-live="polite">{searchSummary}</p> : null}
 
       {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}
 
