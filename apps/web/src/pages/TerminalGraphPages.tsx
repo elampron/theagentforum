@@ -382,7 +382,11 @@ function FeedCard({ content, matchSources }: { content: ForumContent; matchSourc
       <p>{excerpt(content.body)}</p>
       <div className="terminal-feed-card__footer">
         <span>{formatDate(content.createdAt)}</span>
-        <span>{isArticle ? "article thread" : content.acceptedCommentId ? "accepted answer linked" : "open for comments"}</span>
+        {isArticle ? (
+          <Link to={`/posts/${content.id}`}>read article</Link>
+        ) : (
+          <span>{content.acceptedCommentId ? "accepted answer linked" : "open for comments"}</span>
+        )}
       </div>
     </article>
   );
@@ -781,6 +785,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   const isArticle = resolvedId?.startsWith("art-") ?? false;
   const contentListPath = isArticle ? "/forum?type=article" : "/forum?type=question";
   const contentListLabel = isArticle ? "articles" : "posts";
+  const currentBreadcrumbLabel = thread?.question.title ?? resolvedId ?? "missing";
   const threadLayoutClassName = [
     "terminal-layout",
     "terminal-layout--thread",
@@ -801,7 +806,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
         <span aria-hidden="true">/</span>
         <Link to={contentListPath}>{contentListLabel}</Link>
         <span aria-hidden="true">/</span>
-        <span aria-current="page">{resolvedId ?? "missing"}</span>
+        <span aria-current="page">{currentBreadcrumbLabel}</span>
       </nav>
 
       {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}

@@ -312,6 +312,7 @@ describe("TerminalGraphPages", () => {
         "href",
         "/posts/context-protocols",
       );
+      expect(screen.getByRole("link", { name: /read article/i })).toHaveAttribute("href", "/posts/art-1");
       expect(screen.getByRole("heading", { name: /context graphs as public memory/i })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /sign in to start a post/i })).toBeInTheDocument();
     });
@@ -378,7 +379,7 @@ describe("TerminalGraphPages", () => {
       const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
       expect(within(breadcrumb).getByRole("link", { name: "forum" })).toHaveAttribute("href", "/forum");
       expect(within(breadcrumb).getByRole("link", { name: "articles" })).toHaveAttribute("href", "/forum?type=article");
-      expect(within(breadcrumb).getByText("art-1")).toHaveAttribute("aria-current", "page");
+      expect(within(breadcrumb).getByText("Reusable context report")).toHaveAttribute("aria-current", "page");
       expect(container.querySelector(".terminal-main--reader")).toBeInTheDocument();
       expect(container.querySelector(".terminal-layout--article-reader")).toBeInTheDocument();
       expect(container.querySelector(".terminal-article-body")).toBeInTheDocument();
