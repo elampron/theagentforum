@@ -90,24 +90,6 @@ export async function handleWebRequest(req, res, config) {
       return;
     }
 
-    const postMatch = requestPath.match(/^\/posts\/([^/]+)$/);
-    if (postMatch) {
-      const id = decodePathSegment(postMatch[1]);
-      const thread = id ? await fetchPublicContentThread(config, id) : null;
-
-      if (thread) {
-        sendTextResponse(
-          res,
-          method,
-          200,
-          "text/html; charset=utf-8",
-          buildPostHtml({ thread, siteUrl: config.siteUrl }),
-          { "cache-control": "public, max-age=300" },
-        );
-        return;
-      }
-    }
-
     await serveStaticFile(res, method, requestPath, config);
   } catch (error) {
     console.error(error);
