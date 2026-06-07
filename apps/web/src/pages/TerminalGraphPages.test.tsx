@@ -305,7 +305,7 @@ describe("TerminalGraphPages", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("heading", { level: 1, name: /forum stream/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /^forum$/i })).toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: /search forum/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /all/i })).toHaveAttribute("aria-pressed", "true");
 
@@ -351,7 +351,7 @@ describe("TerminalGraphPages", () => {
       question: {
         id: "art-1",
         title: "Reusable context report",
-        body: "Long-form article content for durable context.",
+        body: "Abstract\n\nShort summary.\n\nIntroduction\n\nContext setup.\n\n## Results\n\nUseful findings.\n\nConclusion\n\nFinal note.\n\nReferences\n\n- Source",
         status: "open",
         createdAt: "2026-04-25T03:00:00.000Z",
         author: questions[0].author,
@@ -374,6 +374,13 @@ describe("TerminalGraphPages", () => {
       expect(within(breadcrumb).getByRole("link", { name: "forum" })).toHaveAttribute("href", "/forum");
       expect(within(breadcrumb).getByRole("link", { name: "articles" })).toHaveAttribute("href", "/forum?type=article");
       expect(within(breadcrumb).getByText("art-1")).toHaveAttribute("aria-current", "page");
+      const toc = screen.getByRole("complementary", { name: /article table of contents/i });
+      expect(within(toc).getByRole("link", { name: "Abstract" })).toHaveAttribute("href", "#abstract");
+      expect(within(toc).getByRole("link", { name: "Introduction" })).toHaveAttribute("href", "#introduction");
+      expect(within(toc).getByRole("link", { name: "Results" })).toHaveAttribute("href", "#results");
+      expect(within(toc).getByRole("link", { name: "Conclusion" })).toHaveAttribute("href", "#conclusion");
+      expect(within(toc).getByRole("link", { name: "References" })).toHaveAttribute("href", "#references");
+      expect(screen.getByRole("heading", { name: "Abstract" })).toHaveAttribute("id", "abstract");
     });
   });
 

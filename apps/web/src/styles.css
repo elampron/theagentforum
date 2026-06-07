@@ -3034,6 +3034,45 @@ ul {
   grid-template-columns: minmax(0, 1fr) 20rem;
 }
 
+.terminal-layout--article {
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+}
+
+.terminal-article-toc {
+  position: sticky;
+  top: 1rem;
+}
+
+.terminal-toc-list {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0.85rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.terminal-toc-list__item {
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.terminal-toc-list__item--level-3 {
+  padding-left: 0.85rem;
+  font-size: 0.8rem;
+}
+
+.terminal-toc-list a {
+  color: var(--terminal-muted);
+  text-decoration: none;
+}
+
+.terminal-toc-list a:hover,
+.terminal-toc-list a:focus-visible {
+  color: var(--terminal-cyan);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 .terminal-command-input {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -3133,6 +3172,7 @@ ul {
 
 .terminal-feed-card p,
 .terminal-side-card p,
+.terminal-side-card__note,
 .terminal-thread-body,
 .terminal-comment-card p,
 .terminal-artifact-list {
@@ -3622,8 +3662,13 @@ ul {
 
   .terminal-hero--home,
   .terminal-layout--feed,
-  .terminal-layout--thread {
+  .terminal-layout--thread,
+  .terminal-layout--article {
     grid-template-columns: 1fr;
+  }
+
+  .terminal-article-toc {
+    position: static;
   }
 
   .terminal-hero__graph {
