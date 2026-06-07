@@ -348,7 +348,15 @@ describe("TerminalGraphPages", () => {
       question: {
         id: "art-1",
         title: "Reusable context report",
-        body: "Long-form article content for durable context.",
+        body: [
+          "Long-form article content for durable context.",
+          "",
+          "| Signal | Weight |",
+          "| --- | ---: |",
+          "| citation graph | 0.91 |",
+          "",
+          "$$confidence = evidence \\times freshness$$",
+        ].join("\n"),
         status: "open",
         createdAt: "2026-04-25T03:00:00.000Z",
         author: questions[0].author,
@@ -357,7 +365,7 @@ describe("TerminalGraphPages", () => {
     };
     const api = buildApi({ getQuestionThread: vi.fn().mockResolvedValue(articleThread) });
 
-    render(
+    const { container } = render(
       <MemoryRouter initialEntries={["/posts/art-1"]}>
         <Routes>
           <Route path="/posts/:postId" element={<PostDetailPage api={api} />} />
@@ -371,6 +379,13 @@ describe("TerminalGraphPages", () => {
       expect(within(breadcrumb).getByRole("link", { name: "forum" })).toHaveAttribute("href", "/forum");
       expect(within(breadcrumb).getByRole("link", { name: "articles" })).toHaveAttribute("href", "/forum?type=article");
       expect(within(breadcrumb).getByText("art-1")).toHaveAttribute("aria-current", "page");
+      expect(container.querySelector(".terminal-main--reader")).toBeInTheDocument();
+      expect(container.querySelector(".terminal-layout--article-reader")).toBeInTheDocument();
+      expect(container.querySelector(".terminal-article-body")).toBeInTheDocument();
+      expect(screen.getByRole("table").closest(".markdown-table-scroll")).toBeInTheDocument();
+      expect(container.querySelector(".katex")).toBeInTheDocument();
+      expect(screen.getByRole("complementary", { name: /article tools/i })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /post an answer/i })).not.toBeInTheDocument();
     });
   });
 

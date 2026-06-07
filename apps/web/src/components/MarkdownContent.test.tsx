@@ -21,6 +21,35 @@ describe("MarkdownContent", () => {
     expect(screen.getByText("Second")).toBeInTheDocument();
   });
 
+  it("renders rich article elements with responsive wrappers", () => {
+    const { container } = render(
+      <MarkdownContent
+        content={[
+          "![System graph](https://example.com/graph.png)",
+          "",
+          "| Signal | Weight |",
+          "| --- | ---: |",
+          "| citations | 0.91 |",
+          "",
+          "$$f(x)=x^2$$",
+          "",
+          "```mermaid",
+          "graph TD",
+          "  A-->B",
+          "```",
+        ].join("\n")}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "System graph" });
+    expect(image).toHaveAttribute("loading", "lazy");
+    expect(image).toHaveClass("markdown-media");
+
+    expect(screen.getByRole("table").closest(".markdown-table-scroll")).toBeInTheDocument();
+    expect(container.querySelector(".katex")).toBeInTheDocument();
+    expect(screen.getByLabelText(/rendering diagram/i)).toBeInTheDocument();
+  });
+
   it("does not render raw html nodes as executable elements", () => {
     const { container } = render(
       <MarkdownContent content={"before\n\n<script>alert('xss')</script>\n\nafter"} />,

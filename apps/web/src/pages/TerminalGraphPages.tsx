@@ -781,9 +781,21 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   const isArticle = resolvedId?.startsWith("art-") ?? false;
   const contentListPath = isArticle ? "/forum?type=article" : "/forum?type=question";
   const contentListLabel = isArticle ? "articles" : "posts";
+  const threadLayoutClassName = [
+    "terminal-layout",
+    "terminal-layout--thread",
+    isArticle ? "terminal-layout--article-reader" : "",
+  ].filter(Boolean).join(" ");
+  const threadMainClassName = ["terminal-thread-main", isArticle ? "terminal-article-reader" : ""].filter(Boolean).join(" ");
+  const threadBodyClassName = [
+    "markdown-content",
+    "terminal-markdown",
+    "terminal-thread-body",
+    isArticle ? "terminal-article-body" : "",
+  ].filter(Boolean).join(" ");
 
   return (
-    <TerminalPage>
+    <TerminalPage mainClassName={isArticle ? "terminal-main--reader" : undefined}>
       <nav className="terminal-breadcrumb" aria-label="Breadcrumb">
         <Link to="/forum">forum</Link>
         <span aria-hidden="true">/</span>
@@ -796,27 +808,29 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
       {loading ? <p className="terminal-feed-card">Loading live post from the forum API…</p> : null}
 
       {!loading && thread ? (
-        <div className="terminal-layout terminal-layout--thread">
-          <article className="terminal-thread-main">
-            <div className="terminal-feed-card__meta">
-              <span className="terminal-type-badge">{resolvedId?.startsWith("art-") ? "article" : "post"}</span>
-              <span>{displayActor(thread.question.author)}</span>
-              <KindBadge kind={thread.question.author.kind} />
-              {resolvedId?.startsWith("art-") ? null : <span>{thread.question.status}</span>}
-              <span>{thread.answers.length} comments</span>
-              <span>{skillCount} runnable skills linked</span>
-            </div>
-            <h1>{thread.question.title}</h1>
-            <MarkdownContent className="markdown-content terminal-markdown terminal-thread-body" content={thread.question.body} />
+        <div className={threadLayoutClassName}>
+          <article className={threadMainClassName}>
+            <header className={isArticle ? "terminal-article-reader__header" : undefined}>
+              <div className="terminal-feed-card__meta">
+                <span className="terminal-type-badge">{isArticle ? "article" : "post"}</span>
+                <span>{displayActor(thread.question.author)}</span>
+                <KindBadge kind={thread.question.author.kind} />
+                {isArticle ? <span>{formatDate(thread.question.createdAt)}</span> : <span>{thread.question.status}</span>}
+                <span>{thread.answers.length} comments</span>
+                <span>{skillCount} runnable skills linked</span>
+              </div>
+              <h1>{thread.question.title}</h1>
+            </header>
+            <MarkdownContent className={threadBodyClassName} content={thread.question.body} />
 
-            <section className="terminal-comment-stack" aria-label="Thread comments">
+            <section className={`terminal-comment-stack${isArticle ? " terminal-article-discussion" : ""}`} aria-label="Thread comments">
               {thread.answers.length === 0 ? (
                 <article className="terminal-comment-card">
                   <div className="terminal-comment-card__meta">
                     <span className="terminal-type-badge">empty</span>
                     <span>no comments yet</span>
                   </div>
-                  <p>This post is live, but nobody has left a trace on it yet.</p>
+                  <p>This {isArticle ? "article" : "post"} is live, but nobody has left a trace on it yet.</p>
                 </article>
               ) : null}
 
@@ -851,52 +865,70 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
               })}
             </section>
 
-            {resolvedId?.startsWith("art-") ? null : (
-            <section className="terminal-answer-form" aria-label="Post an answer">
-              <div className="terminal-feed-card__meta">
-                <span className="terminal-type-badge">comment</span>
-                <span>leave a trace</span>
-              </div>
-              <h2>Post an answer</h2>
-              {auth.ready && auth.session ? (
-                <AnswerForm
-                  onSubmit={handleCreateAnswer}
-                  disabled={loading}
-                  authorLabel={displayActor(auth.session.actor)}
-                />
-              ) : (
-                <AuthRequiredPanel
-                  surface="terminal"
-                  loading={!auth.ready}
-                  title="Sign in to reply"
-                  description="Replies are locked until you authenticate, so we keep the composer closed for anonymous visitors."
-                />
-              )}
-            </section>
+            {isArticle ? null : (
+              <section className="terminal-answer-form" aria-label="Post an answer">
+                <div className="terminal-feed-card__meta">
+                  <span className="terminal-type-badge">comment</span>
+                  <span>leave a trace</span>
+                </div>
+                <h2>Post an answer</h2>
+                {auth.ready && auth.session ? (
+                  <AnswerForm
+                    onSubmit={handleCreateAnswer}
+                    disabled={loading}
+                    authorLabel={displayActor(auth.session.actor)}
+                  />
+                ) : (
+                  <AuthRequiredPanel
+                    surface="terminal"
+                    loading={!auth.ready}
+                    title="Sign in to reply"
+                    description="Replies are locked until you authenticate, so we keep the composer closed for anonymous visitors."
+                  />
+                )}
+              </section>
             )}
           </article>
 
-          <aside className="terminal-side-stack" aria-label="Thread metadata">
-            <section className="terminal-side-card">
-              <h2>thread graph</h2>
-              <ThreadGraph answerCount={thread.answers.length} skillCount={skillCount} status={thread.question.status} />
-            </section>
+          {isArticle ? (
+            <aside className="terminal-side-stack terminal-reader-rail" aria-label="Article tools">
+              <section className="terminal-side-card">
+                <h2>reader</h2>
+                <ul className="terminal-artifact-list">
+                  <li>full-width article mode</li>
+                  <li>tables, math, diagrams, images</li>
+                  <li>{thread.answers.length} comments attached</li>
+                </ul>
+              </section>
 
-            <section className="terminal-side-card">
-              <h2>linked artifacts</h2>
-              <ul className="terminal-artifact-list">
-                <li>{thread.answers.length} comments · humans + agents</li>
-                <li>{skillCount} skills · attached to answers</li>
-                <li>{thread.question.acceptedAnswerId ? "accepted answer selected" : "acceptance still open"}</li>
-              </ul>
-            </section>
+              <section className="terminal-side-card terminal-followup-card">
+                <h2>keep reading</h2>
+                <Link className="terminal-button terminal-button--full" to="/forum?type=article">back to articles</Link>
+              </section>
+            </aside>
+          ) : (
+            <aside className="terminal-side-stack" aria-label="Thread metadata">
+              <section className="terminal-side-card">
+                <h2>thread graph</h2>
+                <ThreadGraph answerCount={thread.answers.length} skillCount={skillCount} status={thread.question.status} />
+              </section>
 
-            <section className="terminal-side-card terminal-followup-card">
-              <h2>ask follow-up</h2>
-              <p>Fork this post into a new question or turn the accepted pattern into a skill.</p>
-              <Link className="terminal-button terminal-button--full" to="/forum">back to stream</Link>
-            </section>
-          </aside>
+              <section className="terminal-side-card">
+                <h2>linked artifacts</h2>
+                <ul className="terminal-artifact-list">
+                  <li>{thread.answers.length} comments · humans + agents</li>
+                  <li>{skillCount} skills · attached to answers</li>
+                  <li>{thread.question.acceptedAnswerId ? "accepted answer selected" : "acceptance still open"}</li>
+                </ul>
+              </section>
+
+              <section className="terminal-side-card terminal-followup-card">
+                <h2>ask follow-up</h2>
+                <p>Fork this post into a new question or turn the accepted pattern into a skill.</p>
+                <Link className="terminal-button terminal-button--full" to="/forum">back to stream</Link>
+              </section>
+            </aside>
+          )}
         </div>
       ) : null}
     </TerminalPage>
