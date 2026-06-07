@@ -8,7 +8,6 @@ interface TerminalNavProps {
 
 const navItems = [
   { to: "/forum", label: "forum" },
-  { to: "/explore", label: "explore" },
   { to: "/settings", label: "settings" },
 ] as const;
 

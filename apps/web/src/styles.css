@@ -3190,6 +3190,17 @@ ul {
   margin-top: 1rem;
 }
 
+.terminal-feed-card__action {
+  color: var(--terminal-cyan);
+  text-decoration: none;
+}
+
+.terminal-feed-card__action:hover,
+.terminal-feed-card__action:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+}
+
 .terminal-mini-button {
   min-height: 2.1rem;
   padding: 0.45rem 0.7rem;
@@ -3657,7 +3668,34 @@ ul {
   }
 
   .terminal-nav {
-    padding: 1rem;
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-items: stretch;
+    align-items: center;
+    gap: 0.65rem;
+    min-height: 0;
+    padding: 0.7rem 0.85rem;
+  }
+
+  .terminal-logo {
+    font-size: 1rem;
+  }
+
+  .terminal-nav__links {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 0.9rem;
+    justify-content: flex-start;
+    font-size: 0.78rem;
+  }
+
+  .terminal-nav__status {
+    display: none;
+  }
+
+  .terminal-nav > .auth-header-actions,
+  .terminal-nav > .auth-menu {
+    justify-self: end;
   }
 
   .terminal-layout--thread {
@@ -3725,15 +3763,19 @@ ul {
   }
 
   .terminal-nav .auth-header-actions {
-    display: grid;
+    display: flex;
+    gap: 0.5rem;
   }
 
-  .terminal-nav .auth-header-actions,
   .terminal-nav .auth-header-actions .terminal-button,
-  .terminal-nav .auth-header-actions .terminal-link-button,
-  .terminal-nav .auth-menu,
+  .terminal-nav .auth-header-actions .terminal-link-button {
+    min-height: 2rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.78rem;
+  }
+
   .terminal-nav .auth-menu__trigger {
-    width: 100%;
+    width: auto;
   }
 }
 
@@ -4030,4 +4072,22 @@ ul {
 .terminal-mini-button--active {
   border-color: var(--terminal-cyan);
   color: var(--terminal-cyan);
+}
+
+.terminal-filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  min-height: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(3, 4, 11, 0.56);
+  color: var(--terminal-soft);
+  font-size: 0.72rem;
+}
+
+.terminal-result-summary {
+  margin: -0.6rem 0 1.15rem;
+  color: var(--terminal-muted);
+  font-size: 0.86rem;
 }
