@@ -1,14 +1,15 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   buildLlmsMarkdown,
-  buildPostHtml,
-  buildPostJson,
   buildPostMarkdown,
   buildSitemapXml,
-  buildStructuredData,
+  createWebServer,
   getStaticCacheControl,
 } from "../../server.mjs";
 import { AuthProvider } from "../auth/AuthContext";
@@ -97,21 +98,6 @@ const thread: QuestionThread = {
       },
     },
   ],
-};
-
-const discoverabilityThread = {
-  content: {
-    ...questionContents[0],
-    acceptedCommentId: "a-1",
-  },
-  comments: thread.answers.map((answer) => ({
-    id: answer.id,
-    contentId: answer.questionId,
-    body: answer.body,
-    author: answer.author,
-    createdAt: answer.createdAt,
-    acceptedAt: answer.id === "a-1" ? "2026-04-25T02:30:00.000Z" : undefined,
-  })),
 };
 
 function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
@@ -226,40 +212,50 @@ describe("TerminalGraphPages", () => {
     expect(markdown).not.toContain("<!doctype html>");
   });
 
-  it("renders crawler-visible post HTML with Q&A structured data", () => {
-    const html = buildPostHtml({
-      thread: discoverabilityThread,
-      siteUrl: "https://app.example.test",
-    });
-    const jsonLdMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
+  it("serves direct article links as the styled app shell", async () => {
+    const distDir = await mkdtemp(join(tmpdir(), "taf-web-dist-"));
+    const indexPath = join(distDir, "index.html");
+    await writeFile(indexPath, '<!doctype html><div id="root"></div><link rel="stylesheet" href="/assets/index.css">');
 
-    expect(html).toContain("<!doctype html>");
-    expect(html).toContain('rel="canonical" href="https://app.example.test/posts/context-protocols"');
-    expect(html).toContain("How should agents share durable context?");
-    expect(html).toContain("Looking for patterns that survive across sessions");
-    expect(html).toContain("I think the key is attribution");
-    expect(jsonLdMatch).not.toBeNull();
+    const server = createWebServer({ distDir, indexPath });
 
-    const jsonLd = JSON.parse(jsonLdMatch?.[1] ?? "{}");
-    expect(jsonLd["@graph"][0]["@type"]).toBe("QAPage");
-    expect(jsonLd["@graph"][0].mainEntity.acceptedAnswer.text).toContain("attribution");
-    expect(jsonLd["@graph"][1]["@type"]).toBe("BreadcrumbList");
+    try {
+      await new Promise<void>((resolve) => {
+        server.listen(0, "127.0.0.1", resolve);
+      });
+
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      const response = await fetch(`http://127.0.0.1:${port}/posts/art-1`);
+      const html = await response.text();
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("text/html");
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(html).toContain('<div id="root"></div>');
+      expect(html).toContain('href="/assets/index.css"');
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+
+          resolve();
+        });
+      });
+      await rm(distDir, { recursive: true, force: true });
+    }
   });
 
-  it("builds article structured data and Markdown/JSON alternates", () => {
+  it("builds article Markdown alternates for agent-friendly reads", () => {
     const articleThread = { content: articleContents[0], comments: [] };
-    const structuredData = buildStructuredData({
-      thread: articleThread,
-      siteUrl: "https://app.example.test",
-    });
     const markdown = buildPostMarkdown({ thread: articleThread, siteUrl: "https://app.example.test" });
-    const json = JSON.parse(buildPostJson({ thread: articleThread, siteUrl: "https://app.example.test" }));
 
-    expect(structuredData["@graph"][0]["@type"]).toBe("TechArticle");
-    expect(structuredData["@graph"][0].headline).toBe("Reusable context report");
     expect(markdown).toContain("# Reusable context report");
-    expect(json.canonicalUrl).toBe("https://app.example.test/posts/art-1");
-    expect(json.alternates.markdown).toBe("https://app.example.test/posts/art-1.md");
+    expect(markdown).toContain("- URL: https://app.example.test/posts/art-1");
+    expect(markdown).toContain("Long-form article content for durable context.");
   });
 
   it("keeps app shell HTML uncached while allowing immutable built assets", () => {

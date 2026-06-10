@@ -84,9 +84,9 @@ export async function handleWebRequest(req, res, config) {
       return;
     }
 
-    const alternateMatch = requestPath.match(/^\/posts\/([^/]+)\.(md|json)$/);
+    const alternateMatch = requestPath.match(/^\/posts\/([^/]+)\.md$/);
     if (alternateMatch) {
-      await servePostAlternate(res, method, config, alternateMatch[1], alternateMatch[2]);
+      await servePostMarkdownAlternate(res, method, config, alternateMatch[1]);
       return;
     }
 
@@ -110,31 +110,12 @@ if (isMainModule()) {
   });
 }
 
-async function servePostAlternate(res, method, config, encodedId, extension) {
+async function servePostMarkdownAlternate(res, method, config, encodedId) {
   const id = decodePathSegment(encodedId);
   const thread = id ? await fetchPublicContentThread(config, id) : null;
 
   if (!thread) {
-    const contentType = extension === "json"
-      ? "application/json; charset=utf-8"
-      : "text/plain; charset=utf-8";
-    const body = extension === "json"
-      ? `${JSON.stringify({ ok: false, error: { code: "content_not_found", message: "Content not found." } })}\n`
-      : "Content not found.\n";
-
-    sendTextResponse(res, method, 404, contentType, body);
-    return;
-  }
-
-  if (extension === "json") {
-    sendTextResponse(
-      res,
-      method,
-      200,
-      "application/json; charset=utf-8",
-      buildPostJson({ thread, siteUrl: config.siteUrl }),
-      { "cache-control": "public, max-age=300" },
-    );
+    sendTextResponse(res, method, 404, "text/plain; charset=utf-8", "Content not found.\n");
     return;
   }
 
@@ -435,47 +416,8 @@ export function buildLlmsMarkdown({ contents = [], siteUrl = DEFAULT_SITE_URL } 
     }
   }
 
-  lines.push("", "## Machine-Readable Alternates", "", "Append `.md` or `.json` to a canonical `/posts/:id` URL for Markdown or JSON.", "");
+  lines.push("", "## Machine-Readable Alternates", "", "Append `.md` to a canonical `/posts/:id` URL for Markdown.", "");
   return `${lines.join("\n")}\n`;
-}
-
-export function buildPostHtml({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
-  const normalized = requireThread(thread);
-  const { content, comments } = normalized;
-  const canonicalUrl = absoluteUrl(contentPath(content), siteUrl);
-  const description = summarize(content.body || content.title);
-  const jsonLd = JSON.stringify(buildStructuredData({ thread: normalized, siteUrl }), null, 2)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026");
-  const commentsHeading = content.type === "question" ? "Answers" : "Comments";
-  const emptyComments = content.type === "question" ? "No public answers yet." : "No public comments yet.";
-
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(`${content.title} | TheAgentForum`)}</title>
-  <meta name="description" content="${escapeHtml(description)}">
-  <meta name="robots" content="index,follow">
-  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
-  <link rel="alternate" type="text/markdown" href="${escapeHtml(`${canonicalUrl}.md`)}">
-  <link rel="alternate" type="application/json" href="${escapeHtml(`${canonicalUrl}.json`)}">
-  <meta property="og:title" content="${escapeHtml(content.title)}">
-  <meta property="og:description" content="${escapeHtml(description)}">
-  <meta property="og:type" content="article">
-  <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
-  <script type="application/ld+json">${jsonLd}</script>
-  <style>body{margin:0;background:#f8fafc;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif;line-height:1.6}.shell{max-width:880px;margin:0 auto;padding:28px 20px 56px}header{display:flex;justify-content:space-between;gap:16px;margin-bottom:32px}nav{display:flex;gap:12px;flex-wrap:wrap}.crumb{color:#475569;font-size:.92rem;margin-bottom:20px}.eyebrow{color:#475569;font-size:.78rem;font-weight:700;text-transform:uppercase}h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;margin:.2rem 0 1rem}pre{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px;font:inherit}.comment{border-top:1px solid #e2e8f0;padding:22px 0}.muted{color:#64748b}</style>
-</head>
-<body><main class="shell">
-<header><a href="/">TheAgentForum</a><nav aria-label="Site"><a href="/forum">Forum</a><a href="/sitemap.xml">Sitemap</a><a href="/llms.txt">llms.txt</a></nav></header>
-<nav class="crumb" aria-label="Breadcrumb"><a href="/">Home</a> / <a href="/forum">Forum</a> / <span aria-current="page">${escapeHtml(content.title)}</span></nav>
-<article><p class="eyebrow">${escapeHtml(content.type)}</p><h1>${escapeHtml(content.title)}</h1><p class="muted">By ${escapeHtml(authorByline(content.author))} on ${timeHtml(content.createdAt)}</p>${bodyHtml(content.body)}</article>
-<section aria-labelledby="comments-heading"><h2 id="comments-heading">${commentsHeading}</h2>${comments.length === 0 ? `<p class="muted">${emptyComments}</p>` : comments.map(commentHtml).join("\n")}</section>
-</main></body></html>
-`;
 }
 
 export function buildPostMarkdown({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
@@ -504,35 +446,6 @@ export function buildPostMarkdown({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
   }
 
   return lines.join("\n");
-}
-
-export function buildPostJson({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
-  const normalized = requireThread(thread);
-  const canonicalUrl = absoluteUrl(contentPath(normalized.content), siteUrl);
-  return `${JSON.stringify({ canonicalUrl, alternates: { markdown: `${canonicalUrl}.md`, json: `${canonicalUrl}.json` }, ...normalized }, null, 2)}\n`;
-}
-
-export function buildStructuredData({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
-  const normalized = requireThread(thread);
-  const canonicalUrl = absoluteUrl(contentPath(normalized.content), siteUrl);
-  const mainEntity = normalized.content.type === "article"
-    ? articleSchema(normalized, canonicalUrl)
-    : qaSchema(normalized, canonicalUrl);
-
-  return {
-    "@context": "https://schema.org",
-    "@graph": [
-      mainEntity,
-      {
-        "@type": "BreadcrumbList",
-        itemListElement: [
-          { "@type": "ListItem", position: 1, name: "Home", item: absoluteUrl("/", siteUrl) },
-          { "@type": "ListItem", position: 2, name: "Forum", item: absoluteUrl("/forum", siteUrl) },
-          { "@type": "ListItem", position: 3, name: normalized.content.title, item: canonicalUrl },
-        ],
-      },
-    ],
-  };
 }
 
 export function contentPath(content) {
@@ -595,57 +508,6 @@ function normalizeAuthor(value) {
   };
 }
 
-function qaSchema({ content, comments }, canonicalUrl) {
-  const accepted = comments.find((comment) => comment.acceptedAt || comment.id === content.acceptedCommentId);
-  const answers = comments.map((comment) => answerSchema(comment, canonicalUrl));
-  const suggestedAnswers = answers.filter((answer) => answer.identifier !== accepted?.id);
-
-  return {
-    "@type": "QAPage",
-    mainEntity: omitUndefined({
-      "@type": "Question",
-      name: content.title,
-      text: plainText(content.body),
-      url: canonicalUrl,
-      author: personSchema(content.author),
-      dateCreated: content.createdAt,
-      answerCount: comments.length,
-      upvoteCount: 0,
-      acceptedAnswer: accepted ? answerSchema(accepted, canonicalUrl) : undefined,
-      suggestedAnswer: suggestedAnswers.length > 0 ? suggestedAnswers : undefined,
-    }),
-  };
-}
-
-function articleSchema({ content }, canonicalUrl) {
-  return omitUndefined({
-    "@type": "TechArticle",
-    headline: content.title,
-    articleBody: plainText(content.body),
-    author: personSchema(content.author),
-    datePublished: content.createdAt,
-    dateModified: content.createdAt,
-    mainEntityOfPage: canonicalUrl,
-    url: canonicalUrl,
-  });
-}
-
-function answerSchema(comment, canonicalUrl) {
-  return omitUndefined({
-    "@type": "Answer",
-    identifier: comment.id,
-    text: plainText(comment.body),
-    url: `${canonicalUrl}#${commentFragment(comment)}`,
-    author: personSchema(comment.author),
-    dateCreated: comment.createdAt,
-    upvoteCount: 0,
-  });
-}
-
-function personSchema(author) {
-  return omitUndefined({ "@type": "Person", name: formatAuthorName(author), identifier: author.id, alternateName: author.handle ? `@${author.handle}` : undefined });
-}
-
 function requireThread(thread) {
   const normalized = normalizeForumThread(thread);
   if (!normalized) {
@@ -654,31 +516,8 @@ function requireThread(thread) {
   return normalized;
 }
 
-function bodyHtml(body) {
-  const value = body.trim();
-  return value ? `<pre>${escapeHtml(value)}</pre>` : '<p class="muted">No public body text was provided.</p>';
-}
-
-function commentHtml(comment) {
-  return `<article class="comment" id="${escapeHtml(commentFragment(comment))}"><h3>${escapeHtml(authorByline(comment.author))}</h3><p class="muted">Posted on ${timeHtml(comment.createdAt)}${comment.acceptedAt ? " - accepted answer" : ""}</p>${bodyHtml(comment.body)}</article>`;
-}
-
-function timeHtml(value) {
-  const date = dateOnly(value);
-  return date ? `<time datetime="${escapeHtml(value)}">${date}</time>` : "unknown date";
-}
-
 function authorByline(author) {
   return author?.displayName && author?.handle ? `${author.displayName} (@${author.handle})` : formatAuthorName(author);
-}
-
-function commentFragment(comment) {
-  return `comment-${comment.id.replace(/[^A-Za-z0-9_-]/g, "-")}`;
-}
-
-function summarize(value) {
-  const text = plainText(value);
-  return text.length > 180 ? `${text.slice(0, 179).trim()}...` : text || "TheAgentForum public forum content.";
 }
 
 function plainText(value) {
@@ -717,10 +556,6 @@ function trimmed(value) {
 
 function asRecord(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : null;
-}
-
-function omitUndefined(record) {
-  return Object.fromEntries(Object.entries(record).filter(([, value]) => value !== undefined));
 }
 
 function escapeHtml(value) {
