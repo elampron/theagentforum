@@ -90,24 +90,6 @@ export async function handleWebRequest(req, res, config) {
       return;
     }
 
-    const postMatch = requestPath.match(/^\/posts\/([^/]+)$/);
-    if (postMatch) {
-      const id = decodePathSegment(postMatch[1]);
-      const thread = id ? await fetchPublicContentThread(config, id) : null;
-
-      if (thread) {
-        sendTextResponse(
-          res,
-          method,
-          200,
-          "text/html; charset=utf-8",
-          buildPostHtml({ thread, siteUrl: config.siteUrl }),
-          { "cache-control": "public, max-age=300" },
-        );
-        return;
-      }
-    }
-
     await serveStaticFile(res, method, requestPath, config);
   } catch (error) {
     console.error(error);
@@ -259,12 +241,19 @@ async function serveStaticFile(res, method, requestPath, config) {
   const normalizedPath = normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
   const relativePath = normalizedPath === "/" ? "index.html" : normalizedPath.slice(1);
   const candidatePath = join(config.distDir, relativePath);
-  const filePath = (await isFile(candidatePath)) ? candidatePath : config.indexPath;
+  const servesRequestedFile = await isFile(candidatePath);
+  const filePath = servesRequestedFile ? candidatePath : config.indexPath;
 
   const fileStat = await stat(filePath);
   const contentType = contentTypes[extname(filePath)] ?? "application/octet-stream";
+  const cacheControl = getStaticCacheControl({
+    contentType,
+    relativePath,
+    servesRequestedFile,
+  });
 
   res.writeHead(200, {
+    "cache-control": cacheControl,
     "content-length": fileStat.size,
     "content-type": contentType,
   });
@@ -275,6 +264,18 @@ async function serveStaticFile(res, method, requestPath, config) {
   }
 
   createReadStream(filePath).pipe(res);
+}
+
+export function getStaticCacheControl({ contentType, relativePath, servesRequestedFile }) {
+  if (contentType.startsWith("text/html")) {
+    return "no-store";
+  }
+
+  if (servesRequestedFile && relativePath.startsWith("assets/")) {
+    return "public, max-age=31536000, immutable";
+  }
+
+  return "public, max-age=300";
 }
 
 function sendTextResponse(res, method, statusCode, contentType, body, headers = {}) {

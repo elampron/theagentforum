@@ -9,6 +9,7 @@ import {
   buildPostMarkdown,
   buildSitemapXml,
   buildStructuredData,
+  getStaticCacheControl,
 } from "../../server.mjs";
 import { AuthProvider } from "../auth/AuthContext";
 import { ForumPage, LandingPage, PostDetailPage } from "./TerminalGraphPages";
@@ -261,6 +262,23 @@ describe("TerminalGraphPages", () => {
     expect(json.alternates.markdown).toBe("https://app.example.test/posts/art-1.md");
   });
 
+  it("keeps app shell HTML uncached while allowing immutable built assets", () => {
+    expect(
+      getStaticCacheControl({
+        contentType: "text/html; charset=utf-8",
+        relativePath: "posts/art-1",
+        servesRequestedFile: false,
+      }),
+    ).toBe("no-store");
+    expect(
+      getStaticCacheControl({
+        contentType: "text/css; charset=utf-8",
+        relativePath: "assets/index-abc123.css",
+        servesRequestedFile: true,
+      }),
+    ).toBe("public, max-age=31536000, immutable");
+  });
+
   it("renders the landing page with live exchange-layer counts", async () => {
     const user = userEvent.setup();
     const api = buildApi();
@@ -315,6 +333,7 @@ describe("TerminalGraphPages", () => {
         "href",
         "/posts/context-protocols",
       );
+      expect(screen.getByRole("link", { name: /read article/i })).toHaveAttribute("href", "/posts/art-1");
       expect(screen.getByRole("heading", { name: /context graphs as public memory/i })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /sign in to start a post/i })).toBeInTheDocument();
     });
@@ -351,7 +370,33 @@ describe("TerminalGraphPages", () => {
       question: {
         id: "art-1",
         title: "Reusable context report",
-        body: "Abstract\n\nShort summary.\n\nIntroduction\n\nContext setup.\n\n## Results\n\nUseful findings.\n\nConclusion\n\nFinal note.\n\nReferences\n\n- Source",
+        body: [
+          "Abstract",
+          "",
+          "Short summary.",
+          "",
+          "Introduction",
+          "",
+          "Context setup.",
+          "",
+          "## Results",
+          "",
+          "Useful findings.",
+          "",
+          "| Signal | Weight |",
+          "| --- | ---: |",
+          "| citation graph | 0.91 |",
+          "",
+          "$$confidence = evidence \\times freshness$$",
+          "",
+          "Conclusion",
+          "",
+          "Final note.",
+          "",
+          "References",
+          "",
+          "- Source",
+        ].join("\n"),
         status: "open",
         createdAt: "2026-04-25T03:00:00.000Z",
         author: questions[0].author,
@@ -360,7 +405,7 @@ describe("TerminalGraphPages", () => {
     };
     const api = buildApi({ getQuestionThread: vi.fn().mockResolvedValue(articleThread) });
 
-    render(
+    const { container } = render(
       <MemoryRouter initialEntries={["/posts/art-1"]}>
         <Routes>
           <Route path="/posts/:postId" element={<PostDetailPage api={api} />} />
@@ -373,7 +418,14 @@ describe("TerminalGraphPages", () => {
       const breadcrumb = screen.getByRole("navigation", { name: /breadcrumb/i });
       expect(within(breadcrumb).getByRole("link", { name: "forum" })).toHaveAttribute("href", "/forum");
       expect(within(breadcrumb).getByRole("link", { name: "articles" })).toHaveAttribute("href", "/forum?type=article");
-      expect(within(breadcrumb).getByText("art-1")).toHaveAttribute("aria-current", "page");
+      expect(within(breadcrumb).getByText("Reusable context report")).toHaveAttribute("aria-current", "page");
+      expect(container.querySelector(".terminal-main--reader")).toBeInTheDocument();
+      expect(container.querySelector(".terminal-layout--article-reader")).toBeInTheDocument();
+      expect(container.querySelector(".terminal-article-body")).toBeInTheDocument();
+      expect(screen.getByRole("table").closest(".markdown-table-scroll")).toBeInTheDocument();
+      expect(container.querySelector(".katex")).toBeInTheDocument();
+      expect(screen.getByRole("complementary", { name: /article tools/i })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: /post an answer/i })).not.toBeInTheDocument();
       const toc = screen.getByRole("complementary", { name: /article table of contents/i });
       expect(within(toc).getByRole("link", { name: "Abstract" })).toHaveAttribute("href", "#abstract");
       expect(within(toc).getByRole("link", { name: "Introduction" })).toHaveAttribute("href", "#introduction");
