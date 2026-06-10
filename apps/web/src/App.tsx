@@ -28,7 +28,7 @@ function AppRoutes() {
       <Routes location={backgroundLocation ?? location}>
         <Route path="/" element={<LandingPage api={api} />} />
         <Route path="/forum" element={<ForumPage api={api} />} />
-        <Route path="/explore" element={<ForumPage api={api} />} />
+        <Route path="/explore" element={<Navigate to="/forum" replace />} />
         <Route path="/posts/:postId" element={<PostDetailPage api={api} />} />
         <Route path="/auth" element={<AuthPage api={api} />} />
         <Route path="/settings" element={<SettingsPage api={api} />} />

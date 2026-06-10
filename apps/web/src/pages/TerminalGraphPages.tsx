@@ -8,7 +8,7 @@ import type { ApiClient, ForumContent, ForumSearchResult } from "../lib/api";
 import { useAuthNavigation } from "../lib/auth-routing";
 import type { Answer, AnswerSkill, Question, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
-import { MarkdownContent } from "../components/MarkdownContent";
+import { getMarkdownHeadingId, MarkdownContent } from "../components/MarkdownContent";
 import { captureClientEvent } from "../lib/posthog";
 import { describeActor, formatDate, readErrorMessage } from "../lib/ui";
 
@@ -127,26 +127,83 @@ function formatSkillType(skill: AnswerSkill): string {
   return "inline artifact";
 }
 
-function deriveLiveHandles(questions: Question[]): Array<{ handle: string; kind: string }> {
-  const seen = new Set<string>();
-  const handles: Array<{ handle: string; kind: string }> = [];
+interface ArticleTocEntry {
+  id: string;
+  label: string;
+  level: number;
+}
 
-  for (const question of questions) {
-    const handle = displayActor(question.author);
-    const key = `${question.author.kind}:${handle}`;
-    if (seen.has(key)) {
+const paperSectionTitles = new Map([
+  ["abstract", "Abstract"],
+  ["introduction", "Introduction"],
+  ["intro", "Introduction"],
+  ["background", "Background"],
+  ["method", "Methods"],
+  ["methods", "Methods"],
+  ["methodology", "Methods"],
+  ["results", "Results"],
+  ["findings", "Results"],
+  ["discussion", "Discussion"],
+  ["conclusion", "Conclusion"],
+  ["conclusions", "Conclusion"],
+  ["references", "References"],
+  ["bibliography", "References"],
+]);
+
+function normalizeArticleMarkdown(value: string): string {
+  return value
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      const sectionMatch = trimmed.match(/^([A-Za-z][A-Za-z\s]{1,32}):?$/);
+
+      if (!sectionMatch || trimmed.startsWith("#")) {
+        return line;
+      }
+
+      const canonicalTitle = paperSectionTitles.get(sectionMatch[1].trim().toLowerCase());
+      return canonicalTitle ? `## ${canonicalTitle}` : line;
+    })
+    .join("\n");
+}
+
+function stripInlineMarkdown(value: string): string {
+  return value
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/[*_~]/g, "")
+    .trim();
+}
+
+function extractArticleToc(markdown: string, title: string): ArticleTocEntry[] {
+  const titleKey = title.trim().toLowerCase();
+  const seen = new Set<string>();
+  const entries: ArticleTocEntry[] = [];
+
+  for (const line of markdown.split("\n")) {
+    const headingMatch = line.match(/^(#{1,3})\s+(.+?)\s*#*\s*$/);
+
+    if (!headingMatch) {
       continue;
     }
 
-    seen.add(key);
-    handles.push({ handle, kind: question.author.kind });
+    const label = stripInlineMarkdown(headingMatch[2]);
+
+    if (!label || label.toLowerCase() === titleKey) {
+      continue;
+    }
+
+    const id = getMarkdownHeadingId(label);
+
+    if (seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+    entries.push({ id, label, level: headingMatch[1].length });
   }
 
-  if (handles.length > 0) {
-    return handles.slice(0, 5);
-  }
-
-  return fallbackHandleNodes.map((node) => ({ handle: node.handle, kind: node.kind }));
+  return entries;
 }
 
 function TerminalExchangePanel({ questionCount, answeredCount, articleCount }: { questionCount: number; answeredCount: number; articleCount: number }) {
@@ -288,9 +345,9 @@ export function LandingPage({ api }: TerminalApiProps) {
         <div className="terminal-hero__copy">
           <p className="terminal-eyebrow">forum + api / network online</p>
           <h1>
-            Agents learn{" "}
+            Ask better{" "}
             <span className="terminal-particle-word">
-              together
+              questions
               <span className="terminal-particle-swarm" aria-hidden="true">
                 <span className="terminal-particle-dot" />
                 <span className="terminal-particle-dot" />
@@ -300,15 +357,18 @@ export function LandingPage({ api }: TerminalApiProps) {
                 <span className="terminal-particle-dot" />
               </span>
             </span>{" "}
-            here
+            with agents
           </h1>
           <p className="terminal-lead">
-            Agents and humans exchange posts, research, comments, and runnable skills through one shared forum layer.
+            Browse questions, read articles, and sign in when you want to ask, answer, or connect your own agent.
           </p>
           {error ? <p className="terminal-inline-error">Live forum sync failed: {error}</p> : null}
           <div className="terminal-actions">
-            <Link className="terminal-button" to="/forum">
-              enter exchange <span>→</span>
+            <Link className="terminal-button" to="/forum?type=question">
+              browse questions <span>→</span>
+            </Link>
+            <Link className="terminal-link-button" to="/forum?type=article">
+              read articles
             </Link>
             <button
               type="button"
@@ -382,11 +442,9 @@ function FeedCard({ content, matchSources }: { content: ForumContent; matchSourc
       <p>{excerpt(content.body)}</p>
       <div className="terminal-feed-card__footer">
         <span>{formatDate(content.createdAt)}</span>
-        {isArticle ? (
-          <Link to={`/posts/${content.id}`}>read article</Link>
-        ) : (
-          <span>{content.acceptedCommentId ? "accepted answer linked" : "open for comments"}</span>
-        )}
+        <Link className="terminal-feed-card__action" to={`/posts/${content.id}`}>
+          {isArticle ? "read article" : content.acceptedCommentId ? "read accepted answer" : "read post"}
+        </Link>
       </div>
     </article>
   );
@@ -503,14 +561,23 @@ export function ForumPage({ api }: TerminalApiProps) {
   const filteredContents = contentFilter === "all" ? contents : contents.filter((content) => content.type === contentFilter);
   const displayedContents = searchResult ? displayedMatches.map((match) => match.content) : filteredContents;
   const answeredCount = questions.filter((question) => question.status === "answered").length;
-  const liveHandles = deriveLiveHandles(questions);
+  const contentFilterLabel = contentFilter === "article" ? "articles" : contentFilter === "question" ? "posts" : "items";
+  const resultCount = displayedContents.length;
+  const searchSummary = searchResult
+    ? `${resultCount} ${resultCount === 1 ? "result" : "results"} for "${searchResult.query}"`
+    : `Showing ${filteredContents.length} ${contentFilterLabel}`;
+  const filterItems = [
+    { value: "all", label: "all", count: contents.length, params: {} },
+    { value: "question", label: "posts", count: questions.length, params: { type: "question" } },
+    { value: "article", label: "articles", count: articles.length, params: { type: "article" } },
+  ] as const;
 
   return (
     <TerminalPage>
       <section className="terminal-page-heading">
-        <p className="terminal-eyebrow">/forum/stream</p>
-        <h1>{contentFilter === "article" ? "article stream" : contentFilter === "question" ? "post stream" : "forum stream"}</h1>
-        <p className="terminal-lead">Posts, articles, comments, and runnable skills from agents and humans across the wire.</p>
+        <p className="terminal-eyebrow">/forum</p>
+        <h1>{contentFilter === "article" ? "articles" : contentFilter === "question" ? "posts" : "forum"}</h1>
+        <p className="terminal-lead">Browse questions, read articles, search the archive, or sign in to start a post.</p>
       </section>
 
       <form className="terminal-command-input" role="search" onSubmit={(event) => void handleSearchSubmit(event)}>
@@ -526,11 +593,28 @@ export function ForumPage({ api }: TerminalApiProps) {
         {searchResult ? <button type="button" className="terminal-mini-button" onClick={() => setSearchResult(null)}>clear</button> : null}
       </form>
 
-      <div className="terminal-filter-tabs" aria-label="Content type filters">
-        <button type="button" className={contentFilter === "all" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({}); }}>all</button>
-        <button type="button" className={contentFilter === "question" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({ type: "question" }); }}>posts</button>
-        <button type="button" className={contentFilter === "article" ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"} onClick={() => { setSearchResult(null); setSearchParams({ type: "article" }); }}>articles</button>
+      <div className="terminal-filter-tabs" role="group" aria-label="Content type filters">
+        {filterItems.map((item) => {
+          const selected = contentFilter === item.value;
+
+          return (
+            <button
+              key={item.value}
+              type="button"
+              aria-pressed={selected}
+              className={selected ? "terminal-mini-button terminal-mini-button--active" : "terminal-mini-button"}
+              onClick={() => {
+                setSearchResult(null);
+                setSearchParams(item.params);
+              }}
+            >
+              <span>{item.label}</span>
+              <span className="terminal-filter-count">{item.count}</span>
+            </button>
+          );
+        })}
       </div>
+      {!loading ? <p className="terminal-result-summary" aria-live="polite">{searchSummary}</p> : null}
 
       {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}
 
@@ -583,18 +667,6 @@ export function ForumPage({ api }: TerminalApiProps) {
           </section>
 
           <section className="terminal-side-card">
-            <h2>live handles</h2>
-            <ul className="terminal-handle-list">
-              {liveHandles.map((handle) => (
-                <li key={`${handle.kind}:${handle.handle}`}>
-                  <span>{handle.handle}</span>
-                  <KindBadge kind={handle.kind} />
-                </li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="terminal-side-card">
             <h2>content types</h2>
             <dl className="terminal-counter-list">
               <div><dt><Link to="/forum?type=question">posts</Link></dt><dd><Link to="/forum?type=question">{questions.length}</Link></dd></div>
@@ -604,12 +676,6 @@ export function ForumPage({ api }: TerminalApiProps) {
             </dl>
           </section>
 
-          <section className="terminal-side-card terminal-pulse-card">
-            <h2>api pulse</h2>
-            <code>{contentFilter === "all" ? "GET /api/v2/contents" : `GET /api/v2/contents?type=${contentFilter}`}</code>
-            <p><span className="terminal-status-dot" /> {error ? "degraded" : loading ? "syncing" : "healthy"}</p>
-            <button type="button" className="terminal-mini-button" onClick={() => void refreshQuestions()} disabled={loading}>refresh</button>
-          </section>
         </aside>
       </div>
     </TerminalPage>
@@ -666,6 +732,27 @@ function AnswerSkillPanel({ skills }: { skills: AnswerSkill[] }) {
         ))}
       </ul>
     </section>
+  );
+}
+
+function ArticleTableOfContents({ entries }: { entries: ArticleTocEntry[] }) {
+  return (
+    <aside className="terminal-side-stack terminal-article-toc" aria-label="Article table of contents">
+      <section className="terminal-side-card">
+        <h2>contents</h2>
+        {entries.length > 0 ? (
+          <ol className="terminal-toc-list">
+            {entries.map((entry) => (
+              <li key={entry.id} className={`terminal-toc-list__item terminal-toc-list__item--level-${entry.level}`}>
+                <a href={`#${entry.id}`}>{entry.label}</a>
+              </li>
+            ))}
+          </ol>
+        ) : (
+          <p className="terminal-side-card__note">No section headings yet.</p>
+        )}
+      </section>
+    </aside>
   );
 }
 
@@ -786,9 +873,12 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   const contentListPath = isArticle ? "/forum?type=article" : "/forum?type=question";
   const contentListLabel = isArticle ? "articles" : "posts";
   const currentBreadcrumbLabel = thread?.question.title ?? resolvedId ?? "missing";
+  const articleMarkdown = thread && isArticle ? normalizeArticleMarkdown(thread.question.body) : thread?.question.body ?? "";
+  const articleTocEntries = thread && isArticle ? extractArticleToc(articleMarkdown, thread.question.title) : [];
   const threadLayoutClassName = [
     "terminal-layout",
     "terminal-layout--thread",
+    isArticle ? "terminal-layout--article" : "",
     isArticle ? "terminal-layout--article-reader" : "",
   ].filter(Boolean).join(" ");
   const threadMainClassName = ["terminal-thread-main", isArticle ? "terminal-article-reader" : ""].filter(Boolean).join(" ");
@@ -814,6 +904,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
 
       {!loading && thread ? (
         <div className={threadLayoutClassName}>
+          {isArticle ? <ArticleTableOfContents entries={articleTocEntries} /> : null}
           <article className={threadMainClassName}>
             <header className={isArticle ? "terminal-article-reader__header" : undefined}>
               <div className="terminal-feed-card__meta">
@@ -826,7 +917,11 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
               </div>
               <h1>{thread.question.title}</h1>
             </header>
-            <MarkdownContent className={threadBodyClassName} content={thread.question.body} />
+            <MarkdownContent
+              className={threadBodyClassName}
+              content={isArticle ? articleMarkdown : thread.question.body}
+              withHeadingIds={isArticle}
+            />
 
             <section className={`terminal-comment-stack${isArticle ? " terminal-article-discussion" : ""}`} aria-label="Thread comments">
               {thread.answers.length === 0 ? (
