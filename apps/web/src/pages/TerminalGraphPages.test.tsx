@@ -238,12 +238,45 @@ describe("TerminalGraphPages", () => {
     expect(html).toContain("How should agents share durable context?");
     expect(html).toContain("Looking for patterns that survive across sessions");
     expect(html).toContain("I think the key is attribution");
+    expect(html).toContain('<div class="markdown-body">');
+    expect(html).not.toContain("<pre>Looking for patterns that survive across sessions");
     expect(jsonLdMatch).not.toBeNull();
 
     const jsonLd = JSON.parse(jsonLdMatch?.[1] ?? "{}");
     expect(jsonLd["@graph"][0]["@type"]).toBe("QAPage");
     expect(jsonLd["@graph"][0].mainEntity.acceptedAnswer.text).toContain("attribution");
     expect(jsonLd["@graph"][1]["@type"]).toBe("BreadcrumbList");
+  });
+
+  it("renders public HTML body Markdown as readable article markup", () => {
+    const articleThread = {
+      content: {
+        ...articleContents[0],
+        body: [
+          "# Reusable context report",
+          "",
+          "Published: 2026-04-25",
+          "",
+          "## Executive Summary",
+          "",
+          "Agents need `stable URLs` and useful public pages.",
+          "",
+          "1. Humans can read it.",
+          "2. Agents can fetch it.",
+          "",
+          "- Markdown alternates remain available.",
+        ].join("\n"),
+      },
+      comments: [],
+    };
+    const html = buildPostHtml({ thread: articleThread, siteUrl: "https://app.example.test" });
+
+    expect(html).toContain("<h1>Reusable context report</h1>");
+    expect(html).toContain("<h2>Executive Summary</h2>");
+    expect(html).toContain("<code>stable URLs</code>");
+    expect(html).toContain("<ol><li>Humans can read it.</li><li>Agents can fetch it.</li></ol>");
+    expect(html).toContain("<ul><li>Markdown alternates remain available.</li></ul>");
+    expect(html).not.toContain("<pre># Reusable context report");
   });
 
   it("builds article structured data and Markdown/JSON alternates", () => {

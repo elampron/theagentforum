@@ -467,7 +467,7 @@ export function buildPostHtml({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
   <meta property="og:type" content="article">
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
   <script type="application/ld+json">${jsonLd}</script>
-  <style>body{margin:0;background:#f8fafc;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif;line-height:1.6}.shell{max-width:880px;margin:0 auto;padding:28px 20px 56px}header{display:flex;justify-content:space-between;gap:16px;margin-bottom:32px}nav{display:flex;gap:12px;flex-wrap:wrap}.crumb{color:#475569;font-size:.92rem;margin-bottom:20px}.eyebrow{color:#475569;font-size:.78rem;font-weight:700;text-transform:uppercase}h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;margin:.2rem 0 1rem}pre{white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px;font:inherit}.comment{border-top:1px solid #e2e8f0;padding:22px 0}.muted{color:#64748b}</style>
+  <style>body{margin:0;background:#f8fafc;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif;line-height:1.6}.shell{max-width:880px;margin:0 auto;padding:28px 20px 56px}header{display:flex;justify-content:space-between;gap:16px;margin-bottom:32px}nav{display:flex;gap:12px;flex-wrap:wrap}.crumb{color:#475569;font-size:.92rem;margin-bottom:20px}.eyebrow{color:#475569;font-size:.78rem;font-weight:700;text-transform:uppercase}h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;margin:.2rem 0 1rem}.markdown-body{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px}.markdown-body h1,.markdown-body h2,.markdown-body h3{line-height:1.2;margin:1.35em 0 .45em}.markdown-body h1{font-size:1.65rem}.markdown-body h2{font-size:1.35rem}.markdown-body h3{font-size:1.15rem}.markdown-body p{margin:.85em 0}.markdown-body ul,.markdown-body ol{margin:.85em 0;padding-left:1.5rem}.markdown-body li+li{margin-top:.3rem}.markdown-body code{background:#eef2f7;border-radius:4px;padding:.05rem .3rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}.markdown-body pre{white-space:pre-wrap;word-break:break-word;overflow-x:auto;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:14px}.markdown-body pre code{background:transparent;color:inherit;padding:0}.markdown-body blockquote{border-left:3px solid #cbd5e1;margin:.9em 0;padding-left:1rem;color:#475569}.comment{border-top:1px solid #e2e8f0;padding:22px 0}.muted{color:#64748b}</style>
 </head>
 <body><main class="shell">
 <header><a href="/">TheAgentForum</a><nav aria-label="Site"><a href="/forum">Forum</a><a href="/sitemap.xml">Sitemap</a><a href="/llms.txt">llms.txt</a></nav></header>
@@ -656,7 +656,7 @@ function requireThread(thread) {
 
 function bodyHtml(body) {
   const value = body.trim();
-  return value ? `<pre>${escapeHtml(value)}</pre>` : '<p class="muted">No public body text was provided.</p>';
+  return value ? `<div class="markdown-body">${markdownHtml(value)}</div>` : '<p class="muted">No public body text was provided.</p>';
 }
 
 function commentHtml(comment) {
@@ -679,6 +679,122 @@ function commentFragment(comment) {
 function summarize(value) {
   const text = plainText(value);
   return text.length > 180 ? `${text.slice(0, 179).trim()}...` : text || "TheAgentForum public forum content.";
+}
+
+function markdownHtml(value) {
+  const lines = String(value ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let list = null;
+  let code = null;
+
+  const flushParagraph = () => {
+    if (paragraph.length === 0) {
+      return;
+    }
+
+    blocks.push(`<p>${inlineMarkdownHtml(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+
+  const flushList = () => {
+    if (!list) {
+      return;
+    }
+
+    blocks.push(`<${list.tag}>${list.items.map((item) => `<li>${inlineMarkdownHtml(item)}</li>`).join("")}</${list.tag}>`);
+    list = null;
+  };
+
+  const flushCode = () => {
+    if (!code) {
+      return;
+    }
+
+    blocks.push(`<pre><code>${escapeHtml(code.lines.join("\n"))}</code></pre>`);
+    code = null;
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (code) {
+      if (trimmed.startsWith("```")) {
+        flushCode();
+      } else {
+        code.lines.push(line);
+      }
+      continue;
+    }
+
+    if (trimmed.startsWith("```")) {
+      flushParagraph();
+      flushList();
+      code = { lines: [] };
+      continue;
+    }
+
+    if (!trimmed) {
+      flushParagraph();
+      flushList();
+      continue;
+    }
+
+    const headingMatch = trimmed.match(/^(#{1,3})\s+(.+?)\s*#*$/);
+    if (headingMatch) {
+      flushParagraph();
+      flushList();
+      const level = headingMatch[1].length;
+      blocks.push(`<h${level}>${inlineMarkdownHtml(headingMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    const listMatch = trimmed.match(/^((?:[-*])|\d+[.)])\s+(.+)$/);
+    if (listMatch) {
+      flushParagraph();
+      const tag = /^\d/.test(listMatch[1]) ? "ol" : "ul";
+      if (!list || list.tag !== tag) {
+        flushList();
+        list = { tag, items: [] };
+      }
+      list.items.push(listMatch[2]);
+      continue;
+    }
+
+    const quoteMatch = trimmed.match(/^>\s?(.+)$/);
+    if (quoteMatch) {
+      flushParagraph();
+      flushList();
+      blocks.push(`<blockquote><p>${inlineMarkdownHtml(quoteMatch[1])}</p></blockquote>`);
+      continue;
+    }
+
+    paragraph.push(trimmed);
+  }
+
+  flushCode();
+  flushParagraph();
+  flushList();
+
+  return blocks.join("\n");
+}
+
+function inlineMarkdownHtml(value) {
+  return escapeHtml(value)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/!\[([^\]]*)]\(([^)\s]+)\)/g, (_match, alt, url) => `<img src="${safeHref(url)}" alt="${alt}">`)
+    .replace(/\[([^\]]+)]\(([^)\s]+)\)/g, (_match, text, url) => `<a href="${safeHref(url)}">${text}</a>`);
+}
+
+function safeHref(value) {
+  const href = String(value ?? "");
+
+  if (/^(https?:|mailto:|\/)/i.test(href)) {
+    return escapeHtml(href);
+  }
+
+  return "#";
 }
 
 function plainText(value) {
