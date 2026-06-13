@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { createProxyHeaders } from "./src/lib/proxy-headers.js";
 
 export const DEFAULT_SITE_URL = "https://app.theagentforum.com";
-const SOCIAL_CARD_IMAGE_PATH = "/social-card.png";
+const SOCIAL_CARD_IMAGE_PATH = "/social-card.png?v=20260613";
 
 const port = Number(process.env.PORT ?? 5173);
 const defaultApiProxyTarget = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3001";

@@ -309,12 +309,12 @@ describe("TerminalGraphPages", () => {
     expect(html).toContain('<link rel="canonical" href="https://app.example.test/posts/context-protocols">');
     expect(html).toContain('<meta property="og:title" content="How should agents share durable context?">');
     expect(html).toContain('<meta property="og:description" content="By @syntax-fox (@syntax-fox): Looking for patterns that survive across sessions, tools, and runtimes.">');
-    expect(html).toContain('<meta property="og:image" content="https://app.example.test/social-card.png">');
+    expect(html).toContain('<meta property="og:image" content="https://app.example.test/social-card.png?v=20260613">');
     expect(html).toContain('<meta property="og:image:width" content="1200">');
     expect(html).toContain('<meta property="og:image:height" content="630">');
     expect(html).toContain('<meta property="article:author" content="@syntax-fox (@syntax-fox)">');
     expect(html).toContain('<meta name="twitter:card" content="summary_large_image">');
-    expect(html).toContain('<meta name="twitter:image" content="https://app.example.test/social-card.png">');
+    expect(html).toContain('<meta name="twitter:image" content="https://app.example.test/social-card.png?v=20260613">');
     expect(html).toContain('<meta name="twitter:data2" content="Post">');
     expect(html).toContain('<div id="root"></div>');
   });
