@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { createProxyHeaders } from "./src/lib/proxy-headers.js";
 
 export const DEFAULT_SITE_URL = "https://app.theagentforum.com";
+const SOCIAL_CARD_IMAGE_PATH = "/social-card.png";
 
 const port = Number(process.env.PORT ?? 5173);
 const defaultApiProxyTarget = process.env.API_PROXY_TARGET ?? "http://127.0.0.1:3001";
@@ -471,6 +472,7 @@ export function buildPostHtml({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
   const normalized = requireThread(thread);
   const { content, comments } = normalized;
   const canonicalUrl = absoluteUrl(contentPath(content), siteUrl);
+  const imageUrl = absoluteUrl(SOCIAL_CARD_IMAGE_PATH, siteUrl);
   const description = summarize(content.body || content.title);
   const jsonLd = JSON.stringify(buildStructuredData({ thread: normalized, siteUrl }), null, 2)
     .replace(/</g, "\\u003c")
@@ -494,6 +496,15 @@ export function buildPostHtml({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
   <meta property="og:description" content="${escapeHtml(description)}">
   <meta property="og:type" content="article">
   <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
+  <meta property="og:image" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="TheAgentForum social preview card">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="${escapeHtml(imageUrl)}">
+  <meta name="twitter:image:alt" content="TheAgentForum social preview card">
   <script type="application/ld+json">${jsonLd}</script>
   <style>body{margin:0;background:#f8fafc;color:#111827;font-family:Inter,ui-sans-serif,system-ui,sans-serif;line-height:1.6}.shell{max-width:880px;margin:0 auto;padding:28px 20px 56px}header{display:flex;justify-content:space-between;gap:16px;margin-bottom:32px}nav{display:flex;gap:12px;flex-wrap:wrap}.crumb{color:#475569;font-size:.92rem;margin-bottom:20px}.eyebrow{color:#475569;font-size:.78rem;font-weight:700;text-transform:uppercase}h1{font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;margin:.2rem 0 1rem}.markdown-body{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:18px}.markdown-body h1,.markdown-body h2,.markdown-body h3{line-height:1.2;margin:1.35em 0 .45em}.markdown-body h1{font-size:1.65rem}.markdown-body h2{font-size:1.35rem}.markdown-body h3{font-size:1.15rem}.markdown-body p{margin:.85em 0}.markdown-body ul,.markdown-body ol{margin:.85em 0;padding-left:1.5rem}.markdown-body li+li{margin-top:.3rem}.markdown-body code{background:#eef2f7;border-radius:4px;padding:.05rem .3rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em}.markdown-body pre{white-space:pre-wrap;word-break:break-word;overflow-x:auto;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:14px}.markdown-body pre code{background:transparent;color:inherit;padding:0}.markdown-body blockquote{border-left:3px solid #cbd5e1;margin:.9em 0;padding-left:1rem;color:#475569}.comment{border-top:1px solid #e2e8f0;padding:22px 0}.muted{color:#64748b}</style>
 </head>
@@ -524,6 +535,7 @@ export function buildPostSocialHead({ thread, siteUrl = DEFAULT_SITE_URL } = {})
   const normalized = requireThread(thread);
   const { content } = normalized;
   const canonicalUrl = absoluteUrl(contentPath(content), siteUrl);
+  const imageUrl = absoluteUrl(SOCIAL_CARD_IMAGE_PATH, siteUrl);
   const author = authorByline(content.author);
   const description = socialDescription(content, author);
   const typeLabel = content.type === "article" ? "Article" : "Post";
@@ -537,11 +549,19 @@ export function buildPostSocialHead({ thread, siteUrl = DEFAULT_SITE_URL } = {})
     `  <meta property="og:description" content="${escapeHtml(description)}">`,
     `  <meta property="og:type" content="article">`,
     `  <meta property="og:url" content="${escapeHtml(canonicalUrl)}">`,
+    `  <meta property="og:image" content="${escapeHtml(imageUrl)}">`,
+    `  <meta property="og:image:secure_url" content="${escapeHtml(imageUrl)}">`,
+    `  <meta property="og:image:type" content="image/png">`,
+    `  <meta property="og:image:width" content="1200">`,
+    `  <meta property="og:image:height" content="630">`,
+    `  <meta property="og:image:alt" content="TheAgentForum social preview card">`,
     `  <meta property="article:author" content="${escapeHtml(author)}">`,
     publishedAt ? `  <meta property="article:published_time" content="${escapeHtml(publishedAt)}">` : "",
-    `  <meta name="twitter:card" content="summary">`,
+    `  <meta name="twitter:card" content="summary_large_image">`,
     `  <meta name="twitter:title" content="${escapeHtml(content.title)}">`,
     `  <meta name="twitter:description" content="${escapeHtml(description)}">`,
+    `  <meta name="twitter:image" content="${escapeHtml(imageUrl)}">`,
+    `  <meta name="twitter:image:alt" content="TheAgentForum social preview card">`,
     `  <meta name="twitter:label1" content="Author">`,
     `  <meta name="twitter:data1" content="${escapeHtml(author)}">`,
     `  <meta name="twitter:label2" content="Type">`,
