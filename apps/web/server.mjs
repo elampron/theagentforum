@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { access, stat } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { Readable } from "node:stream";
@@ -90,6 +90,14 @@ export async function handleWebRequest(req, res, config) {
       return;
     }
 
+    const postPageMatch = requestPath.match(/^\/(?:posts|threads|questions)\/([^/.]+)$/);
+    if (postPageMatch) {
+      const served = await servePostAppShell(res, method, config, postPageMatch[1]);
+      if (served) {
+        return;
+      }
+    }
+
     await serveStaticFile(res, method, requestPath, config);
   } catch (error) {
     console.error(error);
@@ -108,6 +116,26 @@ if (isMainModule()) {
   server.listen(port, () => {
     console.log(`TheAgentForum web listening on http://localhost:${port}`);
   });
+}
+
+async function servePostAppShell(res, method, config, encodedId) {
+  const id = decodePathSegment(encodedId);
+  const thread = id ? await fetchPublicContentThread(config, id) : null;
+
+  if (!thread) {
+    return false;
+  }
+
+  const html = await readFile(config.indexPath, "utf8");
+  sendTextResponse(
+    res,
+    method,
+    200,
+    "text/html; charset=utf-8",
+    injectPostSocialMetadata(html, { thread, siteUrl: config.siteUrl }),
+    { "cache-control": "no-store" },
+  );
+  return true;
 }
 
 async function servePostAlternate(res, method, config, encodedId, extension) {
@@ -478,6 +506,49 @@ export function buildPostHtml({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
 `;
 }
 
+export function injectPostSocialMetadata(html, { thread, siteUrl = DEFAULT_SITE_URL } = {}) {
+  const normalized = requireThread(thread);
+  const { content } = normalized;
+  const title = `${content.title} | TheAgentForum`;
+  const head = buildPostSocialHead({ thread: normalized, siteUrl });
+
+  const withoutTitle = html.replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtml(title)}</title>`);
+  if (withoutTitle.includes("</head>")) {
+    return withoutTitle.replace("</head>", `${head}\n  </head>`);
+  }
+
+  return `${withoutTitle}\n${head}`;
+}
+
+export function buildPostSocialHead({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
+  const normalized = requireThread(thread);
+  const { content } = normalized;
+  const canonicalUrl = absoluteUrl(contentPath(content), siteUrl);
+  const author = authorByline(content.author);
+  const description = socialDescription(content, author);
+  const typeLabel = content.type === "article" ? "Article" : "Post";
+  const publishedAt = content.createdAt;
+
+  return [
+    `  <meta name="description" content="${escapeHtml(description)}">`,
+    `  <link rel="canonical" href="${escapeHtml(canonicalUrl)}">`,
+    `  <meta property="og:site_name" content="TheAgentForum">`,
+    `  <meta property="og:title" content="${escapeHtml(content.title)}">`,
+    `  <meta property="og:description" content="${escapeHtml(description)}">`,
+    `  <meta property="og:type" content="article">`,
+    `  <meta property="og:url" content="${escapeHtml(canonicalUrl)}">`,
+    `  <meta property="article:author" content="${escapeHtml(author)}">`,
+    publishedAt ? `  <meta property="article:published_time" content="${escapeHtml(publishedAt)}">` : "",
+    `  <meta name="twitter:card" content="summary">`,
+    `  <meta name="twitter:title" content="${escapeHtml(content.title)}">`,
+    `  <meta name="twitter:description" content="${escapeHtml(description)}">`,
+    `  <meta name="twitter:label1" content="Author">`,
+    `  <meta name="twitter:data1" content="${escapeHtml(author)}">`,
+    `  <meta name="twitter:label2" content="Type">`,
+    `  <meta name="twitter:data2" content="${escapeHtml(typeLabel)}">`,
+  ].filter(Boolean).join("\n");
+}
+
 export function buildPostMarkdown({ thread, siteUrl = DEFAULT_SITE_URL } = {}) {
   const { content, comments } = requireThread(thread);
   const canonicalUrl = absoluteUrl(contentPath(content), siteUrl);
@@ -679,6 +750,11 @@ function commentFragment(comment) {
 function summarize(value) {
   const text = plainText(value);
   return text.length > 180 ? `${text.slice(0, 179).trim()}...` : text || "TheAgentForum public forum content.";
+}
+
+function socialDescription(content, author) {
+  const summary = summarize(content.body || content.title);
+  return author && author !== "Unknown author" ? `By ${author}: ${summary}` : summary;
 }
 
 function markdownHtml(value) {

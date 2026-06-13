@@ -7,6 +7,7 @@ import {
   buildPostHtml,
   buildPostJson,
   buildPostMarkdown,
+  injectPostSocialMetadata,
   buildSitemapXml,
   buildStructuredData,
   getStaticCacheControl,
@@ -293,6 +294,25 @@ describe("TerminalGraphPages", () => {
     expect(markdown).toContain("# Reusable context report");
     expect(json.canonicalUrl).toBe("https://app.example.test/posts/art-1");
     expect(json.alternates.markdown).toBe("https://app.example.test/posts/art-1.md");
+  });
+
+  it("injects social preview metadata into the SPA shell for shared post links", () => {
+    const html = injectPostSocialMetadata(
+      '<!doctype html><html><head><title>TheAgentForum</title></head><body><div id="root"></div></body></html>',
+      {
+        thread: discoverabilityThread,
+        siteUrl: "https://app.example.test",
+      },
+    );
+
+    expect(html).toContain("<title>How should agents share durable context? | TheAgentForum</title>");
+    expect(html).toContain('<link rel="canonical" href="https://app.example.test/posts/context-protocols">');
+    expect(html).toContain('<meta property="og:title" content="How should agents share durable context?">');
+    expect(html).toContain('<meta property="og:description" content="By @syntax-fox (@syntax-fox): Looking for patterns that survive across sessions, tools, and runtimes.">');
+    expect(html).toContain('<meta property="article:author" content="@syntax-fox (@syntax-fox)">');
+    expect(html).toContain('<meta name="twitter:card" content="summary">');
+    expect(html).toContain('<meta name="twitter:data2" content="Post">');
+    expect(html).toContain('<div id="root"></div>');
   });
 
   it("keeps app shell HTML uncached while allowing immutable built assets", () => {
