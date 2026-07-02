@@ -370,3 +370,74 @@ export interface ContentThreadSearchResult {
   returned: number;
   matches: ContentThreadSearchMatch[];
 }
+
+export type ResearchNoteType =
+  | "missing_context"
+  | "weak_source"
+  | "factual_error"
+  | "outdated_claim"
+  | "unsupported_inference"
+  | "contradicted_by_newer_evidence"
+  | "replication_result"
+  | "alternative_interpretation";
+
+export type ResearchNoteStatus =
+  | "needs_review"
+  | "needs_more_ratings"
+  | "accepted_context"
+  | "disputed"
+  | "rejected";
+
+export interface ResearchNoteEvaluationAggregate {
+  helpful: number;
+  notHelpful: number;
+  wellSourced: number;
+  poorlySourced: number;
+  resolvesIssue: number;
+  addsNoise: number;
+  independentVerification: number;
+  opinionOnly: number;
+}
+
+export interface ResearchNote {
+  id: string;
+  contentId: string;
+  claimId?: string;
+  type: ResearchNoteType;
+  body: string;
+  sources: string[];
+  author: Actor;
+  status: ResearchNoteStatus;
+  createdAt: string;
+  updatedAt: string;
+  evaluationCounts: ResearchNoteEvaluationAggregate;
+}
+
+export interface ResearchNoteEvaluation {
+  id: string;
+  noteId: string;
+  author: Actor;
+  helpful: boolean;
+  wellSourced: boolean;
+  resolvesIssue: boolean;
+  independentVerification: boolean;
+  comment?: string;
+  createdAt: string;
+}
+
+export interface CreateResearchNoteInput {
+  claimId?: string;
+  type: ResearchNoteType;
+  body: string;
+  sources?: string[];
+  author: Actor;
+}
+
+export interface EvaluateResearchNoteInput {
+  helpful: boolean;
+  wellSourced: boolean;
+  resolvesIssue: boolean;
+  independentVerification: boolean;
+  comment?: string;
+  author: Actor;
+}

@@ -1,6 +1,8 @@
 create sequence if not exists question_id_seq;
 create sequence if not exists answer_id_seq;
 create sequence if not exists article_id_seq;
+create sequence if not exists research_note_id_seq;
+create sequence if not exists research_note_evaluation_id_seq;
 create sequence if not exists auth_registration_session_id_seq;
 create sequence if not exists auth_pairing_session_id_seq;
 create sequence if not exists auth_account_id_seq;
@@ -53,6 +55,89 @@ create table if not exists articles (
 
 create index if not exists articles_created_at_idx
   on articles (created_at desc);
+
+create table if not exists research_notes (
+  id text primary key default ('rn-' || nextval('research_note_id_seq')),
+  content_id text not null,
+  claim_id text,
+  type text not null,
+  body text not null,
+  sources jsonb not null default '[]'::jsonb,
+  author jsonb not null,
+  status text not null default 'needs_review',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint research_notes_type_check
+    check (type in (
+      'missing_context',
+      'weak_source',
+      'factual_error',
+      'outdated_claim',
+      'unsupported_inference',
+      'contradicted_by_newer_evidence',
+      'replication_result',
+      'alternative_interpretation'
+    )),
+  constraint research_notes_status_check
+    check (status in (
+      'needs_review',
+      'needs_more_ratings',
+      'accepted_context',
+      'disputed',
+      'rejected'
+    ))
+);
+
+create index if not exists research_notes_content_id_created_at_idx
+  on research_notes (content_id, created_at desc);
+
+create table if not exists research_note_evaluations (
+  id text primary key default ('rne-' || nextval('research_note_evaluation_id_seq')),
+  note_id text not null references research_notes(id) on delete cascade,
+  author jsonb not null,
+  helpful boolean not null,
+  well_sourced boolean not null,
+  resolves_issue boolean not null,
+  independent_verification boolean not null,
+  comment text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists research_note_evaluations_note_id_created_at_idx
+  on research_note_evaluations (note_id, created_at);
+
+create or replace function build_research_note_json(rn research_notes)
+returns json
+language sql
+stable
+as $$
+  select json_strip_nulls(json_build_object(
+    'id', rn.id,
+    'contentId', rn.content_id,
+    'claimId', rn.claim_id,
+    'type', rn.type,
+    'body', rn.body,
+    'sources', rn.sources,
+    'author', rn.author,
+    'status', rn.status,
+    'createdAt', to_char(rn.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'updatedAt', to_char(rn.updated_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+    'evaluationCounts', (
+      select json_build_object(
+        'helpful', count(*) filter (where rne.helpful),
+        'notHelpful', count(*) filter (where not rne.helpful),
+        'wellSourced', count(*) filter (where rne.well_sourced),
+        'poorlySourced', count(*) filter (where not rne.well_sourced),
+        'resolvesIssue', count(*) filter (where rne.resolves_issue),
+        'addsNoise', count(*) filter (where not rne.resolves_issue),
+        'independentVerification', count(*) filter (where rne.independent_verification),
+        'opinionOnly', count(*) filter (where not rne.independent_verification)
+      )
+      from research_note_evaluations rne
+      where rne.note_id = rn.id
+    )
+  ));
+$$;
 
 create table if not exists auth_accounts (
   id text primary key default ('acct-' || nextval('auth_account_id_seq')),

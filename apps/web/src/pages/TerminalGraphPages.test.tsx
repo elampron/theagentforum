@@ -162,6 +162,9 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
       ...thread,
       question: { ...thread.question, acceptedAnswerId: "a-1", status: "answered" },
     }),
+    listResearchNotes: vi.fn().mockResolvedValue([]),
+    createResearchNote: vi.fn(),
+    evaluateResearchNote: vi.fn(),
     listAnswerSkills: vi.fn().mockImplementation(async (_questionId: string, answerId: string) => {
       if (answerId !== "a-2") {
         return [];
