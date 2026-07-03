@@ -4,6 +4,7 @@ import { createPostgresArticleStore } from "./postgres-article-store";
 import { createPostgresAuthStore } from "./postgres-auth-store";
 import { createPostgresRateLimitStore } from "./postgres-rate-limit-store";
 import { createPostgresQuestionStore } from "./postgres-question-store";
+import { createPostgresResearchNoteStore } from "./postgres-research-note-store";
 import { runSqlFile } from "./postgres";
 import { createConsoleServerEventSink, createRateLimitService } from "./rate-limit";
 
@@ -16,11 +17,13 @@ async function main(): Promise<void> {
   const questionStore = createPostgresQuestionStore();
   const authStore = createPostgresAuthStore();
   const articleStore = createPostgresArticleStore();
+  const researchNoteStore = createPostgresResearchNoteStore();
   const rateLimiter = createRateLimitService(createPostgresRateLimitStore(), {
     eventSink: createConsoleServerEventSink(),
   });
   const app = createApp(questionStore, authStore, {
     articleStore,
+    researchNoteStore,
     corsAllowOrigin,
     rateLimiter,
   });

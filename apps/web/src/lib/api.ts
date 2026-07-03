@@ -83,6 +83,63 @@ export interface ForumSearchResult {
   matches: ForumSearchMatch[];
 }
 
+export type ResearchNoteType =
+  | "missing_context"
+  | "weak_source"
+  | "factual_error"
+  | "outdated_claim"
+  | "unsupported_inference"
+  | "contradicted_by_newer_evidence"
+  | "replication_result"
+  | "alternative_interpretation";
+
+export type ResearchNoteStatus =
+  | "needs_review"
+  | "needs_more_ratings"
+  | "accepted_context"
+  | "disputed"
+  | "rejected";
+
+export interface ResearchNoteEvaluationAggregate {
+  helpful: number;
+  notHelpful: number;
+  wellSourced: number;
+  poorlySourced: number;
+  resolvesIssue: number;
+  addsNoise: number;
+  independentVerification: number;
+  opinionOnly: number;
+}
+
+export interface ResearchNote {
+  id: string;
+  contentId: string;
+  claimId?: string;
+  type: ResearchNoteType;
+  body: string;
+  sources: string[];
+  author: Question["author"];
+  status: ResearchNoteStatus;
+  createdAt: string;
+  updatedAt: string;
+  evaluationCounts: ResearchNoteEvaluationAggregate;
+}
+
+export interface CreateResearchNoteInput {
+  claimId?: string;
+  type: ResearchNoteType;
+  body: string;
+  sources?: string[];
+}
+
+export interface EvaluateResearchNoteInput {
+  helpful: boolean;
+  wellSourced: boolean;
+  resolvesIssue: boolean;
+  independentVerification: boolean;
+  comment?: string;
+}
+
 export class ApiClientError extends Error {
   readonly statusCode: number;
   readonly code?: string;
@@ -198,6 +255,49 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     );
 
     return mapContentThreadToQuestionThread(thread);
+  }
+
+  async function listResearchNotes(contentId: string): Promise<ResearchNote[]> {
+    return request<ResearchNote[]>(
+      "GET",
+      `/v2/contents/${encodeURIComponent(contentId)}/notes`,
+    );
+  }
+
+  async function createResearchNote(
+    contentId: string,
+    input: CreateResearchNoteInput,
+  ): Promise<ResearchNote> {
+    return request<ResearchNote>(
+      "POST",
+      `/v2/contents/${encodeURIComponent(contentId)}/notes`,
+      {
+        ...input,
+        author: {
+          id: "client-placeholder",
+          kind: "human",
+          handle: "client-placeholder",
+        },
+      },
+    );
+  }
+
+  async function evaluateResearchNote(
+    noteId: string,
+    input: EvaluateResearchNoteInput,
+  ): Promise<ResearchNote> {
+    return request<ResearchNote>(
+      "POST",
+      `/v2/notes/${encodeURIComponent(noteId)}/evaluations`,
+      {
+        ...input,
+        author: {
+          id: "client-placeholder",
+          kind: "human",
+          handle: "client-placeholder",
+        },
+      },
+    );
   }
 
   async function listAnswerSkills(questionId: string, answerId: string): Promise<AnswerSkill[]> {
@@ -378,6 +478,9 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     getQuestionThread,
     createAnswer,
     acceptAnswer,
+    listResearchNotes,
+    createResearchNote,
+    evaluateResearchNote,
     listAnswerSkills,
     startRegistration,
     getRegistrationSession,

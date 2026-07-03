@@ -150,6 +150,111 @@ describe("HTTP API v2 forum", () => {
     assert.deepEqual(search.body.data.matches[0].matchSources, ["body"]);
   });
 
+  it("creates, lists, and evaluates research notes for content", async () => {
+    const authStore = createInMemoryAuthStore();
+    const app = createApp(createInMemoryQuestionStore(), authStore);
+    const cookieHeader = await createAuthenticatedCookie(authStore, {
+      handle: "researcher",
+      displayName: "Researcher",
+    });
+
+    const article = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+      },
+      body: {
+        type: "article",
+        title: "Verification target",
+        body: "A research artifact that needs notes.",
+        author: spoofedAgent,
+      },
+    });
+    assert.equal(article.status, 201);
+
+    const anonymousCreate = await requestJson(app, `/v2/contents/${article.body.data.id}/notes`, {
+      method: "POST",
+      body: {
+        type: "missing_context",
+        body: "This needs a source.",
+        author: spoofedAgent,
+      },
+    });
+    assert.equal(anonymousCreate.status, 401);
+
+    const createdNote = await requestJson(app, `/v2/contents/${article.body.data.id}/notes`, {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+      },
+      body: {
+        type: "missing_context",
+        body: "The article needs the primary benchmark source.",
+        sources: ["https://example.com/source"],
+        author: spoofedAgent,
+      },
+    });
+    assert.equal(createdNote.status, 201);
+    assert.equal(createdNote.body.data.contentId, article.body.data.id);
+    assert.equal(createdNote.body.data.author.handle, "researcher");
+    assert.equal(createdNote.body.data.status, "needs_review");
+    assert.deepEqual(createdNote.body.data.evaluationCounts, {
+      helpful: 0,
+      notHelpful: 0,
+      wellSourced: 0,
+      poorlySourced: 0,
+      resolvesIssue: 0,
+      addsNoise: 0,
+      independentVerification: 0,
+      opinionOnly: 0,
+    });
+
+    const listedNotes = await requestJson(app, `/v2/contents/${article.body.data.id}/notes`);
+    assert.equal(listedNotes.status, 200);
+    assert.equal(listedNotes.body.data.length, 1);
+    assert.equal(listedNotes.body.data[0].id, createdNote.body.data.id);
+
+    const firstEvaluation = await requestJson(app, `/v2/notes/${createdNote.body.data.id}/evaluations`, {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+      },
+      body: {
+        helpful: true,
+        wellSourced: true,
+        resolvesIssue: true,
+        independentVerification: true,
+        comment: "Source checks out.",
+        author: spoofedHuman,
+      },
+    });
+    assert.equal(firstEvaluation.status, 201);
+    assert.equal(firstEvaluation.body.data.status, "needs_more_ratings");
+    assert.equal(firstEvaluation.body.data.evaluationCounts.helpful, 1);
+
+    const secondEvaluation = await requestJson(app, `/v2/notes/${createdNote.body.data.id}/evaluations`, {
+      method: "POST",
+      headers: {
+        cookie: cookieHeader,
+      },
+      body: {
+        helpful: true,
+        wellSourced: true,
+        resolvesIssue: true,
+        independentVerification: false,
+        author: spoofedHuman,
+      },
+    });
+    assert.equal(secondEvaluation.status, 201);
+    assert.equal(secondEvaluation.body.data.status, "accepted_context");
+    assert.equal(secondEvaluation.body.data.evaluationCounts.helpful, 2);
+
+    const evaluations = await requestJson(app, `/v2/notes/${createdNote.body.data.id}/evaluations`);
+    assert.equal(evaluations.status, 200);
+    assert.equal(evaluations.body.data.length, 2);
+    assert.equal(evaluations.body.data[0].author.handle, "researcher");
+  });
+
 });
 
 async function createAuthenticatedCookie(

@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { TerminalPage } from "../components/TerminalChrome";
-import type { ApiClient, ForumContent, ForumSearchResult } from "../lib/api";
+import type { ApiClient, ForumContent, ForumSearchResult, ResearchNote, ResearchNoteType } from "../lib/api";
 import { useAuthNavigation } from "../lib/auth-routing";
 import type { Answer, AnswerSkill, Question, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
@@ -132,6 +132,19 @@ interface ArticleTocEntry {
   label: string;
   level: number;
 }
+
+const researchNoteTypeLabels: Record<ResearchNoteType, string> = {
+  missing_context: "missing context",
+  weak_source: "weak source",
+  factual_error: "factual error",
+  outdated_claim: "outdated claim",
+  unsupported_inference: "unsupported inference",
+  contradicted_by_newer_evidence: "contradicted by newer evidence",
+  replication_result: "replication result",
+  alternative_interpretation: "alternative interpretation",
+};
+
+const researchNoteTypes = Object.keys(researchNoteTypeLabels) as ResearchNoteType[];
 
 const paperSectionTitles = new Map([
   ["abstract", "Abstract"],
@@ -756,6 +769,183 @@ function ArticleTableOfContents({ entries }: { entries: ArticleTocEntry[] }) {
   );
 }
 
+function ResearchNotesPanel({
+  api,
+  contentId,
+  notes,
+  loading,
+  authenticated,
+  onNotesChange,
+}: {
+  api: ApiClient;
+  contentId: string;
+  notes: ResearchNote[];
+  loading: boolean;
+  authenticated: boolean;
+  onNotesChange: (notes: ResearchNote[]) => void;
+}) {
+  const [type, setType] = useState<ResearchNoteType>("missing_context");
+  const [body, setBody] = useState("");
+  const [sources, setSources] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [evaluatingNoteId, setEvaluatingNoteId] = useState<string | null>(null);
+
+  async function handleCreateNote(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+
+    if (!authenticated || submitting) {
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const sourceList = sources
+        .split("\n")
+        .map((source) => source.trim())
+        .filter(Boolean);
+      const note = await api.createResearchNote(contentId, {
+        type,
+        body,
+        sources: sourceList.length > 0 ? sourceList : undefined,
+      });
+      onNotesChange([note, ...notes]);
+      setBody("");
+      setSources("");
+      setType("missing_context");
+    } catch (cause) {
+      setError(readErrorMessage(cause));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleEvaluate(note: ResearchNote, helpful: boolean): Promise<void> {
+    if (!authenticated || evaluatingNoteId) {
+      return;
+    }
+
+    setEvaluatingNoteId(note.id);
+    setError(null);
+
+    try {
+      const updatedNote = await api.evaluateResearchNote(note.id, {
+        helpful,
+        wellSourced: helpful,
+        resolvesIssue: helpful,
+        independentVerification: false,
+      });
+      onNotesChange(notes.map((current) => (current.id === note.id ? updatedNote : current)));
+    } catch (cause) {
+      setError(readErrorMessage(cause));
+    } finally {
+      setEvaluatingNoteId(null);
+    }
+  }
+
+  return (
+    <section className="terminal-side-card terminal-research-notes" aria-label="Research notes">
+      <div className="terminal-research-notes__header">
+        <h2>research notes</h2>
+        <span>{loading ? "sync" : notes.length}</span>
+      </div>
+      <p className="terminal-side-card__note">
+        Community Notes-style context for claims, sources, and verification.
+      </p>
+
+      {loading ? <p className="terminal-side-card__note">Loading notes…</p> : null}
+      {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}
+
+      {!loading && notes.length === 0 ? (
+        <p className="terminal-side-card__note">No research notes yet.</p>
+      ) : null}
+
+      <div className="terminal-research-note-list">
+        {notes.map((note) => (
+          <article key={note.id} className="terminal-research-note">
+            <div className="terminal-comment-card__meta">
+              <span className="terminal-type-badge">{researchNoteTypeLabels[note.type]}</span>
+              <span>{note.status.replace(/_/g, " ")}</span>
+            </div>
+            <p>{note.body}</p>
+            {note.sources.length > 0 ? (
+              <ul className="terminal-research-note__sources">
+                {note.sources.map((source) => (
+                  <li key={source}>
+                    <a href={source} target="_blank" rel="noreferrer">{source}</a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="terminal-research-note__score">
+              <span>{note.evaluationCounts.helpful} helpful</span>
+              <span>{note.evaluationCounts.notHelpful} not helpful</span>
+            </div>
+            {authenticated ? (
+              <div className="terminal-research-note__actions">
+                <button
+                  type="button"
+                  className="terminal-mini-button"
+                  disabled={Boolean(evaluatingNoteId)}
+                  onClick={() => void handleEvaluate(note, true)}
+                >
+                  helpful
+                </button>
+                <button
+                  type="button"
+                  className="terminal-mini-button"
+                  disabled={Boolean(evaluatingNoteId)}
+                  onClick={() => void handleEvaluate(note, false)}
+                >
+                  not helpful
+                </button>
+              </div>
+            ) : null}
+          </article>
+        ))}
+      </div>
+
+      {authenticated ? (
+        <form className="terminal-research-note-form" onSubmit={(event) => void handleCreateNote(event)}>
+          <label>
+            <span>type</span>
+            <select value={type} onChange={(event) => setType(event.target.value as ResearchNoteType)}>
+              {researchNoteTypes.map((noteType) => (
+                <option key={noteType} value={noteType}>{researchNoteTypeLabels[noteType]}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>note</span>
+            <textarea
+              required
+              minLength={8}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="Add missing context, a source concern, or a verification result."
+            />
+          </label>
+          <label>
+            <span>sources</span>
+            <textarea
+              value={sources}
+              onChange={(event) => setSources(event.target.value)}
+              placeholder="https://example.com/source"
+            />
+          </label>
+          <button type="submit" className="terminal-button terminal-button--full" disabled={submitting}>
+            {submitting ? "adding note" : "add research note"}
+          </button>
+        </form>
+      ) : (
+        <TerminalInlineAuthAction label="sign in to add notes" />
+      )}
+    </section>
+  );
+}
+
 interface PostDetailPageProps extends TerminalApiProps {}
 
 export function PostDetailPage({ api }: PostDetailPageProps) {
@@ -764,6 +954,8 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   const resolvedId = postId ?? questionId;
   const [thread, setThread] = useState<QuestionThread | null>(null);
   const [answerSkills, setAnswerSkills] = useState<Record<string, AnswerSkill[]>>({});
+  const [researchNotes, setResearchNotes] = useState<ResearchNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acceptingAnswerId, setAcceptingAnswerId] = useState<string | null>(null);
@@ -780,11 +972,16 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
     }
 
     setLoading(true);
+    setNotesLoading(true);
     setError(null);
 
     try {
-      const nextThread = await api.getQuestionThread(resolvedId);
+      const [nextThread, nextNotes] = await Promise.all([
+        api.getQuestionThread(resolvedId),
+        api.listResearchNotes(resolvedId),
+      ]);
       setThread(nextThread);
+      setResearchNotes(nextNotes);
 
       const nextSkills = Object.fromEntries(
         await Promise.all(
@@ -800,8 +997,10 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
       setError(readErrorMessage(cause));
       setThread(null);
       setAnswerSkills({});
+      setResearchNotes([]);
     } finally {
       setLoading(false);
+      setNotesLoading(false);
     }
   }
 
@@ -992,6 +1191,15 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
 
           {isArticle ? (
             <aside className="terminal-side-stack terminal-reader-rail" aria-label="Article tools">
+              <ResearchNotesPanel
+                api={api}
+                contentId={thread.question.id}
+                notes={researchNotes}
+                loading={notesLoading}
+                authenticated={Boolean(auth.ready && auth.session)}
+                onNotesChange={setResearchNotes}
+              />
+
               <section className="terminal-side-card">
                 <h2>reader</h2>
                 <ul className="terminal-artifact-list">
@@ -1008,6 +1216,15 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
             </aside>
           ) : (
             <aside className="terminal-side-stack" aria-label="Thread metadata">
+              <ResearchNotesPanel
+                api={api}
+                contentId={thread.question.id}
+                notes={researchNotes}
+                loading={notesLoading}
+                authenticated={Boolean(auth.ready && auth.session)}
+                onNotesChange={setResearchNotes}
+              />
+
               <section className="terminal-side-card">
                 <h2>thread graph</h2>
                 <ThreadGraph answerCount={thread.answers.length} skillCount={skillCount} status={thread.question.status} />

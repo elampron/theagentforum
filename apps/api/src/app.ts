@@ -10,7 +10,10 @@ import type {
   CreateCommentInput,
   FinishAuthenticationInput,
   FinishRegistrationInput,
+  CreateResearchNoteInput,
+  EvaluateResearchNoteInput,
   RedeemPairingInput,
+  ResearchNoteType,
   StartAgentPairingInput,
   StartAuthenticationInput,
   StartRegistrationInput,
@@ -21,6 +24,8 @@ import type { ArticleStore } from "./article-store";
 import type { QuestionStore } from "./question-store";
 import type { ForumStore } from "./forum-store";
 import { createForumAdapter } from "./forum-adapter";
+import { createInMemoryResearchNoteStore } from "./memory-research-note-store";
+import type { ResearchNoteStore } from "./research-note-store";
 import {
   createNoopRateLimitService,
   launchCompanionIpPolicies,
@@ -41,6 +46,7 @@ interface CreateAppOptions {
   articleStore?: ArticleStore;
   corsAllowOrigin?: string;
   rateLimiter?: RateLimitService;
+  researchNoteStore?: ResearchNoteStore;
 }
 
 const SESSION_COOKIE_NAME = "taf_session";
@@ -53,6 +59,7 @@ export function createApp(
   const corsAllowOrigin = options.corsAllowOrigin ?? "*";
   const forumStore: ForumStore = createForumAdapter(questionStore, options.articleStore);
   const rateLimiter = options.rateLimiter ?? createNoopRateLimitService();
+  const researchNoteStore = options.researchNoteStore ?? createInMemoryResearchNoteStore();
 
   return async function app(
     req: IncomingMessage,
@@ -61,7 +68,16 @@ export function createApp(
     const corsHeaders = buildCorsHeaders(corsAllowOrigin, req.headers.origin);
 
     try {
-      await routeRequest(questionStore, authStore, forumStore, rateLimiter, req, res, corsHeaders);
+      await routeRequest(
+        questionStore,
+        authStore,
+        forumStore,
+        researchNoteStore,
+        rateLimiter,
+        req,
+        res,
+        corsHeaders,
+      );
     } catch (error) {
       if (isHttpError(error)) {
         sendError(
@@ -100,6 +116,7 @@ async function routeRequest(
   questionStore: QuestionStore,
   authStore: AuthStore,
   forumStore: ForumStore,
+  researchNoteStore: ResearchNoteStore,
   rateLimiter: RateLimitService,
   req: IncomingMessage,
   res: ServerResponse,
@@ -691,6 +708,77 @@ async function routeRequest(
     }
 
     sendJson(res, corsHeaders, 200, { ok: true, data: thread });
+    return;
+  }
+
+  const contentNotesMatch = matchPath(path, /^\/v2\/contents\/([^/]+)\/notes$/);
+
+  if (method === "GET" && contentNotesMatch) {
+    const contentId = contentNotesMatch[1];
+    const thread = await forumStore.getContentThread(contentId);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await researchNoteStore.listNotesForContent(contentId),
+    });
+    return;
+  }
+
+  if (method === "POST" && contentNotesMatch) {
+    const contentId = contentNotesMatch[1];
+    const thread = await forumStore.getContentThread(contentId);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const payload = await readJsonBody(req);
+    const input = parseCreateResearchNoteInput(payload);
+    const note = await researchNoteStore.createNote(contentId, {
+      ...input,
+      author: actor,
+    });
+
+    sendJson(res, corsHeaders, 201, { ok: true, data: note });
+    return;
+  }
+
+  const noteEvaluationsMatch = matchPath(path, /^\/v2\/notes\/([^/]+)\/evaluations$/);
+
+  if (method === "GET" && noteEvaluationsMatch) {
+    const evaluations = await researchNoteStore.listEvaluations(noteEvaluationsMatch[1]);
+
+    if (!evaluations) {
+      sendError(res, corsHeaders, 404, "research_note_not_found", "Research note not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, { ok: true, data: evaluations });
+    return;
+  }
+
+  if (method === "POST" && noteEvaluationsMatch) {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const payload = await readJsonBody(req);
+    const input = parseEvaluateResearchNoteInput(payload);
+    const note = await researchNoteStore.evaluateNote(noteEvaluationsMatch[1], {
+      ...input,
+      author: actor,
+    });
+
+    if (!note) {
+      sendError(res, corsHeaders, 404, "research_note_not_found", "Research note not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 201, { ok: true, data: note });
     return;
   }
 
@@ -1628,6 +1716,54 @@ function parseCreateCommentInput(payload: unknown): CreateCommentInput {
   };
 }
 
+const researchNoteTypes: ResearchNoteType[] = [
+  "missing_context",
+  "weak_source",
+  "factual_error",
+  "outdated_claim",
+  "unsupported_inference",
+  "contradicted_by_newer_evidence",
+  "replication_result",
+  "alternative_interpretation",
+];
+
+function parseCreateResearchNoteInput(payload: unknown): CreateResearchNoteInput {
+  const input = asRecord(payload, "Request body must be an object.");
+  const type = readRequiredString(input.type, "type") as ResearchNoteType;
+
+  if (!researchNoteTypes.includes(type)) {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `type must be one of: ${researchNoteTypes.join(", ")}.`,
+    );
+  }
+
+  return {
+    claimId: readOptionalNonEmptyString(input.claimId, "claimId"),
+    type,
+    body: readRequiredString(input.body, "body"),
+    sources: readOptionalUrlStringArray(input.sources, "sources"),
+    author: parseActor(input.author),
+  };
+}
+
+function parseEvaluateResearchNoteInput(payload: unknown): EvaluateResearchNoteInput {
+  const input = asRecord(payload, "Request body must be an object.");
+
+  return {
+    helpful: readRequiredBoolean(input.helpful, "helpful"),
+    wellSourced: readRequiredBoolean(input.wellSourced, "wellSourced"),
+    resolvesIssue: readRequiredBoolean(input.resolvesIssue, "resolvesIssue"),
+    independentVerification: readRequiredBoolean(
+      input.independentVerification,
+      "independentVerification",
+    ),
+    comment: readOptionalBoundedString(input.comment, "comment", 1000),
+    author: parseActor(input.author),
+  };
+}
+
 function parseUpdateAccountProfileInput(payload: unknown): UpdateAccountProfileInput {
   const input = asRecord(payload, "Request body must be an object.");
 
@@ -1867,6 +2003,18 @@ function readOptionalString(value: unknown, fieldName: string): string | undefin
   return value.trim();
 }
 
+function readRequiredBoolean(value: unknown, fieldName: string): boolean {
+  if (typeof value !== "boolean") {
+    throw createHttpError(
+      400,
+      "validation_error",
+      `${fieldName} must be a boolean.`,
+    );
+  }
+
+  return value;
+}
+
 function readEmailString(value: string, fieldName: string): string {
   const email = value.trim().toLowerCase();
 
@@ -1968,6 +2116,29 @@ function readOptionalNonEmptyString(
   }
 
   return value;
+}
+
+function readOptionalUrlStringArray(
+  value: unknown,
+  fieldName: string,
+): string[] | undefined {
+  const strings = readOptionalStringArray(value, fieldName);
+
+  if (!strings) {
+    return undefined;
+  }
+
+  return strings.map((entry, index) => {
+    const parsed = readOptionalUrlString(entry, `${fieldName}[${index}]`);
+    if (!parsed) {
+      throw createHttpError(
+        400,
+        "validation_error",
+        `${fieldName}[${index}] must be a non-empty URL.`,
+      );
+    }
+    return parsed;
+  });
 }
 
 function readOptionalQuestionStatus(value: string | null): "open" | "answered" | undefined {
