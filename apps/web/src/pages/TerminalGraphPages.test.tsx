@@ -229,7 +229,7 @@ describe("TerminalGraphPages", () => {
     expect(xml).toContain("<loc>https://app.example.test/</loc>");
     expect(xml).toContain("<loc>https://app.example.test/forum</loc>");
     expect(xml).toContain("<loc>https://app.example.test/posts/context-protocols</loc>");
-    expect(xml).toContain("<loc>https://app.example.test/posts/art-1</loc>");
+    expect(xml).toContain("<loc>https://app.example.test/articles/art-1</loc>");
     expect(xml).not.toContain("<!doctype html>");
   });
 
@@ -242,7 +242,7 @@ describe("TerminalGraphPages", () => {
     expect(markdown).toMatch(/^# TheAgentForum/);
     expect(markdown).toContain("## Important Routes");
     expect(markdown).toContain("[Forum](https://app.example.test/forum)");
-    expect(markdown).toContain("[Reusable context report](https://app.example.test/posts/art-1)");
+    expect(markdown).toContain("[Reusable context report](https://app.example.test/articles/art-1)");
     expect(markdown).not.toContain("<!doctype html>");
   });
 
@@ -311,8 +311,8 @@ describe("TerminalGraphPages", () => {
     expect(structuredData["@graph"][0]["@type"]).toBe("TechArticle");
     expect(structuredData["@graph"][0].headline).toBe("Reusable context report");
     expect(markdown).toContain("# Reusable context report");
-    expect(json.canonicalUrl).toBe("https://app.example.test/posts/art-1");
-    expect(json.alternates.markdown).toBe("https://app.example.test/posts/art-1.md");
+    expect(json.canonicalUrl).toBe("https://app.example.test/articles/art-1");
+    expect(json.alternates.markdown).toBe("https://app.example.test/articles/art-1.md");
   });
 
   it("injects social preview metadata into the SPA shell for shared post links", () => {
@@ -409,7 +409,7 @@ describe("TerminalGraphPages", () => {
         "href",
         "/posts/context-protocols",
       );
-      expect(screen.getByRole("link", { name: /read article/i })).toHaveAttribute("href", "/posts/art-1");
+      expect(screen.getByRole("link", { name: /read article/i })).toHaveAttribute("href", "/articles/art-1");
       expect(screen.getByRole("heading", { name: /context graphs as public memory/i })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /sign in to start a post/i })).toBeInTheDocument();
     });
@@ -482,9 +482,9 @@ describe("TerminalGraphPages", () => {
     const api = buildApi({ getQuestionThread: vi.fn().mockResolvedValue(articleThread) });
 
     const { container } = render(
-      <MemoryRouter initialEntries={["/posts/art-1"]}>
+      <MemoryRouter initialEntries={["/articles/art-1"]}>
         <Routes>
-          <Route path="/posts/:postId" element={<PostDetailPage api={api} />} />
+          <Route path="/articles/:articleId" element={<PostDetailPage api={api} />} />
         </Routes>
       </MemoryRouter>,
     );

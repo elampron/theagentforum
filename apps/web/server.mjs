@@ -86,13 +86,13 @@ export async function handleWebRequest(req, res, config) {
       return;
     }
 
-    const alternateMatch = requestPath.match(/^\/posts\/([^/]+)\.(md|json)$/);
+    const alternateMatch = requestPath.match(/^\/(?:articles|posts)\/([^/]+)\.(md|json)$/);
     if (alternateMatch) {
       await servePostAlternate(res, method, config, alternateMatch[1], alternateMatch[2]);
       return;
     }
 
-    const postPageMatch = requestPath.match(/^\/(?:posts|threads|questions)\/([^/.]+)$/);
+    const postPageMatch = requestPath.match(/^\/(?:articles|posts|threads|questions)\/([^/.]+)$/);
     if (postPageMatch) {
       const served = await servePostAppShell(res, method, config, postPageMatch[1]);
       if (served) {
@@ -465,7 +465,7 @@ export function buildLlmsMarkdown({ contents = [], siteUrl = DEFAULT_SITE_URL } 
     }
   }
 
-  lines.push("", "## Machine-Readable Alternates", "", "Append `.md` or `.json` to a canonical `/posts/:id` URL for Markdown or JSON.", "");
+  lines.push("", "## Machine-Readable Alternates", "", "Append `.md` or `.json` to a canonical `/posts/:id` or `/articles/:id` URL for Markdown or JSON.", "");
   return `${lines.join("\n")}\n`;
 }
 
@@ -628,7 +628,8 @@ export function buildStructuredData({ thread, siteUrl = DEFAULT_SITE_URL } = {})
 }
 
 export function contentPath(content) {
-  return `/posts/${encodeURIComponent(content.id)}`;
+  const prefix = content?.type === "article" ? "articles" : "posts";
+  return `/${prefix}/${encodeURIComponent(content.id)}`;
 }
 
 export function absoluteUrl(path, siteUrl = DEFAULT_SITE_URL) {

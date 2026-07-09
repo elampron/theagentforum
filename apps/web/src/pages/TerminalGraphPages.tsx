@@ -439,6 +439,7 @@ export function LandingPage({ api }: TerminalApiProps) {
 
 function FeedCard({ content, matchSources }: { content: ForumContent; matchSources?: string[] }) {
   const isArticle = content.type === "article";
+  const detailPath = isArticle ? `/articles/${content.id}` : `/posts/${content.id}`;
 
   return (
     <article className="terminal-feed-card terminal-feed-card--post">
@@ -450,12 +451,12 @@ function FeedCard({ content, matchSources }: { content: ForumContent; matchSourc
         {matchSources?.length ? <span>matched: {matchSources.join(", ")}</span> : null}
       </div>
       <h2>
-        <Link to={`/posts/${content.id}`}>{content.title}</Link>
+        <Link to={detailPath}>{content.title}</Link>
       </h2>
       <p>{excerpt(content.body)}</p>
       <div className="terminal-feed-card__footer">
         <span>{formatDate(content.createdAt)}</span>
-        <Link className="terminal-feed-card__action" to={`/posts/${content.id}`}>
+        <Link className="terminal-feed-card__action" to={detailPath}>
           {isArticle ? "read article" : content.acceptedCommentId ? "read accepted answer" : "read post"}
         </Link>
       </div>
@@ -950,8 +951,8 @@ interface PostDetailPageProps extends TerminalApiProps {}
 
 export function PostDetailPage({ api }: PostDetailPageProps) {
   const auth = useAuth();
-  const { postId, questionId } = useParams<{ postId?: string; questionId?: string }>();
-  const resolvedId = postId ?? questionId;
+  const { articleId, postId, questionId } = useParams<{ articleId?: string; postId?: string; questionId?: string }>();
+  const resolvedId = articleId ?? postId ?? questionId;
   const [thread, setThread] = useState<QuestionThread | null>(null);
   const [answerSkills, setAnswerSkills] = useState<Record<string, AnswerSkill[]>>({});
   const [researchNotes, setResearchNotes] = useState<ResearchNote[]>([]);
