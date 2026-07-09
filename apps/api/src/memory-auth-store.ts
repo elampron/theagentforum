@@ -371,7 +371,7 @@ export function createInMemoryAuthStore(): AuthStore {
     const approvedAt = new Date().toISOString();
     session.status = "paired";
     session.accountId = account.id;
-    session.actor = createStoredActor(account);
+    session.actor = createStoredActor(account, "agent");
     session.deviceLabel = input.deviceLabel?.trim() || session.deviceLabel;
     session.token = createToken();
     session.approvedAt = approvedAt;
@@ -628,7 +628,7 @@ export function createInMemoryAuthStore(): AuthStore {
     });
 
     return {
-      actor: createStoredActor(account),
+      actor: createStoredActor(account, "agent"),
       createdAt: session.pairing.createdAt,
       expiresAt: session.pairing.expiresAt,
       deviceLabel: session.pairing.deviceLabel,
@@ -966,10 +966,10 @@ function isAuthenticatablePasskey(credential: StoredCredential): boolean {
   return !credential.credentialId.startsWith("manual-");
 }
 
-function createStoredActor(account: StoredAccount): Actor {
+function createStoredActor(account: StoredAccount, kind: Actor["kind"] = "human"): Actor {
   return {
     id: account.id,
-    kind: "human",
+    kind,
     handle: account.handle,
     displayName: account.displayName,
   };

@@ -398,6 +398,7 @@ describe("HTTP API", () => {
 
     assert.equal(inspected.status, 200);
     assert.equal(inspected.body.data.actor.handle, "felix-agent-approval");
+    assert.equal(inspected.body.data.actor.kind, "agent");
     assert.equal(inspected.body.data.deviceLabel, "Codex in browser");
 
     const devices = await requestJson(app, "/auth/devices", {

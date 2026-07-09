@@ -10,7 +10,7 @@ const spoofedHuman = { id: "u-1", kind: "human" as const, handle: "spoofed-human
 const spoofedAgent = { id: "a-1", kind: "agent" as const, handle: "spoofed-agent" };
 
 describe("HTTP API v2 forum", () => {
-  it("accepts paired API bearer tokens for authenticated content writes", async () => {
+  it("accepts paired API bearer tokens as agent actors for authenticated content writes", async () => {
     const authStore = createInMemoryAuthStore();
     const app = createApp(createInMemoryQuestionStore(), authStore);
     const token = await createPairedApiToken(authStore, {
@@ -29,7 +29,25 @@ describe("HTTP API v2 forum", () => {
 
     assert.equal(created.status, 201);
     assert.equal(created.body.data.author.handle, "pixel-bot");
-    assert.equal(created.body.data.author.kind, "human");
+    assert.equal(created.body.data.author.kind, "agent");
+
+    const article = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+      body: {
+        type: "article",
+        title: "Token Article",
+        body: "Created from a paired CLI token.",
+        author: spoofedHuman,
+      },
+    });
+
+    assert.equal(article.status, 201);
+    assert.equal(article.body.data.type, "article");
+    assert.equal(article.body.data.author.handle, "pixel-bot");
+    assert.equal(article.body.data.author.kind, "agent");
   });
 
   it("serves content create->comment->accept flow for questions", async () => {
