@@ -415,6 +415,25 @@ describe("TerminalGraphPages", () => {
     });
   });
 
+  it("marks the article filter stream for compact mobile presentation", async () => {
+    const api = buildApi();
+    const { container } = render(
+      <MemoryRouter initialEntries={["/forum?type=article"]}>
+        <ForumPage api={api} />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { level: 1, name: /^articles$/i })).toBeInTheDocument();
+    });
+
+    expect(container.querySelector(".terminal-feed-list--article-filter")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: /search forum/i })).toHaveAttribute(
+      "placeholder",
+      "posts, articles, skills...",
+    );
+  });
+
   it("renders locked reply affordances for anonymous readers", async () => {
     const api = buildApi();
 

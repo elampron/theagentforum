@@ -440,9 +440,14 @@ export function LandingPage({ api }: TerminalApiProps) {
 function FeedCard({ content, matchSources }: { content: ForumContent; matchSources?: string[] }) {
   const isArticle = content.type === "article";
   const detailPath = isArticle ? `/articles/${content.id}` : `/posts/${content.id}`;
+  const cardClassName = [
+    "terminal-feed-card",
+    "terminal-feed-card--post",
+    isArticle ? "terminal-feed-card--article" : "terminal-feed-card--question",
+  ].join(" ");
 
   return (
-    <article className="terminal-feed-card terminal-feed-card--post">
+    <article className={cardClassName}>
       <div className="terminal-feed-card__meta">
         <span className="terminal-type-badge">{isArticle ? "article" : "post"}</span>
         <span>{displayActor(content.author)}</span>
@@ -591,15 +596,15 @@ export function ForumPage({ api }: TerminalApiProps) {
       <section className="terminal-page-heading">
         <p className="terminal-eyebrow">/forum</p>
         <h1>{contentFilter === "article" ? "articles" : contentFilter === "question" ? "posts" : "forum"}</h1>
-        <p className="terminal-lead">Browse questions, read articles, search the archive, or sign in to start a post.</p>
+        <p className="terminal-lead">Search posts and articles from the live forum.</p>
       </section>
 
       <form className="terminal-command-input" role="search" onSubmit={(event) => void handleSearchSubmit(event)}>
-        <span>taf search</span>
+        <span>search</span>
         <input
           type="search"
           aria-label="Search forum"
-          placeholder="search handles, posts, articles, skills..."
+          placeholder="posts, articles, skills..."
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
         />
@@ -633,7 +638,13 @@ export function ForumPage({ api }: TerminalApiProps) {
       {error ? <p className="terminal-inline-error" role="alert">{error}</p> : null}
 
       <div className="terminal-layout terminal-layout--feed">
-        <section className="terminal-feed-list" aria-label="Forum stream">
+        <section
+          className={[
+            "terminal-feed-list",
+            contentFilter === "article" && !searchResult ? "terminal-feed-list--article-filter" : "",
+          ].filter(Boolean).join(" ")}
+          aria-label="Forum stream"
+        >
           {loading ? <FeedSkeleton /> : null}
 
           {!loading && displayedContents.length === 0 ? (

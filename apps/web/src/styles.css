@@ -3929,7 +3929,7 @@ img.markdown-media {
   .terminal-main {
     width: 100%;
     max-width: 100vw;
-    padding: 1.5rem 0.5rem 3rem;
+    padding: 1rem 0.5rem 2.25rem;
   }
 
   .terminal-nav {
@@ -3966,7 +3966,11 @@ img.markdown-media {
   .terminal-layout--thread {
     width: 100%;
     max-width: 100%;
-    gap: 1rem;
+    gap: 0.75rem;
+  }
+
+  .terminal-layout--feed {
+    gap: 0.75rem;
   }
 
   .terminal-layout--thread > *,
@@ -3980,27 +3984,29 @@ img.markdown-media {
   .terminal-layout--thread .terminal-thread-main,
   .terminal-layout--thread .terminal-side-card,
   .terminal-layout--thread .terminal-comment-card {
-    padding: 1rem;
+    padding: 0.85rem;
   }
 
   .terminal-main--reader {
     width: 100vw;
     max-width: 100vw;
     margin: 0;
-    padding: 1rem 0.5rem 3rem;
+    padding: 0.75rem 0.5rem 2.25rem;
     overflow-x: hidden;
   }
 
   .terminal-layout--article-reader {
-    width: calc(100vw - 2rem);
-    max-width: calc(100vw - 2rem);
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    gap: 0.75rem;
     overflow-x: hidden;
   }
 
   .terminal-article-reader {
-    width: calc(100vw - 2rem);
+    width: calc(100vw - 1rem);
     min-height: auto;
-    max-width: calc(100vw - 2rem);
+    max-width: calc(100vw - 1rem);
+    padding: 0.85rem;
     overflow-x: hidden;
   }
 
@@ -4014,21 +4020,23 @@ img.markdown-media {
   }
 
   .terminal-layout--article-reader .terminal-article-reader__header h1 {
-    font-size: 2.25rem;
-    line-height: 1.05;
+    font-size: clamp(1.45rem, 7vw, 2rem);
+    line-height: 1.08;
   }
 
   .terminal-article-body {
-    font-size: 1rem;
-    line-height: 1.72;
+    font-size: 0.94rem;
+    line-height: 1.64;
   }
 
   .terminal-article-body > h2 {
-    font-size: 1.45rem;
+    margin-top: 1.5rem;
+    font-size: 1.18rem;
   }
 
   .terminal-article-body > h3 {
-    font-size: 1.2rem;
+    margin-top: 1.2rem;
+    font-size: 1.05rem;
   }
 
   .terminal-article-body > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
@@ -4050,13 +4058,24 @@ img.markdown-media {
   }
 
   .terminal-thread-body {
-    font-size: 0.95rem;
-    line-height: 1.7;
+    font-size: 0.92rem;
+    line-height: 1.62;
   }
 
   .terminal-hero h1,
   .terminal-page-heading h1 {
-    font-size: clamp(2.25rem, 14vw, 3.6rem);
+    font-size: clamp(1.9rem, 10vw, 2.45rem);
+    line-height: 1;
+  }
+
+  .terminal-page-heading {
+    margin-bottom: 0.75rem;
+  }
+
+  .terminal-lead {
+    margin-top: 0.45rem;
+    font-size: 0.88rem;
+    line-height: 1.42;
   }
 
   .terminal-layout--thread .terminal-thread-main > h1 {
@@ -4078,6 +4097,171 @@ img.markdown-media {
   .terminal-api-strip,
   .terminal-command-input {
     grid-template-columns: 1fr;
+  }
+
+  .terminal-command-input {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.45rem;
+    margin-bottom: 0.65rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 0.72rem;
+  }
+
+  .terminal-command-input > span {
+    display: none;
+  }
+
+  .terminal-command-input input {
+    min-width: 0;
+    padding: 0.15rem 0;
+    font-size: 0.9rem;
+  }
+
+  .terminal-command-input .terminal-mini-button {
+    min-height: 1.8rem;
+    padding: 0.32rem 0.55rem;
+    font-size: 0.72rem;
+  }
+
+  .terminal-filter-tabs {
+    gap: 0.4rem;
+    margin-bottom: 0.45rem;
+  }
+
+  .terminal-filter-tabs .terminal-mini-button {
+    min-height: 1.9rem;
+    padding: 0.34rem 0.55rem;
+    font-size: 0.72rem;
+  }
+
+  .terminal-filter-count {
+    font-size: 0.68rem;
+  }
+
+  .terminal-result-summary {
+    margin: 0.35rem 0 0.65rem;
+    font-size: 0.74rem;
+  }
+
+  .terminal-feed-list,
+  .terminal-side-stack,
+  .terminal-comment-stack {
+    gap: 0.65rem;
+  }
+
+  .terminal-feed-list--article-filter .terminal-feed-card--article:nth-of-type(n + 3) {
+    display: none;
+  }
+
+  .terminal-feed-card,
+  .terminal-side-card,
+  .terminal-comment-card {
+    border-radius: 0.72rem;
+    padding: 0.75rem;
+  }
+
+  .terminal-feed-card__meta,
+  .terminal-feed-card__footer,
+  .terminal-comment-card__meta,
+  .terminal-breadcrumb {
+    gap: 0.38rem;
+    font-size: 0.68rem;
+    line-height: 1.25;
+  }
+
+  .terminal-feed-card h2 {
+    margin-top: 0.45rem;
+    font-size: 1rem;
+    line-height: 1.18;
+    letter-spacing: -0.03em;
+  }
+
+  .terminal-feed-card p {
+    display: -webkit-box;
+    margin-top: 0.35rem;
+    overflow: hidden;
+    color: var(--terminal-muted);
+    font-size: 0.82rem;
+    line-height: 1.38;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .terminal-feed-card__footer {
+    margin-top: 0.55rem;
+  }
+
+  .terminal-side-card h2,
+  .terminal-comment-card h2,
+  .terminal-answer-form h2 {
+    margin-top: 0.35rem;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .terminal-side-card p,
+  .terminal-side-card__note,
+  .terminal-artifact-list {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
+
+  .terminal-button {
+    min-height: 2.35rem;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.82rem;
+  }
+
+  .terminal-link-button {
+    padding: 0.48rem 0.65rem;
+    font-size: 0.8rem;
+  }
+
+  .terminal-mini-button {
+    min-height: 1.9rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.72rem;
+  }
+
+  .terminal-article-toc {
+    display: none;
+  }
+
+  .terminal-article-reader__header {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .terminal-article-discussion {
+    margin-top: 1.4rem;
+  }
+
+  .terminal-reader-rail {
+    position: static;
+  }
+
+  .terminal-reader-rail .terminal-side-card:nth-of-type(n + 2) {
+    display: none;
+  }
+
+  .terminal-reader-rail .auth-required-panel {
+    gap: 0.55rem;
+    padding: 0.7rem;
+  }
+
+  .terminal-reader-rail .auth-required-panel__icon {
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .terminal-reader-rail .auth-required-panel__copy h3 {
+    font-size: 0.9rem;
+  }
+
+  .terminal-reader-rail .auth-required-panel__copy p {
+    display: none;
   }
 
   .terminal-home-toolbar,
@@ -4521,4 +4705,46 @@ img.markdown-media {
   min-height: 5.5rem;
   padding: 0.7rem;
   resize: vertical;
+}
+
+@media (max-width: 640px) {
+  .terminal-filter-tabs {
+    gap: 0.4rem;
+    margin: 0.45rem 0 0.55rem;
+  }
+
+  .terminal-filter-tabs .terminal-mini-button {
+    min-height: 1.9rem;
+    padding: 0.34rem 0.55rem;
+    font-size: 0.72rem;
+  }
+
+  .terminal-filter-count {
+    min-width: 1.1rem;
+    min-height: 1.1rem;
+    padding: 0 0.28rem;
+    font-size: 0.66rem;
+  }
+
+  .terminal-result-summary {
+    margin: 0.25rem 0 0.65rem;
+    font-size: 0.74rem;
+  }
+
+  .terminal-research-notes,
+  .terminal-research-note-list,
+  .terminal-research-note-form {
+    gap: 0.55rem;
+  }
+
+  .terminal-research-note {
+    gap: 0.45rem;
+    padding: 0.65rem;
+    border-radius: 0.65rem;
+  }
+
+  .terminal-research-note p {
+    font-size: 0.8rem;
+    line-height: 1.4;
+  }
 }
