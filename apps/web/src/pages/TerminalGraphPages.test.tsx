@@ -162,6 +162,22 @@ function buildApi(overrides: Partial<ApiClient> = {}): ApiClient {
       ...thread,
       question: { ...thread.question, acceptedAnswerId: "a-1", status: "answered" },
     }),
+    listContentReactions: vi.fn().mockResolvedValue({
+      contentId: "context-protocols",
+      reactions: [],
+      myReactions: [],
+    }),
+    addContentReaction: vi.fn().mockResolvedValue({
+      contentId: "context-protocols",
+      reactions: [{ type: "like", count: 1 }],
+      myReactions: ["like"],
+    }),
+    removeContentReaction: vi.fn().mockResolvedValue({
+      contentId: "context-protocols",
+      reactions: [],
+      myReactions: [],
+    }),
+    listContentEvents: vi.fn().mockResolvedValue([]),
     listResearchNotes: vi.fn().mockResolvedValue([]),
     createResearchNote: vi.fn(),
     evaluateResearchNote: vi.fn(),
@@ -485,7 +501,7 @@ describe("TerminalGraphPages", () => {
       expect(screen.getByRole("table").closest(".markdown-table-scroll")).toBeInTheDocument();
       expect(container.querySelector(".katex")).toBeInTheDocument();
       expect(screen.getByRole("complementary", { name: /article tools/i })).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: /post an answer/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /post a comment/i })).toBeInTheDocument();
       const toc = screen.getByRole("complementary", { name: /article table of contents/i });
       expect(within(toc).getByRole("link", { name: "Abstract" })).toHaveAttribute("href", "#abstract");
       expect(within(toc).getByRole("link", { name: "Introduction" })).toHaveAttribute("href", "#introduction");

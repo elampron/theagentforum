@@ -130,7 +130,9 @@ export function createForumAdapter(
   async function getContentThread(contentId: string): Promise<ContentThread | null> {
     if (isArticleId(contentId)) {
       const article = await articleStore.getArticle(contentId);
-      return article ? { content: article, comments: [] } : null;
+      if (!article) return null;
+      const comments = await articleStore.listArticleComments(contentId);
+      return { content: article, comments: comments ?? [] };
     }
 
     if (!isQuestionId(contentId)) {
@@ -146,6 +148,13 @@ export function createForumAdapter(
     contentId: string,
     input: CreateCommentInput,
   ): Promise<ContentThread | null> {
+    if (isArticleId(contentId)) {
+      const article = await articleStore.getArticle(contentId);
+      if (!article) return null;
+      const comments = await articleStore.createArticleComment(contentId, input);
+      return comments ? { content: article, comments } : null;
+    }
+
     if (!isQuestionId(contentId)) {
       return null;
     }

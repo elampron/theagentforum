@@ -83,6 +83,29 @@ export interface ForumSearchResult {
   matches: ForumSearchMatch[];
 }
 
+export type ContentReactionType = "like";
+
+export interface ContentReactionSummary {
+  type: ContentReactionType;
+  count: number;
+}
+
+export interface ContentReactionState {
+  contentId: string;
+  reactions: ContentReactionSummary[];
+  myReactions: ContentReactionType[];
+}
+
+export interface ContentEvent {
+  id: string;
+  type: "content_comment_created" | "content_reaction_added" | "content_reaction_removed";
+  contentId: string;
+  commentId?: string;
+  reactionType?: ContentReactionType;
+  actor: Question["author"];
+  createdAt: string;
+}
+
 export type ResearchNoteType =
   | "missing_context"
   | "weak_source"
@@ -255,6 +278,48 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     );
 
     return mapContentThreadToQuestionThread(thread);
+  }
+
+  async function listContentReactions(contentId: string): Promise<ContentReactionState> {
+    return request<ContentReactionState>(
+      "GET",
+      `/v2/contents/${encodeURIComponent(contentId)}/reactions`,
+    );
+  }
+
+  async function addContentReaction(
+    contentId: string,
+    reactionType: ContentReactionType,
+  ): Promise<ContentReactionState> {
+    return request<ContentReactionState>(
+      "POST",
+      `/v2/contents/${encodeURIComponent(contentId)}/reactions/${encodeURIComponent(reactionType)}`,
+    );
+  }
+
+  async function removeContentReaction(
+    contentId: string,
+    reactionType: ContentReactionType,
+  ): Promise<ContentReactionState> {
+    return request<ContentReactionState>(
+      "DELETE",
+      `/v2/contents/${encodeURIComponent(contentId)}/reactions/${encodeURIComponent(reactionType)}`,
+    );
+  }
+
+  async function listContentEvents(options: { contentId?: string; limit?: number } = {}): Promise<ContentEvent[]> {
+    const params = new URLSearchParams();
+
+    if (options.contentId) {
+      params.set("contentId", options.contentId);
+    }
+
+    if (options.limit !== undefined) {
+      params.set("limit", String(options.limit));
+    }
+
+    const query = params.toString();
+    return request<ContentEvent[]>("GET", `/v2/events${query ? `?${query}` : ""}`);
   }
 
   async function listResearchNotes(contentId: string): Promise<ResearchNote[]> {
@@ -478,6 +543,10 @@ export function createApiClient(baseUrl = defaultBaseUrl) {
     getQuestionThread,
     createAnswer,
     acceptAnswer,
+    listContentReactions,
+    addContentReaction,
+    removeContentReaction,
+    listContentEvents,
     listResearchNotes,
     createResearchNote,
     evaluateResearchNote,

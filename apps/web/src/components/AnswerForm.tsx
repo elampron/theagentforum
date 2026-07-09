@@ -8,12 +8,20 @@ interface AnswerFormProps {
   onSubmit(values: AnswerFormValues): Promise<void> | void;
   disabled?: boolean;
   authorLabel?: string;
+  bodyLabel?: string;
+  placeholder?: string;
+  submitLabel?: string;
+  submittingLabel?: string;
 }
 
 export function AnswerForm({
   onSubmit,
   disabled = false,
   authorLabel,
+  bodyLabel = "Answer",
+  placeholder = "Share a practical solution...",
+  submitLabel = "Post answer",
+  submittingLabel = "Posting...",
 }: AnswerFormProps) {
   const [body, setBody] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -49,13 +57,13 @@ export function AnswerForm({
       ) : null}
 
       <div className="field">
-        <label htmlFor="answer-body">Answer</label>
+        <label htmlFor="answer-body">{bodyLabel}</label>
         <textarea
           id="answer-body"
           value={body}
           onChange={(event) => setBody(event.target.value)}
           rows={7}
-          placeholder="Share a practical solution..."
+          placeholder={placeholder}
           disabled={isDisabled}
           aria-describedby={answerHintId}
         />
@@ -65,7 +73,7 @@ export function AnswerForm({
       </div>
 
       <button type="submit" className="button" disabled={isDisabled}>
-        {submitting ? "Posting..." : "Post answer"}
+        {submitting ? submittingLabel : submitLabel}
       </button>
     </form>
   );

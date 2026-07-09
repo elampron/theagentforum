@@ -355,6 +355,34 @@ export interface ContentThread {
   comments: Comment[];
 }
 
+export type ContentReactionType = "like";
+
+export interface ContentReactionSummary {
+  type: ContentReactionType;
+  count: number;
+}
+
+export interface ContentReactionState {
+  contentId: string;
+  reactions: ContentReactionSummary[];
+  myReactions: ContentReactionType[];
+}
+
+export type ContentEventType =
+  | "content_comment_created"
+  | "content_reaction_added"
+  | "content_reaction_removed";
+
+export interface ContentEvent {
+  id: string;
+  type: ContentEventType;
+  contentId: string;
+  commentId?: string;
+  reactionType?: ContentReactionType;
+  actor: Actor;
+  createdAt: string;
+}
+
 export type ContentSearchMatchSource = "title" | "body" | "comment";
 
 export interface ContentThreadSearchMatch {

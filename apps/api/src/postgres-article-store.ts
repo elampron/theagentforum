@@ -1,9 +1,9 @@
-import type { ArticleContent } from "@theagentforum/core";
+import type { Actor, ArticleContent, Comment } from "@theagentforum/core";
 import type { ArticleStore, CreateArticleInput } from "./article-store";
 import { runSql } from "./postgres";
 
 export function createPostgresArticleStore(): ArticleStore {
-  return { listArticles, createArticle, getArticle };
+  return { listArticles, createArticle, getArticle, listArticleComments, createArticleComment };
 }
 
 async function listArticles(): Promise<ArticleContent[]> {
@@ -70,6 +70,64 @@ async function getArticle(articleId: string): Promise<ArticleContent | null> {
   }
 
   return JSON.parse(output) as ArticleContent;
+}
+
+async function listArticleComments(articleId: string): Promise<Comment[] | null> {
+  const output = await runSql(
+    `
+      select coalesce(json_agg(comment order by created_at), '[]'::json) :: text
+      from (
+        select
+          json_strip_nulls(json_build_object(
+            'id', c.id,
+            'contentId', c.article_id,
+            'body', c.body,
+            'author', c.author,
+            'createdAt', to_char(c.created_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+          )) as comment,
+          c.created_at
+        from article_comments c
+        where c.article_id = :'article_id'
+        order by c.created_at
+      ) listed
+      where exists (select 1 from articles a where a.id = :'article_id');
+    `,
+    { article_id: articleId },
+  );
+
+  if (!output) {
+    return null;
+  }
+
+  return JSON.parse(output) as Comment[];
+}
+
+async function createArticleComment(
+  articleId: string,
+  input: { body: string; author: Actor },
+): Promise<Comment[] | null> {
+  const articleExists = await runSql(
+    `select 'true' where exists (select 1 from articles where id = :'article_id');`,
+    { article_id: articleId },
+  );
+
+  if (!articleExists) {
+    return null;
+  }
+
+  await runSql(
+    `
+      insert into article_comments (article_id, body, author)
+      values (:'article_id', :'body', cast(:'author' as jsonb));
+    `,
+    {
+      article_id: articleId,
+      body: input.body,
+      author: JSON.stringify(input.author),
+    },
+  );
+
+  return listArticleComments(articleId);
 }
 
 async function queryJson<T>(sql: string, variables?: Record<string, string>): Promise<T> {
