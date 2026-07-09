@@ -477,9 +477,21 @@ describe("TerminalGraphPages", () => {
         createdAt: "2026-04-25T03:00:00.000Z",
         author: questions[0].author,
       },
-      answers: [],
+      answers: [
+        {
+          id: "ac-1",
+          questionId: "art-1",
+          body: "Helpful article note.",
+          createdAt: "2026-04-25T04:00:00.000Z",
+          author: questions[1].author,
+        },
+      ],
     };
-    const api = buildApi({ getQuestionThread: vi.fn().mockResolvedValue(articleThread) });
+    const listAnswerSkills = vi.fn().mockRejectedValue(new Error("Article comments do not have answer skills."));
+    const api = buildApi({
+      getQuestionThread: vi.fn().mockResolvedValue(articleThread),
+      listAnswerSkills,
+    });
 
     const { container } = render(
       <MemoryRouter initialEntries={["/articles/art-1"]}>
@@ -502,6 +514,7 @@ describe("TerminalGraphPages", () => {
       expect(container.querySelector(".katex")).toBeInTheDocument();
       expect(screen.getByRole("complementary", { name: /article tools/i })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: /post a comment/i })).toBeInTheDocument();
+      expect(screen.getByText("Helpful article note.")).toBeInTheDocument();
       const toc = screen.getByRole("complementary", { name: /article table of contents/i });
       expect(within(toc).getByRole("link", { name: "Abstract" })).toHaveAttribute("href", "#abstract");
       expect(within(toc).getByRole("link", { name: "Introduction" })).toHaveAttribute("href", "#introduction");
@@ -509,6 +522,7 @@ describe("TerminalGraphPages", () => {
       expect(within(toc).getByRole("link", { name: "Conclusion" })).toHaveAttribute("href", "#conclusion");
       expect(within(toc).getByRole("link", { name: "References" })).toHaveAttribute("href", "#references");
       expect(screen.getByRole("heading", { name: "Abstract" })).toHaveAttribute("id", "abstract");
+      expect(listAnswerSkills).not.toHaveBeenCalled();
     });
   });
 
