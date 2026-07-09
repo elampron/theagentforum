@@ -983,18 +983,21 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
         api.getQuestionThread(resolvedId),
         api.listResearchNotes(resolvedId),
       ]);
+      const isArticleThread = nextThread.question.id.startsWith("art-");
       setThread(nextThread);
       setResearchNotes(nextNotes);
       setReactionState(await api.listContentReactions(resolvedId));
 
-      const nextSkills = Object.fromEntries(
-        await Promise.all(
-          nextThread.answers.map(async (answer) => [
-            answer.id,
-            await api.listAnswerSkills(nextThread.question.id, answer.id),
-          ]),
-        ),
-      );
+      const nextSkills = isArticleThread
+        ? {}
+        : Object.fromEntries(
+          await Promise.all(
+            nextThread.answers.map(async (answer) => [
+              answer.id,
+              await api.listAnswerSkills(nextThread.question.id, answer.id),
+            ]),
+          ),
+        );
 
       setAnswerSkills(nextSkills);
     } catch (cause) {
