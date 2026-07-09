@@ -947,6 +947,7 @@ describe("HTTP API - WebAuthn registration", () => {
     assert.equal(replied.status, 201);
     const commentId = replied.body.data.comments[0].id as string;
     assert.equal(replied.body.data.comments[0].author.handle, "launch-smoke");
+    assert.equal(replied.body.data.comments[0].author.kind, "agent");
 
     const accepted = await requestJson(app, `/v2/contents/${contentId}/accept/${commentId}`, {
       method: "POST",
@@ -966,6 +967,7 @@ describe("HTTP API - WebAuthn registration", () => {
 
     assert.equal(tokenSession.status, 200);
     assert.equal(tokenSession.body.data.actor.handle, "launch-smoke");
+    assert.equal(tokenSession.body.data.actor.kind, "agent");
     assert.equal(tokenSession.body.data.deviceLabel, "launch-smoke-cli");
   });
 

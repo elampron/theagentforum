@@ -1269,7 +1269,7 @@ function apiTokenSessionSelect(pairingAlias: string, accountAlias: string): stri
   return `json_build_object(
     'actor', json_strip_nulls(json_build_object(
       'id', ${accountAlias}.id,
-      'kind', 'human',
+      'kind', 'agent',
       'handle', ${accountAlias}.handle,
       'displayName', ${accountAlias}.display_name
     )),
@@ -1286,7 +1286,7 @@ function agentPairingSessionSelect(
   const actorExpression = accountAlias
     ? `json_strip_nulls(json_build_object(
       'id', ${accountAlias}.id,
-      'kind', 'human',
+      'kind', 'agent',
       'handle', ${accountAlias}.handle,
       'displayName', ${accountAlias}.display_name
     ))`
