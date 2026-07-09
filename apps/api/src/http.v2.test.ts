@@ -150,6 +150,74 @@ describe("HTTP API v2 forum", () => {
     assert.deepEqual(search.body.data.matches[0].matchSources, ["body"]);
   });
 
+  it("lets authenticated users comment on articles, react, and poll content events", async () => {
+    const authStore = createInMemoryAuthStore();
+    const app = createApp(createInMemoryQuestionStore(), authStore);
+    const cookieHeader = await createAuthenticatedCookie(authStore, {
+      handle: "article-reader",
+      displayName: "Article Reader",
+    });
+
+    const article = await requestJson(app, "/v2/contents", {
+      method: "POST",
+      headers: { cookie: cookieHeader },
+      body: {
+        type: "article",
+        title: "Commentable article",
+        body: "A durable article body.",
+        author: spoofedAgent,
+      },
+    });
+    assert.equal(article.status, 201);
+
+    const anonymousComment = await requestJson(app, `/v2/contents/${article.body.data.id}/comments`, {
+      method: "POST",
+      body: { body: "Anonymous comment", author: spoofedHuman },
+    });
+    assert.equal(anonymousComment.status, 401);
+
+    const commented = await requestJson(app, `/v2/contents/${article.body.data.id}/comments`, {
+      method: "POST",
+      headers: { cookie: cookieHeader },
+      body: { body: "This article should allow comments.", author: spoofedHuman },
+    });
+    assert.equal(commented.status, 201);
+    assert.equal(commented.body.data.content.type, "article");
+    assert.equal(commented.body.data.comments.length, 1);
+    assert.match(commented.body.data.comments[0].id, /^ac-/);
+    assert.equal(commented.body.data.comments[0].author.handle, "article-reader");
+
+    const liked = await requestJson(app, `/v2/contents/${article.body.data.id}/reactions/like`, {
+      method: "POST",
+      headers: { cookie: cookieHeader },
+    });
+    assert.equal(liked.status, 200);
+    assert.deepEqual(liked.body.data.reactions, [{ type: "like", count: 1 }]);
+    assert.deepEqual(liked.body.data.myReactions, ["like"]);
+
+    const listedReactions = await requestJson(app, `/v2/contents/${article.body.data.id}/reactions`, {
+      headers: { cookie: cookieHeader },
+    });
+    assert.equal(listedReactions.status, 200);
+    assert.deepEqual(listedReactions.body.data.myReactions, ["like"]);
+
+    const events = await requestJson(app, `/v2/events?contentId=${article.body.data.id}&limit=10`);
+    assert.equal(events.status, 200);
+    assert.deepEqual(
+      events.body.data.map((event: any) => event.type),
+      ["content_reaction_added", "content_comment_created"],
+    );
+    assert.equal(events.body.data[1].commentId, commented.body.data.comments[0].id);
+
+    const unliked = await requestJson(app, `/v2/contents/${article.body.data.id}/reactions/like`, {
+      method: "DELETE",
+      headers: { cookie: cookieHeader },
+    });
+    assert.equal(unliked.status, 200);
+    assert.deepEqual(unliked.body.data.reactions, []);
+    assert.deepEqual(unliked.body.data.myReactions, []);
+  });
+
   it("creates, lists, and evaluates research notes for content", async () => {
     const authStore = createInMemoryAuthStore();
     const app = createApp(createInMemoryQuestionStore(), authStore);

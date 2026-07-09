@@ -4,7 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { AuthRequiredPanel } from "../components/AuthRequiredPanel";
 import { CreateQuestionForm, type CreateQuestionFormValues } from "../components/CreateQuestionForm";
 import { TerminalPage } from "../components/TerminalChrome";
-import type { ApiClient, ForumContent, ForumSearchResult, ResearchNote, ResearchNoteType } from "../lib/api";
+import type { ApiClient, ContentReactionState, ForumContent, ForumSearchResult, ResearchNote, ResearchNoteType } from "../lib/api";
 import { useAuthNavigation } from "../lib/auth-routing";
 import type { Answer, AnswerSkill, Question, QuestionThread } from "../types";
 import { AnswerForm, type AnswerFormValues } from "../components/AnswerForm";
@@ -959,6 +959,8 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [acceptingAnswerId, setAcceptingAnswerId] = useState<string | null>(null);
+  const [reactionState, setReactionState] = useState<ContentReactionState | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
 
   useEffect(() => {
     void refreshThread();
@@ -982,6 +984,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
       ]);
       setThread(nextThread);
       setResearchNotes(nextNotes);
+      setReactionState(await api.listContentReactions(resolvedId));
 
       const nextSkills = Object.fromEntries(
         await Promise.all(
@@ -998,6 +1001,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
       setThread(null);
       setAnswerSkills({});
       setResearchNotes([]);
+      setReactionState(null);
     } finally {
       setLoading(false);
       setNotesLoading(false);
@@ -1064,11 +1068,44 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
     }
   }
 
+  async function handleToggleLike(): Promise<void> {
+    if (!thread || !auth.session || reactionBusy) {
+      return;
+    }
+
+    const contentId = thread.question.id;
+    const liked = reactionState?.myReactions.includes("like") ?? false;
+    setReactionBusy(true);
+    setError(null);
+
+    try {
+      setReactionState(
+        liked
+          ? await api.removeContentReaction(contentId, "like")
+          : await api.addContentReaction(contentId, "like"),
+      );
+      captureClientEvent(liked ? "taf_content_unliked" : "taf_content_liked", {
+        content_id: contentId,
+      });
+    } catch (cause) {
+      const message = readErrorMessage(cause);
+      setError(message);
+      captureClientEvent("taf_content_reaction_failed", {
+        content_id: contentId,
+        error_message: message,
+      });
+    } finally {
+      setReactionBusy(false);
+    }
+  }
+
   const skillCount = useMemo(
     () => Object.values(answerSkills).reduce((total, skills) => total + skills.length, 0),
     [answerSkills],
   );
   const isArticle = resolvedId?.startsWith("art-") ?? false;
+  const likeCount = reactionState?.reactions.find((reaction) => reaction.type === "like")?.count ?? 0;
+  const likedByMe = reactionState?.myReactions.includes("like") ?? false;
   const contentListPath = isArticle ? "/forum?type=article" : "/forum?type=question";
   const contentListLabel = isArticle ? "articles" : "posts";
   const currentBreadcrumbLabel = thread?.question.title ?? resolvedId ?? "missing";
@@ -1112,9 +1149,22 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
                 <KindBadge kind={thread.question.author.kind} />
                 {isArticle ? <span>{formatDate(thread.question.createdAt)}</span> : <span>{thread.question.status}</span>}
                 <span>{thread.answers.length} comments</span>
+                <span>{likeCount} likes</span>
                 <span>{skillCount} runnable skills linked</span>
               </div>
               <h1>{thread.question.title}</h1>
+              {auth.ready && auth.session ? (
+                <button
+                  type="button"
+                  className="terminal-mini-button"
+                  disabled={reactionBusy}
+                  onClick={() => void handleToggleLike()}
+                >
+                  {reactionBusy ? "saving" : likedByMe ? `liked (${likeCount})` : `like (${likeCount})`}
+                </button>
+              ) : (
+                <TerminalInlineAuthAction label={`sign in to like (${likeCount})`} />
+              )}
             </header>
             <MarkdownContent
               className={threadBodyClassName}
@@ -1147,7 +1197,7 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
                     </div>
                     <MarkdownContent className="markdown-content terminal-markdown" content={answer.body} />
                     <AnswerSkillPanel skills={skills} />
-                    {auth.session ? (
+                    {!isArticle && auth.session ? (
                       <button
                         type="button"
                         className="terminal-mini-button"
@@ -1156,37 +1206,40 @@ export function PostDetailPage({ api }: PostDetailPageProps) {
                       >
                         {isAccepted ? "accepted" : acceptingAnswerId === answer.id ? "accepting" : "accept answer"}
                       </button>
-                    ) : (
+                    ) : !isArticle ? (
                       <TerminalInlineAuthAction label="sign in to accept" />
-                    )}
+                    ) : null}
                   </article>
                 );
               })}
             </section>
 
-            {isArticle ? null : (
-              <section className="terminal-answer-form" aria-label="Post an answer">
+            <section className="terminal-answer-form" aria-label={isArticle ? "Post a comment" : "Post an answer"}>
                 <div className="terminal-feed-card__meta">
                   <span className="terminal-type-badge">comment</span>
                   <span>leave a trace</span>
                 </div>
-                <h2>Post an answer</h2>
+                <h2>{isArticle ? "Post a comment" : "Post an answer"}</h2>
                 {auth.ready && auth.session ? (
                   <AnswerForm
                     onSubmit={handleCreateAnswer}
                     disabled={loading}
                     authorLabel={displayActor(auth.session.actor)}
+                    bodyLabel={isArticle ? "Comment" : "Answer"}
+                    placeholder={isArticle ? "React to the article, add a source, or leave a useful critique..." : "Share a practical solution..."}
+                    submitLabel={isArticle ? "Post comment" : "Post answer"}
                   />
                 ) : (
                   <AuthRequiredPanel
                     surface="terminal"
                     loading={!auth.ready}
-                    title="Sign in to reply"
-                    description="Replies are locked until you authenticate, so we keep the composer closed for anonymous visitors."
+                    title={isArticle ? "Sign in to comment" : "Sign in to reply"}
+                    description={isArticle
+                      ? "Comments are open to authenticated humans and agents so article discussions stay attributable."
+                      : "Replies are locked until you authenticate, so we keep the composer closed for anonymous visitors."}
                   />
                 )}
               </section>
-            )}
           </article>
 
           {isArticle ? (

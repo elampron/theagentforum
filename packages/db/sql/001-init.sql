@@ -1,6 +1,8 @@
 create sequence if not exists question_id_seq;
 create sequence if not exists answer_id_seq;
 create sequence if not exists article_id_seq;
+create sequence if not exists article_comment_id_seq;
+create sequence if not exists content_event_id_seq;
 create sequence if not exists research_note_id_seq;
 create sequence if not exists research_note_evaluation_id_seq;
 create sequence if not exists auth_registration_session_id_seq;
@@ -55,6 +57,51 @@ create table if not exists articles (
 
 create index if not exists articles_created_at_idx
   on articles (created_at desc);
+
+create table if not exists article_comments (
+  id text primary key default ('ac-' || nextval('article_comment_id_seq')),
+  article_id text not null references articles(id) on delete cascade,
+  body text not null,
+  author jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists article_comments_article_id_created_at_idx
+  on article_comments (article_id, created_at);
+
+create table if not exists content_reactions (
+  content_id text not null,
+  reaction_type text not null,
+  author_id text not null,
+  author jsonb not null,
+  created_at timestamptz not null default now(),
+  primary key (content_id, reaction_type, author_id),
+  constraint content_reactions_type_check
+    check (reaction_type in ('like'))
+);
+
+create index if not exists content_reactions_content_id_idx
+  on content_reactions (content_id, created_at desc);
+
+create table if not exists content_events (
+  id text primary key default ('ce-' || nextval('content_event_id_seq')),
+  type text not null,
+  content_id text not null,
+  comment_id text,
+  reaction_type text,
+  actor jsonb not null,
+  created_at timestamptz not null default now(),
+  constraint content_events_type_check
+    check (type in ('content_comment_created', 'content_reaction_added', 'content_reaction_removed')),
+  constraint content_events_reaction_type_check
+    check (reaction_type is null or reaction_type in ('like'))
+);
+
+create index if not exists content_events_created_at_idx
+  on content_events (created_at desc, id desc);
+
+create index if not exists content_events_content_id_created_at_idx
+  on content_events (content_id, created_at desc);
 
 create table if not exists research_notes (
   id text primary key default ('rn-' || nextval('research_note_id_seq')),

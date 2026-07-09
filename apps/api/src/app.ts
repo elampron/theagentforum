@@ -8,6 +8,7 @@ import type {
   CreateQuestionInput,
   CreateContentInput,
   CreateCommentInput,
+  ContentReactionType,
   FinishAuthenticationInput,
   FinishRegistrationInput,
   CreateResearchNoteInput,
@@ -23,6 +24,8 @@ import type { AuthStore } from "./auth-store";
 import type { ArticleStore } from "./article-store";
 import type { QuestionStore } from "./question-store";
 import type { ForumStore } from "./forum-store";
+import type { EngagementStore } from "./engagement-store";
+import { createInMemoryEngagementStore } from "./memory-engagement-store";
 import { createForumAdapter } from "./forum-adapter";
 import { createInMemoryResearchNoteStore } from "./memory-research-note-store";
 import type { ResearchNoteStore } from "./research-note-store";
@@ -47,6 +50,7 @@ interface CreateAppOptions {
   corsAllowOrigin?: string;
   rateLimiter?: RateLimitService;
   researchNoteStore?: ResearchNoteStore;
+  engagementStore?: EngagementStore;
 }
 
 const SESSION_COOKIE_NAME = "taf_session";
@@ -60,6 +64,7 @@ export function createApp(
   const forumStore: ForumStore = createForumAdapter(questionStore, options.articleStore);
   const rateLimiter = options.rateLimiter ?? createNoopRateLimitService();
   const researchNoteStore = options.researchNoteStore ?? createInMemoryResearchNoteStore();
+  const engagementStore = options.engagementStore ?? createInMemoryEngagementStore();
 
   return async function app(
     req: IncomingMessage,
@@ -73,6 +78,7 @@ export function createApp(
         authStore,
         forumStore,
         researchNoteStore,
+        engagementStore,
         rateLimiter,
         req,
         res,
@@ -117,6 +123,7 @@ async function routeRequest(
   authStore: AuthStore,
   forumStore: ForumStore,
   researchNoteStore: ResearchNoteStore,
+  engagementStore: EngagementStore,
   rateLimiter: RateLimitService,
   req: IncomingMessage,
   res: ServerResponse,
@@ -711,6 +718,73 @@ async function routeRequest(
     return;
   }
 
+  const contentReactionsMatch = matchPath(path, /^\/v2\/contents\/([^/]+)\/reactions$/);
+
+  if (method === "GET" && contentReactionsMatch) {
+    const contentId = contentReactionsMatch[1];
+    const thread = await forumStore.getContentThread(contentId);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await engagementStore.getReactionState(contentId, authenticatedSession?.actor.id),
+    });
+    return;
+  }
+
+  const contentReactionMatch = matchPath(path, /^\/v2\/contents\/([^/]+)\/reactions\/([^/]+)$/);
+
+  if ((method === "POST" || method === "PUT") && contentReactionMatch) {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const contentId = contentReactionMatch[1];
+    const reactionType = parseContentReactionType(contentReactionMatch[2]);
+    const thread = await forumStore.getContentThread(contentId);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await engagementStore.addReaction(contentId, reactionType, actor),
+    });
+    return;
+  }
+
+  if (method === "DELETE" && contentReactionMatch) {
+    const actor = requireAuthenticatedActor(authenticatedSession);
+    const contentId = contentReactionMatch[1];
+    const reactionType = parseContentReactionType(contentReactionMatch[2]);
+    const thread = await forumStore.getContentThread(contentId);
+
+    if (!thread) {
+      sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
+      return;
+    }
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await engagementStore.removeReaction(contentId, reactionType, actor),
+    });
+    return;
+  }
+
+  if (method === "GET" && path === "/v2/events") {
+    const contentId = readOptionalString(url.searchParams.get("contentId"), "contentId");
+    const limit = readOptionalPositiveInteger(url.searchParams.get("limit"), "limit") ?? 50;
+
+    sendJson(res, corsHeaders, 200, {
+      ok: true,
+      data: await engagementStore.listEvents({ contentId, limit }),
+    });
+    return;
+  }
+
   const contentNotesMatch = matchPath(path, /^\/v2\/contents\/([^/]+)\/notes$/);
 
   if (method === "GET" && contentNotesMatch) {
@@ -805,6 +879,16 @@ async function routeRequest(
     if (!thread) {
       sendError(res, corsHeaders, 404, "content_not_found", "Content not found.");
       return;
+    }
+
+    const createdComment = thread.comments[thread.comments.length - 1];
+    if (createdComment) {
+      await engagementStore.recordEvent({
+        type: "content_comment_created",
+        contentId: commentsMatch[1],
+        commentId: createdComment.id,
+        actor,
+      });
     }
 
     sendJson(res, corsHeaders, 201, { ok: true, data: thread });
@@ -1714,6 +1798,16 @@ function parseCreateCommentInput(payload: unknown): CreateCommentInput {
     body: readRequiredString(input.body, "body"),
     author: parseActor(input.author),
   };
+}
+
+function parseContentReactionType(value: string): ContentReactionType {
+  const decoded = decodeURIComponent(value);
+
+  if (decoded !== "like") {
+    throw createHttpError(400, "validation_error", "reaction type must be: like.");
+  }
+
+  return decoded;
 }
 
 const researchNoteTypes: ResearchNoteType[] = [

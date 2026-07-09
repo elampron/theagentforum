@@ -1,11 +1,14 @@
 export { createPostgresArticleStore } from "./postgres-article-store";
 export { createPostgresQuestionStore, createPostgresQuestionStore as createQuestionStore } from "./postgres-question-store";
 export { createPostgresResearchNoteStore } from "./postgres-research-note-store";
+export { createPostgresEngagementStore } from "./postgres-engagement-store";
 export { createInMemoryArticleStore } from "./memory-article-store";
 export { createInMemoryQuestionStore } from "./memory-question-store";
 export { createInMemoryResearchNoteStore } from "./memory-research-note-store";
+export { createInMemoryEngagementStore } from "./memory-engagement-store";
 export { createPostgresAuthStore } from "./postgres-auth-store";
 export { createInMemoryAuthStore } from "./memory-auth-store";
 export type { QuestionStore, QuestionThread } from "./question-store";
 export type { ResearchNoteStore } from "./research-note-store";
+export type { EngagementStore } from "./engagement-store";
 export type { AuthStore } from "./auth-store";
